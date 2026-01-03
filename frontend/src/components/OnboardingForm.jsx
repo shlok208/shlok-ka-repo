@@ -1069,7 +1069,7 @@ const OnboardingForm = forwardRef(({
                     <span className={`text-sm font-medium ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Life Stage / Roles</span>
                     <div className="flex items-center space-x-2">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                        Boolean(isDarkMode) ? 'bg-pink-900 text-pink-300' : 'bg-pink-100 text-pink-600'
+                        Boolean(isDarkMode) ? 'bg-red-900 text-red-300' : 'bg-pink-100 text-pink-600'
                       }`}>
                         {getSelectedCount('target_audience_life_stages')}
                       </span>
@@ -1131,7 +1131,7 @@ const OnboardingForm = forwardRef(({
                     <span className={`text-sm font-medium ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Professional / Business Type <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>(Optional)</span></span>
                     <div className="flex items-center space-x-2">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                        Boolean(isDarkMode) ? 'bg-pink-900 text-pink-300' : 'bg-pink-100 text-pink-600'
+                        Boolean(isDarkMode) ? 'bg-red-900 text-red-300' : 'bg-pink-100 text-pink-600'
                       }`}>
                         {getSelectedCount('target_audience_professional_types')}
                       </span>
@@ -1193,7 +1193,7 @@ const OnboardingForm = forwardRef(({
                     <span className={`text-sm font-medium ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Lifestyle & Interests <span className={`text-xs ${Boolean(isDarkMode) ? 'text-gray-400' : 'text-gray-500'}`}>(Optional)</span></span>
                     <div className="flex items-center space-x-2">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                        Boolean(isDarkMode) ? 'bg-pink-900 text-pink-300' : 'bg-pink-100 text-pink-600'
+                        Boolean(isDarkMode) ? 'bg-red-900 text-red-300' : 'bg-pink-100 text-pink-600'
                       }`}>
                         {getSelectedCount('target_audience_lifestyle_interests')}
                       </span>
@@ -1255,7 +1255,7 @@ const OnboardingForm = forwardRef(({
                     <span className={`text-sm font-medium ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Buyer Behavior</span>
                     <div className="flex items-center space-x-2">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                        Boolean(isDarkMode) ? 'bg-pink-900 text-pink-300' : 'bg-pink-100 text-pink-600'
+                        Boolean(isDarkMode) ? 'bg-red-900 text-red-300' : 'bg-pink-100 text-pink-600'
                       }`}>
                         {getSelectedCount('target_audience_buyer_behavior')}
                       </span>
