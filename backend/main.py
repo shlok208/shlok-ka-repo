@@ -893,8 +893,13 @@ async def generate_content_for_user(
 ):
     """Generate content for the current user"""
     try:
+        from middleware.credit_middleware import check_credits_before_action
+
         generate_images = request.get("generate_images", False)
-        
+
+        # Check credits before starting content generation
+        await check_credits_before_action(current_user.id, 'task')
+
         # Initialize progress
         await update_progress(
             current_user.id,
@@ -902,14 +907,14 @@ async def generate_content_for_user(
             0,
             "Starting content generation..."
         )
-        
+
         # Run content generation in background
         background_tasks.add_task(
             run_content_generation_with_progress,
             current_user.id,
             generate_images
         )
-        
+
         return {"message": "Content generation started", "user_id": current_user.id, "generate_images": generate_images}
         
     except Exception as e:
@@ -932,6 +937,11 @@ async def run_content_generation_with_progress(user_id: str, generate_images: bo
         
         # Run the actual content generation
         result = await content_agent.run_weekly_generation(user_id)
+
+        # Increment usage after successful content generation
+        if result and result.get('success'):
+            from middleware.credit_middleware import increment_usage_after_action
+            await increment_usage_after_action(user_id, 'task')
         
         logger.info(f"Content generation result: {result}")
         

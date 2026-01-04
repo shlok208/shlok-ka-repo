@@ -281,19 +281,19 @@ const SubscriptionSelector = () => {
 
   if (loadingPlans || loadingTrial) {
     return (
-      <div className="min-h-screen bg-[#F6F6F6] flex items-center justify-center">
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-[#9E005C]" />
-          <p className="text-gray-600">Loading subscription plans...</p>
+          <p className="text-gray-300">Loading subscription plans...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F6F6F6] flex flex-col">
+    <div className="min-h-screen bg-gray-900 flex flex-col">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      <div className="bg-gray-800 shadow-sm border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             {/* Logo and Brand */}
@@ -302,8 +302,8 @@ const SubscriptionSelector = () => {
                 <span className="text-white font-bold text-sm sm:text-xl">E</span>
               </div>
               <div>
-                <h1 className="text-lg sm:text-2xl font-bold text-gray-900">Emily</h1>
-                <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">AI Marketing Assistant</p>
+                <h1 className="text-lg sm:text-2xl font-normal text-white">atsn ai</h1>
+                <p className="text-xs sm:text-sm text-gray-300 hidden sm:block">your ai teammates</p>
               </div>
             </div>
 
@@ -311,34 +311,34 @@ const SubscriptionSelector = () => {
             <div className="hidden md:flex items-center space-x-3">
               <button
                 onClick={() => window.location.href = '/dashboard'}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex items-center space-x-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
               >
                 <Home className="w-4 h-4" />
                 <span className="text-sm font-medium">Dashboard</span>
               </button>
-              
+
               <button
                 onClick={() => window.open('/help', '_blank')}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex items-center space-x-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
               >
                 <HelpCircle className="w-4 h-4" />
                 <span className="text-sm font-medium">Help</span>
               </button>
-              
+
               <button
                 onClick={() => window.location.href = '/profile'}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex items-center space-x-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
               >
                 <Settings className="w-4 h-4" />
                 <span className="text-sm font-medium">Settings</span>
               </button>
-              
-              <div className="h-6 w-px bg-gray-300"></div>
-              
+
+              <div className="h-6 w-px bg-gray-600"></div>
+
               <button
                 onClick={handleLogout}
                 disabled={isLoggingOut}
-                className="flex items-center space-x-2 px-4 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center space-x-2 px-4 py-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoggingOut ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -355,34 +355,34 @@ const SubscriptionSelector = () => {
             <div className="flex md:hidden items-center space-x-2">
               <button
                 onClick={() => window.location.href = '/dashboard'}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
                 title="Dashboard"
               >
                 <Home className="w-5 h-5" />
               </button>
-              
+
               <button
                 onClick={() => window.open('/help', '_blank')}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
                 title="Help"
               >
                 <HelpCircle className="w-5 h-5" />
               </button>
-              
+
               <button
                 onClick={() => window.location.href = '/profile'}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
                 title="Settings"
               >
                 <Settings className="w-5 h-5" />
               </button>
-              
-              <div className="h-6 w-px bg-gray-300"></div>
-              
+
+              <div className="h-6 w-px bg-gray-600"></div>
+
               <button
                 onClick={handleLogout}
                 disabled={isLoggingOut}
-                className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Logout"
               >
                 {isLoggingOut ? (
@@ -401,24 +401,22 @@ const SubscriptionSelector = () => {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 w-full">
         {/* Header */}
         <div className="text-center mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">
-            <span className="bg-gradient-to-r from-[#9E005C] to-[#FF4D94] bg-clip-text text-transparent">
-              Choose Your Plan
-            </span>
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-normal mb-3 sm:mb-4 text-white">
+            Choose Your Plan
           </h1>
-          <p className="text-base sm:text-lg text-gray-600 mb-4 sm:mb-6 px-4 sm:px-0">
+          <p className="text-base sm:text-lg text-gray-300 mb-4 sm:mb-6 px-4 sm:px-0">
             Select a subscription plan to continue with your Emily setup
           </p>
           
           {/* Billing Cycle Toggle */}
           <div className="flex items-center justify-center space-x-3 sm:space-x-4 mb-4 sm:mb-6">
-            <span className={`text-sm font-medium ${billingCycle === 'monthly' ? 'text-[#9E005C]' : 'text-gray-500'}`}>
+            <span className={`text-sm font-medium ${billingCycle === 'monthly' ? 'text-white' : 'text-gray-400'}`}>
               Monthly
             </span>
             <button
               onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'yearly' : 'monthly')}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                billingCycle === 'yearly' ? 'bg-[#9E005C]' : 'bg-gray-300'
+                billingCycle === 'yearly' ? 'bg-[#9E005C]' : 'bg-gray-600'
               }`}
             >
               <span
@@ -427,11 +425,11 @@ const SubscriptionSelector = () => {
                 }`}
               />
             </button>
-            <span className={`text-sm font-medium ${billingCycle === 'yearly' ? 'text-[#9E005C]' : 'text-gray-500'}`}>
+            <span className={`text-sm font-medium ${billingCycle === 'yearly' ? 'text-white' : 'text-gray-400'}`}>
               Yearly
             </span>
             {billingCycle === 'yearly' && (
-              <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
+              <span className="bg-green-900 text-green-300 text-xs font-medium px-2 py-1 rounded-full">
                 Save 17%
               </span>
             )}
@@ -439,20 +437,22 @@ const SubscriptionSelector = () => {
         </div>
 
         {/* Plans Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 max-w-7xl mx-auto">
           {plans && Array.isArray(plans) && plans.length > 0 ? (
             plans
             .sort((a, b) => {
-              // Define the order: trial, basic, pro
-              const order = { 'free_trial': 0, 'starter': 1, 'basic': 1, 'pro': 2 };
+              // Define the order: freemium, starter, advanced, pro, free_trial
+              const order = { 'freemium': 0, 'free_trial': 1, 'starter': 2, 'advanced': 3, 'pro': 4 };
               const aOrder = order[a.name] ?? 999;
               const bOrder = order[b.name] ?? 999;
               return aOrder - bOrder;
             })
             .map((plan) => {
             const isFreeTrial = plan.name === 'free_trial';
+            const isFreePlan = plan.name === 'freemium' || plan.price_monthly === 0;
             const price = billingCycle === 'monthly' ? plan.price_monthly : plan.price_yearly;
             const isPro = plan.name === 'pro';
+            const isAdvanced = plan.name === 'advanced';
             
             // Get expiration date for trial
             const expirationDate = trialInfo?.trial_expires_at || trialInfo?.trial_end;
@@ -464,15 +464,15 @@ const SubscriptionSelector = () => {
             const subscriptionStatusValue = subscriptionStatus?.status;
             
             // Check if this is the user's current paid plan (monthly/yearly, not trial)
-            // Plan names are stored as "starter", "pro", etc. (without _monthly/_yearly suffix)
-            // Make comparison case-insensitive to handle "Starter" vs "starter"
-            // Also trim to handle trailing spaces
+            // Plan names are stored as "freemium", "starter", "advanced", "pro", etc.
+            // Make comparison case-insensitive to handle variations
             const currentPlanLower = currentPlan ? currentPlan.toLowerCase().trim() : '';
             const planNameLower = plan.name ? plan.name.toLowerCase().trim() : '';
-            const isCurrentPaidPlan = !isFreeTrial && currentPlan && 
-                                     (currentPlanLower === planNameLower || 
+            const isCurrentPaidPlan = !isFreeTrial && currentPlan &&
+                                     (currentPlanLower === planNameLower ||
                                       currentPlanLower.startsWith(planNameLower + '_') ||
-                                      planNameLower === currentPlanLower);
+                                      planNameLower === currentPlanLower ||
+                                      (planNameLower === 'freemium' && currentPlanLower === 'free'));
             
             // Debug logging
             if (currentPlan) {
@@ -543,11 +543,17 @@ const SubscriptionSelector = () => {
               }
             };
             
-            // Format price display - special handling for Free Trial
+            // Format price display - special handling for Free Trial and Freemium
             const getPriceDisplay = () => {
               if (isFreeTrial) {
                 return {
                   price: 'for 3 days',
+                  period: null
+                };
+              }
+              if (isFreePlan) {
+                return {
+                  price: 'Free',
                   period: null
                 };
               }
@@ -565,14 +571,16 @@ const SubscriptionSelector = () => {
                 key={plan.id}
                 className={`relative rounded-xl p-4 sm:p-6 border transition-all duration-300 ${
                   isTrialExpired
-                    ? 'bg-gray-100 border-gray-300 grayscale opacity-75 cursor-not-allowed'
+                    ? 'bg-gray-800 border-gray-600 grayscale opacity-75 cursor-not-allowed'
                     : isPaidPlanExpired
-                    ? 'bg-white border-gray-300 hover:border-[#FF4D94] hover:shadow-lg'
+                    ? 'bg-gray-800 border-gray-600 hover:border-[#FF4D94] hover:shadow-lg'
                     : isTrialAlreadyActive || isPaidPlanActive
-                    ? 'bg-gradient-to-br from-pink-50 to-purple-50 border-[#FF4D94] shadow-md'
-                    : isPro 
-                    ? 'bg-white border-[#FF4D94] shadow-lg hover:shadow-xl' 
-                    : 'bg-white border-gray-200 hover:border-[#9E005C] hover:shadow-lg'
+                    ? 'bg-gradient-to-br from-pink-900/30 to-purple-900/30 border-[#FF4D94] shadow-md'
+                    : isAdvanced
+                    ? 'bg-gradient-to-br from-gray-700 to-gray-800 border-pink-500/50 shadow-lg hover:shadow-xl'
+                    : isPro
+                    ? 'bg-gray-800 border-purple-500/50 shadow-lg hover:shadow-xl'
+                    : 'bg-gray-800 border-gray-600 hover:border-[#9E005C] hover:shadow-lg'
                 }`}
               >
                 {/* Show badges in priority order: Current Plan > Expired > Active Trial > Most Popular */}
@@ -583,7 +591,7 @@ const SubscriptionSelector = () => {
                     </div>
                   </div>
                 )}
-                
+
                 {isTrialExpired && !isPaidPlanActive && (
                   <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
                     <div className="bg-gray-500 text-white px-3 py-1 rounded-full text-xs font-medium">
@@ -591,7 +599,7 @@ const SubscriptionSelector = () => {
                     </div>
                   </div>
                 )}
-                
+
                 {isPaidPlanExpired && !isPaidPlanActive && (
                   <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
                     <div className="bg-gray-500 text-white px-3 py-1 rounded-full text-xs font-medium">
@@ -599,7 +607,7 @@ const SubscriptionSelector = () => {
                     </div>
                   </div>
                 )}
-                
+
                 {isTrialAlreadyActive && !isPaidPlanActive && (
                   <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
                     <div className="bg-gradient-to-r from-[#FF4D94] to-[#9E005C] text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg">
@@ -607,50 +615,50 @@ const SubscriptionSelector = () => {
                     </div>
                   </div>
                 )}
-                
-                {/* Show "Most Popular" only if pro plan is not active */}
-                {isPro && !isPaidPlanActive && (
+
+                {/* Show "Most Popular" for Advanced plan if not active */}
+                {isAdvanced && !isPaidPlanActive && (
                   <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                    <div className="bg-gradient-to-r from-[#FF4D94] to-[#9E005C] text-white px-3 py-1 rounded-full text-xs font-medium">
+                    <div className="bg-gradient-to-r from-pink-500 to-purple-600 text-white px-3 py-1 rounded-full text-xs font-medium">
                       Most Popular
                     </div>
                   </div>
                 )}
                 
                 <div className="text-center mb-4 sm:mb-6">
-                  <h3 className={`text-lg sm:text-xl font-bold mb-2 ${isTrialExpired || isPaidPlanExpired ? 'text-gray-500' : isTrialAlreadyActive || isPaidPlanActive ? 'text-gray-900' : 'text-gray-900'}`}>
+                  <h3 className={`text-lg sm:text-xl font-normal mb-2 ${isTrialExpired || isPaidPlanExpired ? 'text-gray-400' : 'text-white'}`}>
                     {displayName}
                   </h3>
                   {isTrialExpired ? (
-                    <div className="text-base sm:text-lg font-semibold text-gray-500 mb-2">
+                    <div className="text-base sm:text-lg font-normal text-gray-400 mb-2">
                       Your trial is expired
                     </div>
                   ) : isPaidPlanExpired ? (
-                    <div className="text-base sm:text-lg font-semibold text-gray-500 mb-2">
+                    <div className="text-base sm:text-lg font-normal text-gray-400 mb-2">
                       Your plan is expired please upgrade your plan or renewal your plan
                     </div>
                   ) : isTrialAlreadyActive ? (
                     <div className="space-y-2">
-                      <div className="text-base sm:text-lg font-semibold bg-gradient-to-r from-[#FF4D94] to-[#9E005C] bg-clip-text text-transparent mb-2">
+                      <div className="text-base sm:text-lg font-normal text-white mb-2">
                         Your trial is active
                       </div>
                       {(trialInfo?.trial_expires_at || trialInfo?.trial_end) && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          Expires: {new Date(trialInfo.trial_expires_at || trialInfo.trial_end).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric', 
-                            year: 'numeric' 
+                        <div className="text-xs text-gray-400 mt-1">
+                          Expires: {new Date(trialInfo.trial_expires_at || trialInfo.trial_end).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
                           })}
                         </div>
                       )}
                     </div>
                   ) : (
-                  <div className="text-2xl sm:text-3xl font-bold mb-1">
-                    <span className={`${isPro ? 'text-[#FF4D94]' : 'text-[#9E005C]'}`}>
+                  <div className="text-2xl sm:text-3xl font-normal mb-1">
+                    <span className="text-white">
                       {priceInfo.price}
                     </span>
                     {priceInfo.period && (
-                      <span className="text-gray-500 text-sm sm:text-base">/{priceInfo.period}</span>
+                      <span className="text-gray-400 text-sm sm:text-base">/{priceInfo.period}</span>
                     )}
                   </div>
                   )}
@@ -658,22 +666,28 @@ const SubscriptionSelector = () => {
                 
                 <div className="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
                   {(() => {
-                    // Handle different feature structures
+                    // Handle features from database (JSONB array)
                     let featuresArray = [];
-                    
+
                     if (Array.isArray(plan.features)) {
                       featuresArray = plan.features;
+                    } else if (typeof plan.features === 'string') {
+                      try {
+                        featuresArray = JSON.parse(plan.features);
+                        if (!Array.isArray(featuresArray)) {
+                          featuresArray = [plan.features];
+                        }
+                      } catch {
+                        featuresArray = [plan.features];
+                      }
                     } else if (typeof plan.features === 'object' && plan.features !== null) {
                       if (plan.features.features && Array.isArray(plan.features.features)) {
                         featuresArray = plan.features.features;
-                      } else if (plan.features.trial !== undefined) {
-                        // Handle nested object structure
-                        featuresArray = plan.features.features || [];
+                      } else {
+                        featuresArray = [];
                       }
-                    } else if (typeof plan.features === 'string') {
-                      featuresArray = [plan.features];
                     }
-                    
+
                     // Ensure we have a valid array
                     if (!Array.isArray(featuresArray)) {
                       featuresArray = [];
@@ -694,17 +708,17 @@ const SubscriptionSelector = () => {
                       <>
                         {featuresArray.slice(0, 4).map((feature, index) => (
                           <div key={index} className="flex items-center space-x-2">
-                            <Check className={`w-3 h-3 sm:w-4 sm:h-4 ${isTrialExpired ? 'text-gray-400' : isTrialAlreadyActive ? 'text-[#9E005C]' : isPro ? 'text-[#FF4D94]' : 'text-[#9E005C]'}`} />
-                            <span className={`text-xs sm:text-sm ${isTrialExpired ? 'text-gray-500' : isTrialAlreadyActive ? 'text-gray-700' : 'text-gray-700'}`}>{formatFeature(feature)}</span>
+                            <Check className={`w-3 h-3 sm:w-4 sm:h-4 ${isTrialExpired ? 'text-gray-500' : isTrialAlreadyActive ? 'text-[#9E005C]' : isFreePlan ? 'text-green-400' : isAdvanced ? 'text-pink-400' : isPro ? 'text-purple-400' : 'text-pink-400'}`} />
+                            <span className={`text-xs sm:text-sm ${isTrialExpired ? 'text-gray-400' : isTrialAlreadyActive ? 'text-gray-300' : 'text-gray-300'}`}>{formatFeature(feature)}</span>
                           </div>
                         ))}
                         {featuresArray.length > 4 && (
-                          <div className="text-xs text-gray-500 text-center">
+                          <div className="text-xs text-gray-400 text-center">
                             +{featuresArray.length - 4} more features
                           </div>
                         )}
                         {featuresArray.length === 0 && (
-                          <div className="text-sm text-gray-700">
+                          <div className="text-sm text-gray-300">
                             Features included in this plan
                           </div>
                         )}
@@ -715,13 +729,18 @@ const SubscriptionSelector = () => {
                 
                 <button
                   onClick={() => {
+                    // Handle freemium plan separately
+                    if (isFreePlan) {
+                      window.location.href = '/signup';
+                      return;
+                    }
                     // Allow clicking on expired paid plans to renew/upgrade
                     // Only disable for expired trials or already active plans
                     if (!isTrialExpired && !isTrialAlreadyActive && !isPaidPlanActive) {
                       handleSubscribe(plan.name);
                     }
                   }}
-                  disabled={loadingPlan === plan.name || isTrialExpired || isTrialAlreadyActive || isPaidPlanActive}
+                  disabled={loadingPlan === plan.name || isTrialExpired || isTrialAlreadyActive || isPaidPlanActive || (isFreePlan && isPaidPlanActive)}
                   className={`w-full py-2 sm:py-2.5 rounded-lg font-medium transition-all duration-300 flex items-center justify-center text-xs sm:text-sm ${
                     isTrialExpired
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
@@ -729,8 +748,12 @@ const SubscriptionSelector = () => {
                       ? 'bg-gradient-to-r from-[#FF4D94] to-[#9E005C] text-white hover:from-[#9E005C] hover:to-[#FF4D94] hover:scale-105'
                       : isTrialAlreadyActive || isPaidPlanActive
                       ? 'bg-gradient-to-r from-[#FF4D94] to-[#9E005C] text-white cursor-not-allowed opacity-75'
+                      : isFreePlan
+                      ? 'bg-gradient-to-r from-green-600 to-blue-600 text-white hover:from-green-700 hover:to-blue-700'
+                      : isAdvanced
+                      ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:from-pink-700 hover:to-purple-700'
                       : isPro
-                      ? 'bg-gradient-to-r from-[#FF4D94] to-[#9E005C] text-white hover:from-[#9E005C] hover:to-[#FF4D94]'
+                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700'
                       : 'bg-gradient-to-r from-[#9E005C] to-[#FF4D94] text-white hover:from-[#FF4D94] hover:to-[#9E005C]'
                   } ${loadingPlan === plan.name ? 'opacity-50 cursor-not-allowed' : (isTrialExpired || isTrialAlreadyActive || isPaidPlanActive) ? '' : 'hover:scale-105'}`}
                 >
@@ -799,7 +822,7 @@ const SubscriptionSelector = () => {
                     </>
                   ) : (
                     <>
-                      Choose {displayName}
+                      {isFreePlan ? 'Get Started' : `Choose ${plan.name.charAt(0).toUpperCase() + plan.name.slice(1)}`}
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </>
                   )}
@@ -809,17 +832,17 @@ const SubscriptionSelector = () => {
           })
           ) : (
             <div className="col-span-full text-center py-8">
-              <p className="text-gray-500">No subscription plans available. Please try again later.</p>
+              <p className="text-gray-400">No subscription plans available. Please try again later.</p>
             </div>
           )}
         </div>
 
         {/* Footer */}
         <div className="text-center mt-6 sm:mt-8">
-          <p className="text-gray-500 text-xs sm:text-sm mb-2 px-4 sm:px-0">
+          <p className="text-gray-400 text-xs sm:text-sm mb-2 px-4 sm:px-0">
             All plans include access to Emily's AI agents. Cancel anytime.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center space-y-1 sm:space-y-0 sm:space-x-4 text-xs text-gray-500">
+          <div className="flex flex-col sm:flex-row items-center justify-center space-y-1 sm:space-y-0 sm:space-x-4 text-xs text-gray-400">
             <span>✓ Secure payment</span>
             <span className="hidden sm:inline">•</span>
             <span>✓ 30-day money back</span>

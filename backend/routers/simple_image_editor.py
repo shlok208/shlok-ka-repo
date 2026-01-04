@@ -123,14 +123,20 @@ async def manual_edit(
 ):
     """Apply manual editing instructions"""
     try:
+        from middleware.credit_middleware import check_credits_before_action, increment_usage_after_action
+
+        # Check credits before image editing
+        await check_credits_before_action(request.user_id, 'image')
         result = await image_editor_service.apply_manual_instructions(
             user_id=request.user_id,
             input_image_url=request.input_image_url,
             content=request.content,
             instructions=request.instructions
         )
-        
+
         if result["success"]:
+            # Increment usage after successful image editing
+            await increment_usage_after_action(request.user_id, 'image')
             return result
         else:
             raise HTTPException(status_code=400, detail=result["error"])

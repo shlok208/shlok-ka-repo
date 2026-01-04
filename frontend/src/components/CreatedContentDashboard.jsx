@@ -992,9 +992,7 @@ function CreatedContentDashboard() {
                   }}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filterChannel === 'all' && filterPlatform === 'all'
-                      ? isDarkMode
-                        ? 'bg-green-600 text-white'
-                        : 'bg-green-500 text-white'
+                      ? 'bg-white text-gray-900'
                       : isDarkMode
                       ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -1011,7 +1009,7 @@ function CreatedContentDashboard() {
                   }}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filterPlatform === 'instagram'
-                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
+                      ? 'bg-white text-gray-900'
                       : isDarkMode
                       ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -1028,7 +1026,7 @@ function CreatedContentDashboard() {
                   }}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filterPlatform === 'facebook'
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-white text-gray-900'
                       : isDarkMode
                       ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -1045,7 +1043,7 @@ function CreatedContentDashboard() {
                   }}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filterPlatform === 'linkedin'
-                      ? 'bg-blue-700 text-white'
+                      ? 'bg-white text-gray-900'
                       : isDarkMode
                       ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -1062,7 +1060,7 @@ function CreatedContentDashboard() {
                   }}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filterPlatform === 'youtube'
-                      ? 'bg-red-600 text-white'
+                      ? 'bg-white text-gray-900'
                       : isDarkMode
                       ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -1079,7 +1077,7 @@ function CreatedContentDashboard() {
                   }}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filterChannel === 'blog'
-                      ? 'bg-green-600 text-white'
+                      ? 'bg-white text-gray-900'
                       : isDarkMode
                       ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -1126,8 +1124,7 @@ function CreatedContentDashboard() {
         <div className="flex-1 p-6 lg:p-8">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-green-500" />
-              <span className={`ml-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              <span className={`text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                 Loading content...
               </span>
             </div>
