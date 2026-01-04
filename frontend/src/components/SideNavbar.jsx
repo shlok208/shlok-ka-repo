@@ -24,7 +24,6 @@ import {
   FileText,
   Settings,
   Hand,
-  Sparkles,
   BarChart3,
   Share2,
   Megaphone,
@@ -173,11 +172,6 @@ const SideNavbar = () => {
       name: 'Content',
       href: '/created-content',
       icon: FileText
-    },
-    {
-      name: 'Suggestions',
-      href: '/post-suggestions',
-      icon: Sparkles
     },
     // Temporarily hidden - Writings dashboard
     // {

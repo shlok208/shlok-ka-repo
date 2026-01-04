@@ -32,7 +32,7 @@ import {
 import { leadsAPI } from '../services/leads'
 import { useNotifications } from '../contexts/NotificationContext'
 
-const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
+const LeadDetailModal = ({ lead, onClose, onUpdate, isDarkMode = false }) => {
   const { showSuccess, showError } = useNotifications()
   const [activeTab, setActiveTab] = useState('timeline')
   const [conversations, setConversations] = useState([])
@@ -484,46 +484,46 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
 
   const getStatusConfig = (status) => {
     const configs = {
-      new: { 
-        color: 'bg-blue-100 text-blue-700 border-blue-200', 
-        bgColor: 'bg-blue-50',
-        borderColor: 'border-blue-200',
-        label: 'New' 
+      new: {
+        color: isDarkMode ? 'bg-blue-800 text-blue-300 border-blue-700' : 'bg-blue-100 text-blue-700 border-blue-200',
+        bgColor: isDarkMode ? 'bg-blue-900/50' : 'bg-blue-50',
+        borderColor: isDarkMode ? 'border-blue-700' : 'border-blue-200',
+        label: 'New'
       },
-      contacted: { 
-        color: 'bg-purple-100 text-purple-700 border-purple-200', 
-        bgColor: 'bg-purple-50',
-        borderColor: 'border-purple-200',
-        label: 'Contacted' 
+      contacted: {
+        color: isDarkMode ? 'bg-purple-800 text-purple-300 border-purple-700' : 'bg-purple-100 text-purple-700 border-purple-200',
+        bgColor: isDarkMode ? 'bg-purple-900/50' : 'bg-purple-50',
+        borderColor: isDarkMode ? 'border-purple-700' : 'border-purple-200',
+        label: 'Contacted'
       },
-      responded: { 
-        color: 'bg-green-100 text-green-700 border-green-200', 
-        bgColor: 'bg-green-50',
-        borderColor: 'border-green-200',
-        label: 'Responded' 
+      responded: {
+        color: isDarkMode ? 'bg-green-800 text-green-300 border-green-700' : 'bg-green-100 text-green-700 border-green-200',
+        bgColor: isDarkMode ? 'bg-green-900/50' : 'bg-green-50',
+        borderColor: isDarkMode ? 'border-green-700' : 'border-green-200',
+        label: 'Responded'
       },
-      qualified: { 
-        color: 'bg-orange-100 text-orange-700 border-orange-200', 
-        bgColor: 'bg-orange-50',
-        borderColor: 'border-orange-200',
-        label: 'Qualified' 
+      qualified: {
+        color: isDarkMode ? 'bg-orange-800 text-orange-300 border-orange-700' : 'bg-orange-100 text-orange-700 border-orange-200',
+        bgColor: isDarkMode ? 'bg-orange-900/50' : 'bg-orange-50',
+        borderColor: isDarkMode ? 'border-orange-700' : 'border-orange-200',
+        label: 'Qualified'
       },
-      converted: { 
-        color: 'bg-emerald-100 text-emerald-700 border-emerald-200', 
-        bgColor: 'bg-emerald-50',
-        borderColor: 'border-emerald-200',
-        label: 'Converted' 
+      converted: {
+        color: isDarkMode ? 'bg-emerald-800 text-emerald-300 border-emerald-700' : 'bg-emerald-100 text-emerald-700 border-emerald-200',
+        bgColor: isDarkMode ? 'bg-emerald-900/50' : 'bg-emerald-50',
+        borderColor: isDarkMode ? 'border-emerald-700' : 'border-emerald-200',
+        label: 'Converted'
       },
-      lost: { 
-        color: 'bg-gray-100 text-gray-700 border-gray-200', 
-        bgColor: 'bg-gray-50',
-        borderColor: 'border-gray-200',
-        label: 'Lost' 
+      lost: {
+        color: isDarkMode ? 'bg-gray-800 text-gray-300 border-gray-700' : 'bg-gray-100 text-gray-700 border-gray-200',
+        bgColor: isDarkMode ? 'bg-gray-900/50' : 'bg-gray-50',
+        borderColor: isDarkMode ? 'border-gray-700' : 'border-gray-200',
+        label: 'Lost'
       },
       invalid: {
-        color: 'bg-red-100 text-red-700 border-red-200',
-        bgColor: 'bg-red-50',
-        borderColor: 'border-red-200',
+        color: isDarkMode ? 'bg-red-800 text-red-300 border-red-700' : 'bg-red-100 text-red-700 border-red-200',
+        bgColor: isDarkMode ? 'bg-red-900/50' : 'bg-red-50',
+        borderColor: isDarkMode ? 'border-red-700' : 'border-red-200',
         label: 'Invalid'
       }
     }
@@ -627,7 +627,7 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
       icon: Bot,
       color: 'text-purple-600 bg-purple-50'
     },
-    ...deduplicatedStatusHistory.map(history => {
+    ...deduplicatedStatusHistory.flatMap(history => {
       const timeStr = formatTime(history.created_at)
       const oldStatus = history.old_status?.toLowerCase() || ''
       const newStatus = history.new_status?.toLowerCase() || ''
@@ -677,72 +677,41 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
       // Format message: if remarks exist, show them first, otherwise show status
       // Ensure remarks is not empty after trimming
       const hasRemarks = remarks && remarks.trim().length > 0
+
+      // Only show remarks as separate timeline entries
+      const timelineEntries = []
+
+      // Only create timeline entries for remarks (whether with status change or not)
       if (hasRemarks) {
-        // If it's a remark-only entry (no status change), show "Added remark: {remark} at {time}"
-        if (isRemarkOnly) {
-          return {
-            type: 'remark',
-            title: 'Chase',
-            description: {
-              text: 'Remark added at ',
-              boldPart: '',
-              textAfter: '',
-              boldTime: timeStr,
-              textEnd: '.'
-            },
-            remarks: remarks.trim(),
-            remarksText: `Added remark: ${remarks.trim()} at ${timeStr}.`,
-            timestamp: history.created_at,
-            icon: Bot,
-            color: 'text-purple-600 bg-purple-50',
-            oldStatus: history.old_status,
-            newStatus: history.new_status,
-            isChaseMessage: true
-          }
-        } else {
-          // Status change with remarks - show status change and remark separately
-        return {
-          type: 'status_change',
+        const isStatusChange = oldStatus !== newStatus
+        const messageText = isStatusChange
+          ? `Changed status to: ${statusText} and added note at `
+          : 'Added remark at '
+
+        timelineEntries.push({
+          type: 'remark',
           title: 'Chase',
           description: {
-              text: `Changed status to: ${statusText} on `,
-              boldPart: '',
-              textAfter: '',
-            boldTime: timeStr,
-            textEnd: '.'
-          },
-            remarks: remarks.trim(),
-            remarksText: `Remark: ${remarks.trim()}`,
-          timestamp: history.created_at,
-          icon: Bot,
-          color: 'text-purple-600 bg-purple-50',
-          oldStatus: history.old_status,
-          newStatus: history.new_status,
-          isChaseMessage: true
-          }
-        }
-      } else {
-        // Status change without remarks
-        return {
-          type: 'status_change',
-          title: 'Chase',
-          description: {
-            text: `Changed status to: ${statusText} on `,
+            text: messageText,
             boldPart: '',
             textAfter: '',
             boldTime: timeStr,
             textEnd: '.'
           },
-          remarks: remarks, // Use processed remarks (will be empty string if no reason)
-          remarksText: '', // No remarks for status changes without remarks
+          remarks: remarks.trim(),
+          remarksText: remarks.trim(),
           timestamp: history.created_at,
           icon: Bot,
           color: 'text-purple-600 bg-purple-50',
           oldStatus: history.old_status,
           newStatus: history.new_status,
-          isChaseMessage: true
-        }
+          isChaseMessage: true,
+          isStatusChangeWithRemark: isStatusChange
+        })
       }
+      // Don't show status changes without remarks
+
+      return timelineEntries
     }),
     ...conversations.map(conv => {
       // Format email messages as Chase messages
@@ -793,42 +762,45 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
   const statusConfig = getStatusConfig(selectedStatus || lead.status)
 
   return (
-    <div className="fixed bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto md:left-48 xl:left-64" style={{ right: '0', top: '0', bottom: '0' }}>
-      <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full h-[80vh] flex flex-col overflow-hidden p-4">
+    <div className={`fixed ${isDarkMode ? 'bg-gray-900 bg-opacity-75' : 'bg-black bg-opacity-50'} flex items-center justify-center z-50 p-4 overflow-y-auto md:left-48 xl:left-64`} style={{ right: '0', top: '0', bottom: '0' }}>
+      <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl max-w-6xl w-full h-[80vh] flex flex-col overflow-hidden p-4`}>
         {/* Two Column Layout */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left Column - Lead Details */}
-          <div className={`w-1/3 ${statusConfig.bgColor} text-gray-900 flex flex-col rounded-xl overflow-hidden`}>
+          <div className={`w-1/3 ${statusConfig.bgColor} ${isDarkMode ? 'text-gray-100' : 'text-gray-900'} flex flex-col rounded-xl overflow-hidden`}>
             <style>{`
-              /* Style date and time input icons for light background */
+              /* Style date and time input icons */
               input[type="date"]::-webkit-calendar-picker-indicator,
               input[type="time"]::-webkit-calendar-picker-indicator {
                 cursor: pointer;
                 opacity: 0.7;
+                filter: ${isDarkMode ? 'invert(1)' : 'none'};
               }
               input[type="date"]::-webkit-inner-spin-button,
               input[type="time"]::-webkit-inner-spin-button {
                 opacity: 0.7;
+                filter: ${isDarkMode ? 'invert(1)' : 'none'};
               }
               input[type="date"]::-moz-calendar-picker-indicator,
               input[type="time"]::-moz-calendar-picker-indicator {
                 cursor: pointer;
                 opacity: 0.7;
+                filter: ${isDarkMode ? 'invert(1)' : 'none'};
               }
             `}</style>
             {/* Header Section */}
-            <div className={`p-6 border-b ${statusConfig.borderColor}`}>
+            <div className={`p-6 border-b ${isDarkMode ? 'border-gray-600' : statusConfig.borderColor}`}>
             <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center shadow-md">
                 {getPlatformIcon(lead.source_platform)}
               </div>
               <div>
-                  <h2 className="text-2xl font-bold text-gray-900">
+                  <h2 className={`text-2xl font-normal ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
                   {lead.name || 'Unknown Lead'}
                 </h2>
                 {/* Contact Information */}
                 {(lead.email || lead.phone_number) && (
-                    <div className="flex flex-col gap-1.5 mt-2 text-xs text-gray-600">
+                    <div className={`flex flex-col gap-1.5 mt-2 text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     {lead.email && (
                         <div className="flex items-center gap-1.5">
                         <Mail className="w-3 h-3" />
@@ -851,12 +823,12 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
             <div className="p-6 space-y-4 flex-1 overflow-y-auto">
               {/* Status */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-900">Status</label>
+                <label className={`text-sm font-medium ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Status</label>
                 <div className="relative status-dropdown-container">
                   <button
                     onClick={() => !updatingStatus && !showRemarksInput && setStatusDropdownOpen(!statusDropdownOpen)}
                     disabled={updatingStatus || showRemarksInput}
-                    className={`px-3 py-1.5 bg-white border ${statusConfig.borderColor} rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-opacity-50 disabled:opacity-50 flex items-center space-x-2 min-w-[140px] justify-between`}
+                    className={`px-3 py-1.5 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : `bg-white border ${statusConfig.borderColor} text-gray-900`} rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-opacity-50 disabled:opacity-50 flex items-center space-x-2 min-w-[140px] justify-between`}
                   >
                     <span className="capitalize">{pendingStatus || selectedStatus}</span>
                     <ChevronDown className={`w-4 h-4 transition-transform ${statusDropdownOpen ? 'rotate-180' : ''}`} />
@@ -906,14 +878,14 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
 
               {/* Follow-up Date & Time */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-900">Follow-up</label>
+                <label className={`text-sm font-medium ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Follow-up</label>
                 <div className="flex items-center gap-2 flex-nowrap">
                   <input
                     type="date"
                     value={followUpDate}
                     onChange={handleFollowUpDateChange}
                     disabled={updatingFollowUp}
-                    className={`flex-1 min-w-0 px-3 py-1.5 bg-white border ${statusConfig.borderColor} rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-opacity-50 disabled:opacity-50 placeholder-gray-400`}
+                    className={`flex-1 min-w-0 px-3 py-1.5 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : `bg-white border ${statusConfig.borderColor} text-gray-900 placeholder-gray-400`} rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-opacity-50 disabled:opacity-50`}
                     placeholder="Date"
                   />
                   <input
@@ -921,7 +893,7 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
                     value={followUpTime}
                     onChange={handleFollowUpTimeChange}
                     disabled={updatingFollowUp}
-                    className={`flex-1 min-w-0 px-3 py-1.5 bg-white border ${statusConfig.borderColor} rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-opacity-50 disabled:opacity-50 placeholder-gray-400`}
+                    className={`flex-1 min-w-0 px-3 py-1.5 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : `bg-white border ${statusConfig.borderColor} text-gray-900 placeholder-gray-400`} rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-opacity-50 disabled:opacity-50`}
                     placeholder="Time"
                   />
                 </div>
@@ -942,19 +914,19 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
             
             {/* Remarks Input */}
             {showRemarksInput && pendingStatus && (
-              <div className={`mt-3 bg-white rounded-lg p-3 space-y-2 border ${statusConfig.borderColor}`}>
+              <div className={`mt-3 ${isDarkMode ? 'bg-gray-700' : 'bg-white'} rounded-lg p-3 space-y-2 border ${isDarkMode ? 'border-gray-600' : statusConfig.borderColor}`}>
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-gray-900">
-                    Changing status to: <span className="capitalize font-semibold">{pendingStatus}</span>
+                  <label className={`text-sm font-medium ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+                    Changing status to: <span className="capitalize font-normal">{pendingStatus}</span>
                   </label>
                 </div>
-                <label className="text-sm font-medium text-gray-900">Remarks (Optional)</label>
+                <label className={`text-sm font-medium ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Remarks (Optional)</label>
                 <textarea
                   value={statusRemarks}
                   onChange={(e) => setStatusRemarks(e.target.value)}
                   placeholder="Add remarks about this status change..."
                   rows={3}
-                  className={`w-full px-3 py-2 bg-white border ${statusConfig.borderColor} rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-50 resize-none`}
+                  className={`w-full px-3 py-2 ${isDarkMode ? 'bg-gray-600 border-gray-500 text-gray-100 placeholder-gray-400' : `bg-white border ${statusConfig.borderColor} text-gray-900 placeholder-gray-400`} rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-50 resize-none`}
                 />
                 <div className="flex space-x-2">
                   <button
@@ -983,7 +955,7 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
                   onChange={(e) => setNewRemark(e.target.value)}
                   placeholder="Add a remark about this lead..."
                   rows={3}
-                  className={`w-full px-3 py-2 bg-white border ${statusConfig.borderColor} rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-50 resize-none`}
+                  className={`w-full px-3 py-2 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : `bg-white border ${statusConfig.borderColor} text-gray-900 placeholder-gray-400`} rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-50 resize-none`}
                 />
                 <button
                   onClick={handleAddRemark}
@@ -1007,17 +979,17 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
         </div>
 
           {/* Right Column - Tabs and Content */}
-          <div className="w-2/3 bg-white flex flex-col relative">
+          <div className={`w-2/3 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} flex flex-col relative`}>
             {/* Close Button */}
             <button
               onClick={onClose}
-              className="absolute top-2 right-4 p-2 hover:bg-gray-100 rounded-lg transition-colors z-10"
+              className={`absolute top-2 right-4 p-2 ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} rounded-lg transition-colors z-10`}
             >
-              <X className="w-6 h-6 text-gray-600" />
+              <X className={`w-6 h-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
             </button>
 
         {/* Tabs */}
-            <div className="border-b border-gray-200 flex space-x-1 px-6 bg-transparent">
+            <div className={`border-b ${isDarkMode ? 'border-gray-600' : 'border-gray-200'} flex space-x-1 px-6 bg-transparent`}>
           {[
             { id: 'timeline', label: 'Timeline', icon: Clock },
             { id: 'conversations', label: 'Conversations', icon: MessageCircle },
@@ -1030,8 +1002,8 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center space-x-2 px-4 py-3 border-b-2 transition-colors ${
                   activeTab === tab.id
-                    ? 'border-purple-600 text-purple-600'
-                    : 'border-transparent text-gray-600 hover:text-purple-600'
+                    ? 'border-purple-600 text-white'
+                    : `border-transparent ${isDarkMode ? 'text-gray-400 hover:text-purple-400' : 'text-gray-600 hover:text-purple-600'}`
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -1048,14 +1020,16 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
               {loadingConversations ? (
                 <div className="flex flex-col items-start w-full mb-4">
                   <div className="flex items-start gap-2 max-w-[90%] justify-start">
-                    {/* Chase Icon */}
+                    {/* Chase Logo */}
                     <div className="flex-shrink-0">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center shadow-md">
-                        <span className="text-white font-bold text-sm">C</span>
-                      </div>
+                      <img
+                        src="/chase_logo.png"
+                        alt="Chase"
+                        className="w-8 h-8 object-contain rounded-full shadow-md"
+                      />
                     </div>
                     {/* Message Bubble */}
-                    <div className="px-4 py-3 rounded-lg bg-white text-black chatbot-bubble-shadow">
+                    <div className={`px-4 py-3 rounded-lg ${isDarkMode ? 'bg-gray-700 text-gray-100' : 'bg-white text-black'} chatbot-bubble-shadow`}>
                       <p className="text-sm leading-relaxed">
                         Loading timeline...
                       </p>
@@ -1064,8 +1038,8 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
                 </div>
               ) : timeline.length === 0 ? (
                 <div className="text-center py-12">
-                  <Clock className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500">No timeline events yet</p>
+                  <Clock className={`w-12 h-12 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'} mx-auto mb-3`} />
+                  <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>No timeline events yet</p>
                 </div>
               ) : (
                 <div className="relative">
@@ -1078,14 +1052,16 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
                       return (
                         <div key={index} className="flex flex-col items-start w-full mb-4">
                           <div className="flex items-start gap-2 max-w-[90%] justify-start">
-                            {/* Chase Icon */}
+                            {/* Chase Logo */}
                             <div className="flex-shrink-0">
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center shadow-md">
-                                <span className="text-white font-bold text-sm">C</span>
-                              </div>
+                              <img
+                                src="/chase_logo.png"
+                                alt="Chase"
+                                className="w-8 h-8 object-contain rounded-full shadow-md"
+                              />
                             </div>
                             {/* Message Bubble */}
-                            <div className="px-4 py-3 rounded-lg bg-white text-black chatbot-bubble-shadow">
+                            <div className={`px-4 py-3 rounded-lg ${isDarkMode ? 'bg-gray-700 text-gray-100' : 'bg-white text-black'} chatbot-bubble-shadow`}>
                               <p className="text-sm leading-relaxed">
                                 {typeof event.description === 'object' ? (
                                   <>
@@ -1093,9 +1069,9 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
                                     <strong>{event.description.boldPart}</strong>
                                     {event.description.textAfter}
                                     {event.description.boldMessage ? (
-                                      <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded text-xs">
-                                        <div 
-                                          className="text-gray-800"
+                                      <div className={`mt-2 p-2 ${isDarkMode ? 'bg-gray-600 border-gray-500' : 'bg-gray-50 border-gray-200'} border rounded text-xs`}>
+                                        <div
+                                          className={isDarkMode ? 'text-gray-200' : 'text-gray-800'}
                                           dangerouslySetInnerHTML={{ __html: event.description.boldMessage }}
                                         />
                                       </div>
@@ -1110,9 +1086,17 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
                                   event.description
                                 )}
                               </p>
+                              {/* Show remarks content for remark-type Chase messages */}
+                              {event.type === 'remark' && event.remarks && (
+                                <div className={`mt-3 p-3 ${isDarkMode ? 'bg-gray-600 border-gray-500' : 'bg-gray-50 border-gray-200'} border rounded-lg`}>
+                                  <p className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-800'} font-medium`}>
+                                    {event.remarks}
+                                  </p>
+                                </div>
+                              )}
                               {event.timestamp && (
                                 <div className="mt-2">
-                                  <div className="text-xs text-gray-500">
+                                  <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                     {formatTimeAgo(event.timestamp)}
                                   </div>
                                 </div>
@@ -1142,7 +1126,7 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
                         </div>
                         <div className="flex-1 bg-gradient-to-r from-pink-50 to-purple-50 rounded-lg p-4 border border-purple-200">
                           <div className="flex items-center justify-between mb-1">
-                            <h4 className="font-semibold text-gray-900">{event.title}</h4>
+                            <h4 className="font-normal text-gray-900">{event.title}</h4>
                             <span className="text-xs text-gray-500">{formatTimeAgo(event.timestamp)}</span>
                           </div>
                           <p className="text-sm text-gray-600">
@@ -1160,10 +1144,19 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
                               event.description
                             )}
                           </p>
-                          {((event.type === 'status_change' || event.type === 'remark') && (event.remarksText || event.remarks)) && (
+                          {/* Show remarks content for remark-type entries */}
+                          {event.type === 'remark' && event.remarks && (
                             <div className="mt-3 p-3 bg-white/60 rounded-lg border border-blue-200">
                               <p className="text-sm text-gray-700 font-medium">
-                                {event.remarksText || (event.remarks ? `Remark: ${event.remarks}` : '')}
+                                {event.remarks}
+                              </p>
+                            </div>
+                          )}
+                          {/* Show remarks for status changes if they exist */}
+                          {event.type === 'status_change' && event.remarksText && (
+                            <div className="mt-3 p-3 bg-white/60 rounded-lg border border-blue-200">
+                              <p className="text-sm text-gray-700 font-medium">
+                                {event.remarksText}
                               </p>
                             </div>
                           )}
@@ -1191,15 +1184,15 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
           {activeTab === 'conversations' && (
             <div className="space-y-6">
               {/* Send Message */}
-              <div className="bg-gradient-to-r from-pink-50 to-purple-50 rounded-lg p-4 border border-purple-200">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Send Message</h3>
+              <div className={`${isDarkMode ? 'bg-gradient-to-r from-gray-700 to-gray-600 border-gray-600' : 'bg-gradient-to-r from-pink-50 to-purple-50 border-purple-200'} rounded-lg p-4 border`}>
+                <h3 className={`text-sm font-normal ${isDarkMode ? 'text-gray-100' : 'text-gray-900'} mb-3`}>Send Message</h3>
                 <div className="space-y-3">
                   <textarea
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     placeholder="Type your message..."
                     rows={3}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${isDarkMode ? 'border-gray-500 bg-gray-600 text-gray-100 placeholder-gray-400' : 'border-gray-300'}`}
                   />
                   <div className="flex space-x-2">
                     <button
@@ -1237,7 +1230,7 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
               {/* Email Conversations */}
               {emailConversations.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <h3 className="text-lg font-normal text-white mb-4 flex items-center space-x-2">
                     <MailIcon className="w-5 h-5" />
                     <span>Email ({emailConversations.length})</span>
                   </h3>
@@ -1285,7 +1278,7 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
               {/* WhatsApp Conversations */}
               {whatsappConversations.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <h3 className="text-lg font-normal text-white mb-4 flex items-center space-x-2">
                     <MessageSquare className="w-5 h-5" />
                     <span>WhatsApp ({whatsappConversations.length})</span>
                   </h3>
@@ -1384,8 +1377,8 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
           {activeTab === 'email' && (
             <div className="space-y-6">
               {/* Email Generation Section */}
-              <div className="bg-gradient-to-r from-pink-50 to-purple-50 rounded-lg p-6 border border-purple-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <div className={`${isDarkMode ? 'bg-gradient-to-r from-gray-700 to-gray-600 border-gray-600' : 'bg-gradient-to-r from-pink-50 to-purple-50 border-purple-200'} rounded-lg p-6 border`}>
+                <h3 className={`text-lg font-normal ${isDarkMode ? 'text-gray-100' : 'text-gray-900'} mb-4 flex items-center space-x-2`}>
                   <Sparkles className="w-5 h-5 text-purple-600" />
                   <span>Generate Personalized Email</span>
                 </h3>
@@ -1393,7 +1386,7 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
                 {/* Template Selection */}
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
                       Email Category
                     </label>
                     <select
@@ -1402,7 +1395,7 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
                         setSelectedCategory(e.target.value)
                         setGeneratedEmail(null)
                       }}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${isDarkMode ? 'border-gray-500 bg-gray-600 text-gray-100' : 'border-gray-300'}`}
                     >
                       <option value="general">General</option>
                       <option value="welcome">Welcome</option>
@@ -1509,7 +1502,7 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
               {/* Previous Emails Section */}
               {previousEmails.length > 0 && !generatedEmail && (
                 <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                  <h3 className="text-lg font-normal text-gray-900 mb-4 flex items-center space-x-2">
                     <MailIcon className="w-5 h-5 text-purple-600" />
                     <span>Use Previous Email as Template</span>
                   </h3>
@@ -1541,7 +1534,7 @@ const LeadDetailModal = ({ lead, onClose, onUpdate }) => {
               {generatedEmail && (
                 <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                    <h3 className="text-lg font-normal text-gray-900 flex items-center space-x-2">
                       <FileText className="w-5 h-5 text-purple-600" />
                       <span>{isEditing ? 'Edit Email' : 'Email Preview'}</span>
                     </h3>

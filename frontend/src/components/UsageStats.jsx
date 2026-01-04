@@ -5,12 +5,50 @@ const UsageStats = ({ userPlan }) => {
   const { user } = useAuth();
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [previousUsage, setPreviousUsage] = useState(null);
+  const [cachedUsage, setCachedUsage] = useState(null);
+  const [cachedPlan, setCachedPlan] = useState(null);
 
   useEffect(() => {
-    fetchUsageStats();
+    // Load from cache first if available
+    const cached = localStorage.getItem('usageStatsData');
+    if (cached) {
+      try {
+        const cachedData = JSON.parse(cached);
+        setCachedUsage(cachedData.usage);
+        setCachedPlan(cachedData.plan);
+        setUsage(cachedData.usage);
+        console.log('Loaded usage stats and plan from cache:', cachedData);
+      } catch (error) {
+        console.error('Error parsing cached usage stats:', error);
+      }
+    }
+
+    // Initial fetch (force refresh to ensure we have latest data)
+    fetchUsageStats(true);
+
+    // Check for updates more frequently (every 30 seconds)
+    const interval = setInterval(() => {
+      fetchUsageStats(false); // Don't force refresh, only update if counts increased
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchUsageStats = async () => {
+  // Save to cache whenever usage or plan updates
+  useEffect(() => {
+    if (usage || cachedPlan) {
+      const cacheData = {
+        usage: usage || cachedUsage,
+        plan: userPlan || cachedPlan,
+        timestamp: Date.now()
+      };
+      localStorage.setItem('usageStatsData', JSON.stringify(cacheData));
+      console.log('Saved usage stats and plan to cache:', cacheData);
+    }
+  }, [usage, userPlan]);
+
+  const fetchUsageStats = async (forceRefresh = false) => {
     try {
       setLoading(true);
       const response = await fetch('/api/profile/usage-stats', {
@@ -22,7 +60,23 @@ const UsageStats = ({ userPlan }) => {
 
       if (response.ok) {
         const data = await response.json();
-        setUsage(data);
+
+        // Check if usage has increased compared to cached data
+        const shouldUpdate = forceRefresh ||
+          !cachedUsage ||
+          data.tasks_used > cachedUsage.tasks_used ||
+          data.images_used > cachedUsage.images_used;
+
+        if (shouldUpdate) {
+          setPreviousUsage(usage); // Store previous data
+          setUsage(data);
+          setCachedUsage(data); // Update cache
+          console.log('Usage stats updated:', data);
+        } else {
+          console.log('Usage stats unchanged, keeping cached data');
+          setPreviousUsage(usage);
+          setUsage(cachedUsage); // Use cached data
+        }
       } else {
         console.error('Failed to fetch usage stats');
       }
@@ -33,19 +87,11 @@ const UsageStats = ({ userPlan }) => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="bg-white rounded-lg p-4 shadow animate-pulse">
-        <div className="h-4 bg-gray-200 rounded w-32 mb-3"></div>
-        <div className="space-y-2">
-          <div className="h-3 bg-gray-200 rounded w-full"></div>
-          <div className="h-3 bg-gray-200 rounded w-3/4"></div>
-        </div>
-      </div>
-    );
-  }
+  // Don't show anything while loading for the first time
+  if (!usage && !previousUsage) return null;
 
-  if (!usage) return null;
+  // Use current usage data, or fall back to previous usage if still loading
+  const displayUsage = usage || previousUsage;
 
   const getProgressColor = (used, limit) => {
     const percentage = limit === -1 ? 0 : (used / limit) * 100;
@@ -60,9 +106,10 @@ const UsageStats = ({ userPlan }) => {
   };
 
   return (
-    <div className="space-y-3">
+    <div className={`space-y-3 ${loading ? 'opacity-75' : ''}`}>
       <h3 className="text-xs font-normal text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-        {userPlan ? `${userPlan.replace('_', ' ').toUpperCase()} - ` : ''}Monthly Usage
+        {(userPlan || cachedPlan) ? `${(userPlan || cachedPlan).replace('_', ' ').toUpperCase()} - ` : ''}Monthly Usage
+        {loading && <span className="ml-1 text-xs">⟳</span>}
       </h3>
 
       <div className="space-y-3">

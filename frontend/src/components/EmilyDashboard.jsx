@@ -46,7 +46,7 @@ import MainContentLoader from './MainContentLoader'
 import ATSNChatbot from './ATSNChatbot'
 import RecentTasks from './RecentTasks'
 import ContentCard from './ContentCard'
-import { Sparkles, TrendingUp, Target, BarChart3, FileText, Calendar, PanelRight, PanelLeft, X, ChevronRight, RefreshCw, ChevronDown } from 'lucide-react'
+import { Sparkles, TrendingUp, Target, BarChart3, FileText, PanelRight, PanelLeft, X, ChevronRight, RefreshCw, ChevronDown } from 'lucide-react'
 
 // Voice Orb Component with animated border (spring-like animation)
 const VoiceOrb = ({ isSpeaking }) => {
@@ -183,6 +183,8 @@ function EmilyDashboard() {
   const [messageFilter, setMessageFilter] = useState('all') // 'all', 'emily', 'chase', 'leo'
   const [showMobileChatHistory, setShowMobileChatHistory] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(getDarkModePreference)
+  const [overdueLeadsCount, setOverdueLeadsCount] = useState(0)
+  const [overdueLeadsLoading, setOverdueLeadsLoading] = useState(true)
 
   // Listen for dark mode changes from other components (like SideNavbar)
   useStorageListener('darkMode', setIsDarkMode)
@@ -192,6 +194,66 @@ function EmilyDashboard() {
   const handleRefreshChat = async () => {
     // ATSN chatbot handles its own state clearing
     showSuccess('Chat refreshed', 'The conversation has been reset to start fresh.')
+  }
+
+  // Fetch overdue leads count
+  const fetchOverdueLeadsCount = async () => {
+    try {
+      setOverdueLeadsLoading(true)
+      const leadsAPI = (await import('../services/leads')).leadsAPI
+
+      // Get all leads using pagination (API limit is 100 per request)
+      let allLeads = []
+      let offset = 0
+      const limit = 100
+
+      while (true) {
+        const response = await leadsAPI.getLeads({ limit, offset })
+        const leads = response.data || []
+
+        if (leads.length === 0) break // No more leads
+
+        allLeads = [...allLeads, ...leads]
+        offset += limit
+
+        // Safety check to prevent infinite loops
+        if (offset > 10000) break
+      }
+
+      console.log('Total leads fetched for overdue count:', allLeads.length)
+      console.log('Sample leads with follow_up_at:', allLeads.filter(l => l.follow_up_at).slice(0, 5))
+
+      // Count leads with overdue follow-ups (follow-up date shows "ago" or "Yesterday")
+      const overdueCount = allLeads.filter(lead => {
+        if (!lead.follow_up_at) return false
+
+        const date = new Date(lead.follow_up_at)
+        const now = new Date()
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        const followUpDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+        const diffInDays = Math.floor((followUpDate - today) / (1000 * 60 * 60 * 24))
+
+        const isOverdue = diffInDays < 0
+        if (isOverdue) {
+          console.log('Overdue lead found:', {
+            id: lead.id,
+            name: lead.name,
+            follow_up_at: lead.follow_up_at,
+            diffInDays: diffInDays
+          })
+        }
+
+        return isOverdue
+      }).length
+
+      console.log('Overdue leads count:', overdueCount)
+      setOverdueLeadsCount(overdueCount)
+    } catch (error) {
+      console.error('Error fetching overdue leads count:', error)
+      setOverdueLeadsCount(0)
+    } finally {
+      setOverdueLeadsLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -221,6 +283,16 @@ function EmilyDashboard() {
       fetchAllConversations()
     }
   }, [isPanelOpen, user])
+
+  // Fetch overdue leads count periodically
+  useEffect(() => {
+    if (user) {
+      fetchOverdueLeadsCount()
+      // Refresh every 5 minutes
+      const interval = setInterval(fetchOverdueLeadsCount, 5 * 60 * 1000)
+      return () => clearInterval(interval)
+    }
+  }, [user])
 
   // Set selectedDate to today by default, don't override with most recent conversation date
   useEffect(() => {
@@ -503,11 +575,49 @@ function EmilyDashboard() {
                         ? 'border-gray-700'
                         : 'border-gray-200'
                     }`}>
-                      <span className={`text-sm font-medium ${
-                        isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                      <span className={`text-lg font-normal ${
+                        isDarkMode ? 'text-gray-100' : 'text-gray-800'
                       }`}>
                         Reminders
                       </span>
+                    </div>
+
+                    {/* Panel Content */}
+                    <div className="flex-1 p-3 lg:p-4 overflow-y-auto">
+                      {/* Overdue Leads Count */}
+                      <div
+                        className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                          isDarkMode
+                            ? 'bg-gray-800 border-gray-600 hover:bg-gray-700'
+                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                        }`}
+                        onClick={() => navigate('/leads?filter=overdue_followups')}
+                        title="Click to view all leads"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <span className={`text-sm font-bold ${
+                            overdueLeadsLoading
+                              ? isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                              : overdueLeadsCount > 0
+                              ? 'text-yellow-600'
+                              : isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                          }`}>
+                            {overdueLeadsLoading ? '...' : overdueLeadsCount}
+                          </span>
+                          <span className={`text-sm font-medium ${
+                            isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                          }`}>
+                            : Leads to follow up
+                          </span>
+                        </div>
+                        {overdueLeadsCount > 0 && (
+                          <p className={`text-xs mt-1 ${
+                            isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                          }`}>
+                            {overdueLeadsCount === 1 ? 'Lead has' : 'Leads have'} overdue follow-ups
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
