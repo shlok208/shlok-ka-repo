@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
+// Analytics dashboard temporarily hidden from navigation
 import { 
   Home, 
   FileText, 
@@ -27,7 +28,6 @@ import {
 } from 'lucide-react'
 
 const MobileNavigation = ({ 
-  setShowCustomContentChatbot, 
   handleGenerateContent, 
   generating = false, 
   fetchingFreshData = false,
@@ -121,11 +121,12 @@ const MobileNavigation = ({
       href: '/social',
       icon: Share2
     },
-    {
-      name: 'Analytics',
-      href: '/analytics',
-      icon: BarChart3
-    },
+    // Temporarily hidden - Analytics dashboard
+    // {
+    //   name: 'Analytics',
+    //   href: '/analytics',
+    //   icon: BarChart3
+    // },
     {
       name: 'Ads',
       href: '/ads',
@@ -405,7 +406,7 @@ const MobileNavigation = ({
             >
               <div className="w-8 h-8 rounded-full mr-3 overflow-hidden">
                 <img
-                  src="/emily_logo.png"
+                  src="/emily_icon.png"
                   alt="Emily"
                   className="w-full h-full object-cover"
                 />
@@ -549,7 +550,7 @@ const MobileNavigation = ({
                 <div className="flex items-center">
                   <div className="w-10 h-10 rounded-full mr-3 overflow-hidden">
                     <img
-                      src="/emily_logo.png"
+                      src="/emily_icon.png"
                       alt="Emily"
                       className="w-full h-full object-cover"
                     />

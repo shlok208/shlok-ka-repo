@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { adminAPI } from '../services/admin'
 import SettingsMenu from './SettingsMenu'
-import { Moon, Sun } from 'lucide-react'
+import UsageStats from './UsageStats'
 // Custom Discussions Icon Component
 const DiscussionsIcon = ({ className, isDarkMode }) => (
   <img
@@ -24,7 +24,6 @@ import {
   FileText,
   Settings,
   Hand,
-  Sparkles,
   BarChart3,
   Share2,
   Megaphone,
@@ -49,10 +48,10 @@ const SideNavbar = () => {
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [userPlan, setUserPlan] = useState('')
-  const [usageCounts, setUsageCounts] = useState({ tasks: 0, images: 0 })
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    // Check localStorage for saved preference, default to light mode
-    return localStorage.getItem('darkMode') === 'true'
+    // Check localStorage for saved preference, default to dark mode
+    const saved = localStorage.getItem('darkMode')
+    return saved !== null ? saved === 'true' : true // Default to true (dark mode)
   })
 
   // Cache key for localStorage
@@ -80,33 +79,6 @@ const SideNavbar = () => {
     return session?.access_token
   }
 
-  // Fetch usage counts
-  const fetchUsageCounts = async () => {
-    if (!user) return
-
-    try {
-      const token = await getAuthToken()
-      if (!token) return
-
-      const response = await fetch(`${API_BASE_URL}/profile/usage-counts`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setUsageCounts({
-          tasks: data.tasks_count || 0,
-          images: data.images_count || 0
-        })
-      }
-    } catch (error) {
-      console.error('Error fetching usage counts:', error)
-    }
-  }
 
 
   // Load profile from cache or fetch from API
@@ -201,11 +173,6 @@ const SideNavbar = () => {
       href: '/created-content',
       icon: FileText
     },
-    {
-      name: 'Suggestions',
-      href: '/post-suggestions',
-      icon: Sparkles
-    },
     // Temporarily hidden - Writings dashboard
     // {
     //   name: 'Writings',
@@ -217,11 +184,12 @@ const SideNavbar = () => {
       href: '/social',
       icon: TrendingUp
     },
-    {
-      name: 'Analytics',
-      href: '/analytics',
-      icon: BarChart3
-    },
+    // Temporarily hidden - Analytics dashboard
+    // {
+    //   name: 'Analytics',
+    //   href: '/analytics',
+    //   icon: BarChart3
+    // },
     // {
     //   name: 'Ads',
     //   href: '/ads',
@@ -273,12 +241,6 @@ const SideNavbar = () => {
     setExpandedMenus(prev => ({ ...prev, ...newExpandedMenus }))
   }, [location.pathname])
 
-  // Fetch usage counts on component mount
-  useEffect(() => {
-    if (user) {
-      fetchUsageCounts()
-    }
-  }, [user])
 
   // Apply dark mode to document body
   useEffect(() => {
@@ -291,15 +253,21 @@ const SideNavbar = () => {
     localStorage.setItem('darkMode', isDarkMode.toString())
   }, [isDarkMode])
 
-  // Toggle dark mode function
-  const toggleDarkMode = () => {
-    const newValue = !isDarkMode
-    setIsDarkMode(newValue)
-    // Dispatch custom event to notify other components
-    window.dispatchEvent(new CustomEvent('localStorageChange', {
-      detail: { key: 'darkMode', value: newValue.toString() }
-    }))
-  }
+  // Listen for dark mode changes from other components (like SettingsMenu)
+  useEffect(() => {
+    const handleCustomChange = (event) => {
+      if (event.detail && event.detail.key === 'darkMode') {
+        const newValue = event.detail.newValue === 'true'
+        setIsDarkMode(newValue)
+      }
+    }
+
+    window.addEventListener('localStorageChange', handleCustomChange)
+
+    return () => {
+      window.removeEventListener('localStorageChange', handleCustomChange)
+    }
+  }, [])
 
   const displayName = useMemo(() => {
     return profile?.name || user?.user_metadata?.name || user?.email || 'User'
@@ -328,20 +296,8 @@ const SideNavbar = () => {
           <div className="flex flex-col space-y-1">
             <h1 className={`text-xl lg:text-2xl font-bold ${
               isDarkMode ? 'text-gray-200' : 'text-gray-600'
-            }`}>Workvillage.ai</h1>
+            }`}>atsn ai</h1>
           </div>
-          {/* Dark Mode Toggle */}
-          <button
-            onClick={toggleDarkMode}
-            className={`p-2 rounded-lg transition-colors ${
-              isDarkMode
-                ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-            }`}
-            title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          </button>
         </div>
       </div>
 
@@ -490,100 +446,13 @@ const SideNavbar = () => {
           <span className="font-medium">Say Bye</span>
         </button>
 
-        {/* Separator Line */}
-        <div className="w-full px-2 lg:px-3 py-2">
-          <div className={`border-t ${
-            isDarkMode ? 'border-gray-700' : 'border-gray-200'
-          }`}></div>
-        </div>
+      </div>
 
-        {/* Plan Name Heading */}
-        {userPlan && (
-          <div className="w-full px-2 lg:px-3 py-2">
-            <h3 className={`text-xs font-semibold uppercase tracking-wide text-left ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-600'
-            }`}>
-              {userPlan.replace('_', ' ').toUpperCase()} Plan
-            </h3>
-          </div>
-        )}
-
-        {/* Usage Counters */}
-        <div className="w-full px-2 lg:px-3 py-1 space-y-5">
-          {/* Tasks Donut */}
-          <div className="flex items-center space-x-3">
-            <div className="relative w-20 h-20">
-              <svg className="w-20 h-20 transform -rotate-90" viewBox="0 0 24 24">
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="9"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                  className={isDarkMode ? 'text-gray-700' : 'text-gray-200'}
-                />
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="9"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                  strokeDasharray={`${(usageCounts.tasks / 100) * 56.5} 56.5`}
-                  className={`${usageCounts.tasks >= 100 ? 'text-purple-500' : 'text-blue-500'} transition-all duration-300`}
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="text-sm font-bold text-pink-500">
-                    {usageCounts.tasks}/100
-                  </div>
-                </div>
-              </div>
-            </div>
-            <span className={`text-xs font-medium ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-500'
-            }`}>Tasks</span>
-          </div>
-
-          {/* Images Donut */}
-          <div className="flex items-center space-x-3">
-            <div className="relative w-20 h-20">
-              <svg className="w-20 h-20 transform -rotate-90" viewBox="0 0 24 24">
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="9"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                  className={isDarkMode ? 'text-gray-700' : 'text-gray-200'}
-                />
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="9"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                  strokeDasharray={`${(usageCounts.images / 100) * 56.5} 56.5`}
-                  className={`${usageCounts.images >= 100 ? 'text-purple-500' : 'text-purple-500'} transition-all duration-300`}
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="text-sm font-bold text-pink-500">
-                    {usageCounts.images}/100
-                  </div>
-                </div>
-              </div>
-            </div>
-            <span className={`text-xs font-medium ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-500'
-            }`}>Images</span>
-          </div>
-        </div>
+      {/* Usage Stats Section */}
+      <div className={`px-4 py-3 border-t ${
+        isDarkMode ? 'border-gray-700' : 'border-gray-200'
+      }`}>
+        <UsageStats userPlan={userPlan} />
       </div>
 
       {/* Settings Menu */}

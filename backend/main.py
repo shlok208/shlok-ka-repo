@@ -11,8 +11,6 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from scheduler.post_publisher import start_post_publisher, stop_post_publisher
-from scheduler.daily_messages_scheduler import start_daily_messages_scheduler, stop_daily_messages_scheduler
 
 # Load environment variables before importing routers that depend on them
 load_dotenv()
@@ -27,7 +25,7 @@ from routers.google_connections import router as google_router
 from routers.ads import router as ads_router
 from routers.blogs import router as blogs_router
 from routers.platform_connections import router as platform_connections_router
-from routers.custom_content import router as custom_content_router
+# Custom content router removed
 from routers.custom_blog import router as custom_blog_router
 from routers.simple_image_editor import router as simple_image_editor_router
 from routers.template_editor import router as template_editor_router
@@ -39,11 +37,11 @@ from routers.contact import router as contact_router
 from routers.whatsapp import router as whatsapp_router
 from routers.content_from_drive import router as content_from_drive_router
 from routers.admin import router as admin_router
-from routers.faq_embeddings import router as faq_embeddings_router
 from routers.analytics_insights import router as analytics_insights_router
 from routers.atsn_chatbot import router as atsn_chatbot_router
 from routers.profile import router as profile_router
 from services.scheduler import start_analytics_scheduler, stop_analytics_scheduler, get_scheduler_status, trigger_analytics_collection_now
+from services.image_editor_service import image_editor_service
 
 # Load environment variables
 load_dotenv()
@@ -114,10 +112,11 @@ app.include_router(chatbot_router)
 app.include_router(media_router)
 app.include_router(ads_router)
 app.include_router(blogs_router)
-app.include_router(custom_content_router)
+# Custom content router removed
 app.include_router(custom_blog_router)
 app.include_router(simple_image_editor_router)
 app.include_router(template_editor_router)
+
 app.include_router(subscription_router)
 app.include_router(website_analysis_router)
 app.include_router(trial_router)
@@ -126,7 +125,6 @@ app.include_router(contact_router)
 app.include_router(whatsapp_router)
 app.include_router(content_from_drive_router)
 app.include_router(admin_router)
-app.include_router(faq_embeddings_router)
 app.include_router(analytics_insights_router)
 app.include_router(atsn_chatbot_router)
 app.include_router(profile_router)
@@ -212,21 +210,7 @@ def get_progress(user_id: str) -> Dict[str, Any]:
 @app.on_event("startup")
 async def startup_event():
     """Start services on startup"""
-    # Start post publisher for auto-publishing scheduled posts
-    try:
-        await start_post_publisher(supabase_url, supabase_key)
-        logger.info("Post publisher started successfully")
-    except Exception as e:
-        logger.error(f"Failed to start post publisher: {e}")
-        logger.info("Continuing without post publisher")
     
-    # Start daily messages scheduler
-    try:
-        await start_daily_messages_scheduler()
-        logger.info("Daily messages scheduler started successfully")
-    except Exception as e:
-        logger.error(f"Failed to start daily messages scheduler: {e}")
-        logger.info("Continuing without daily messages scheduler")
     
     # Start analytics collection scheduler
     try:
@@ -244,27 +228,7 @@ async def shutdown_event():
     
     logger.info("Shutting down services...")
     
-    # Stop post publisher
-    try:
-        await stop_post_publisher()
-        logger.info("Post publisher stopped successfully")
-    except (asyncio.CancelledError, KeyboardInterrupt):
-        # Normal during shutdown, ignore
-        logger.debug("Post publisher cancellation during shutdown (expected)")
-        pass
-    except Exception as e:
-        logger.error(f"Error stopping post publisher: {e}")
     
-    # Stop daily messages scheduler
-    try:
-        await stop_daily_messages_scheduler()
-        logger.info("Daily messages scheduler stopped successfully")
-    except (asyncio.CancelledError, KeyboardInterrupt):
-        # Normal during shutdown, ignore
-        logger.debug("Daily messages scheduler cancellation during shutdown (expected)")
-        pass
-    except Exception as e:
-        logger.error(f"Error stopping daily messages scheduler: {e}")
     
     # Stop analytics scheduler
     try:
@@ -395,6 +359,41 @@ async def linkedin_oauth_post_alias():
 @app.get("/test-auth")
 async def test_auth(current_user: User = Depends(get_current_user)):
     return {"message": "Authentication successful!", "user": current_user.email}
+
+# Image Edit API endpoint
+class ImageEditRequest(BaseModel):
+    imageUrl: str
+    instruction: str
+    prompt: str
+
+@app.post("/api/edit-image")
+async def edit_image(
+    request: ImageEditRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Edit image with AI based on user instructions"""
+    try:
+        logger.info(f"Image edit request for user {current_user.id}")
+
+        # Call the existing manual edit functionality
+        result = await image_editor_service.apply_manual_instructions(
+            user_id=current_user.id,
+            input_image_url=request.imageUrl,
+            content=request.prompt,  # Use the full prompt with logo preservation
+            instructions=request.instruction
+        )
+
+        if result["success"]:
+            return result
+        else:
+            logger.error(f"Image edit failed: {result['error']}")
+            raise HTTPException(status_code=400, detail=result["error"])
+
+    except Exception as e:
+        logger.error(f"Error in edit-image endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/debug/users")
 async def debug_users():
@@ -834,19 +833,6 @@ async def submit_onboarding(
                 detail="Failed to update profile"
             )
         
-        # Generate embedding for new onboarding (after profile is saved)
-        # Run in background to not block the response
-        try:
-            # Get the updated profile data for embedding generation
-            updated_profile = response.data[0]
-            # Generate embedding asynchronously (don't wait for it)
-            asyncio.create_task(
-                generate_and_update_embedding(updated_profile, current_user.id, supabase)
-            )
-            logger.info(f"Triggered embedding generation for user {current_user.id} during onboarding")
-        except Exception as e:
-            logger.warning(f"Failed to trigger embedding generation during onboarding: {e}")
-            # Continue without embedding - it can be generated later if needed
         
         return {"message": "Onboarding completed successfully", "profile": response.data[0]}
         
@@ -875,19 +861,6 @@ async def update_profile(
                 detail="Failed to update profile"
             )
         
-        # Generate embedding for updated profile (after profile is saved)
-        # Run in background to not block the response
-        try:
-            # Get the updated profile data for embedding generation
-            updated_profile = response.data[0]
-            # Generate embedding asynchronously (don't wait for it)
-            asyncio.create_task(
-                generate_and_update_embedding(updated_profile, current_user.id, supabase)
-            )
-            logger.info(f"Triggered embedding regeneration for user {current_user.id} after profile update")
-        except Exception as e:
-            logger.warning(f"Failed to trigger embedding regeneration after profile update: {e}")
-            # Continue without embedding - it can be generated later if needed
         
         return {"message": "Profile updated successfully", "profile": response.data[0]}
         
@@ -920,8 +893,13 @@ async def generate_content_for_user(
 ):
     """Generate content for the current user"""
     try:
+        from middleware.credit_middleware import check_credits_before_action
+
         generate_images = request.get("generate_images", False)
-        
+
+        # Check credits before starting content generation
+        await check_credits_before_action(current_user.id, 'task')
+
         # Initialize progress
         await update_progress(
             current_user.id,
@@ -929,14 +907,14 @@ async def generate_content_for_user(
             0,
             "Starting content generation..."
         )
-        
+
         # Run content generation in background
         background_tasks.add_task(
             run_content_generation_with_progress,
             current_user.id,
             generate_images
         )
-        
+
         return {"message": "Content generation started", "user_id": current_user.id, "generate_images": generate_images}
         
     except Exception as e:
@@ -959,6 +937,11 @@ async def run_content_generation_with_progress(user_id: str, generate_images: bo
         
         # Run the actual content generation
         result = await content_agent.run_weekly_generation(user_id)
+
+        # Increment usage after successful content generation
+        if result and result.get('success'):
+            from middleware.credit_middleware import increment_usage_after_action
+            await increment_usage_after_action(user_id, 'task')
         
         logger.info(f"Content generation result: {result}")
         

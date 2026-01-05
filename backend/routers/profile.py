@@ -114,3 +114,62 @@ async def increment_task_count(current_user: User = Depends(get_current_user)):
         logger.error(f"Error incrementing task count for user {current_user.id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error incrementing task count: {str(e)}")
 
+@router.get("/usage-stats")
+async def get_usage_stats(current_user: User = Depends(get_current_user)):
+    """Get user's current usage statistics"""
+    try:
+        from services.credit_service import CreditService
+
+        credit_service = CreditService(
+            supabase_url=os.getenv("SUPABASE_URL"),
+            supabase_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        )
+
+        # Get user's plan directly from profiles table
+        result = supabase_client.table("profiles").select("subscription_plan").eq("id", current_user.id).execute()
+
+        if not result.data:
+            logger.warning(f"No profile data found for user {current_user.id}")
+            user_plan = 'freemium'
+        else:
+            user_plan = result.data[0].get('subscription_plan')
+            if user_plan is None or user_plan == '':
+                logger.warning(f"User {current_user.id} has null/empty subscription_plan, defaulting to freemium")
+                user_plan = 'freemium'
+
+        # Strip whitespace and convert to lowercase for case-insensitive matching
+        user_plan_lower = user_plan.strip().lower() if isinstance(user_plan, str) else 'freemium'
+
+        logger.info(f"User {current_user.id} has subscription_plan: '{user_plan}' (stripped+lowercase: '{user_plan_lower}')")
+
+        # Map database plan names to our credit service plan names (case-insensitive)
+        plan_mapping = {
+            'starter': 'starter',
+            'free_trial': 'freemium',  # Map free_trial to freemium for credit limits
+            'pro': 'pro',
+            'admin': 'admin',
+            'advanced': 'advanced'
+        }
+        credit_plan = plan_mapping.get(user_plan_lower, 'freemium')
+
+        logger.info(f"Mapped '{user_plan}' (stripped+lowercase: '{user_plan_lower}') to credit_plan: '{credit_plan}'")
+
+        usage_stats = credit_service.get_usage_stats(current_user.id, credit_plan)
+
+        # Add the actual database plan name to the response
+        usage_stats['subscription_plan'] = user_plan.strip() if isinstance(user_plan, str) else user_plan
+        usage_stats['debug_info'] = {
+            'raw_plan': user_plan,
+            'stripped_plan': user_plan.strip() if isinstance(user_plan, str) else user_plan,
+            'lowercase_plan': user_plan_lower,
+            'mapped_plan': credit_plan
+        }
+
+        logger.info(f"Returning usage stats for user {current_user.id}: {usage_stats}")
+
+        return usage_stats
+
+    except Exception as e:
+        logger.error(f"Error getting usage stats for user {current_user.id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching usage stats: {str(e)}")
+

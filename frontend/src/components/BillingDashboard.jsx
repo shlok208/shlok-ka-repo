@@ -5,7 +5,6 @@ import { trialAPI } from '../services/trial';
 import { generateInvoicePDF, generateBillingHistoryPDF } from '../services/pdfGenerator';
 import SideNavbar from './SideNavbar';
 import MobileNavigation from './MobileNavigation';
-import { DashboardSkeleton, CardSkeleton } from './LazyLoadingSkeleton';
 import { 
   CreditCard, 
   Calendar, 
@@ -351,7 +350,7 @@ const BillingDashboard = () => {
                   <CreditCard className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-white" />
                 </div>
                 <div className="min-w-0">
-                  <h1 className="text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent truncate">
+                  <h1 className="text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl font-normal text-white truncate">
                     Billing & Subscription
                   </h1>
                   <p className="text-gray-600 text-xs sm:text-sm md:text-base lg:text-lg hidden md:block">Manage your subscription and view billing history</p>
@@ -387,7 +386,7 @@ const BillingDashboard = () => {
              {/* Current Subscription Card */}
              <div className="bg-white/70 backdrop-blur-sm rounded-xl md:rounded-2xl shadow-xl border border-gray-200/50 p-4 md:p-6 lg:p-8 hover:shadow-2xl transition-all duration-300">
                <div className="flex items-center justify-between mb-4 md:mb-6 gap-2 sm:gap-3 md:gap-4">
-                 <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900 flex-1 min-w-0">Current Subscription</h2>
+                 <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-normal text-white flex-1 min-w-0">Current Subscription</h2>
                  <div className={`flex items-center space-x-1.5 sm:space-x-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium flex-shrink-0 whitespace-nowrap ${getStatusColor(subscriptionStatus?.status || 'inactive')}`}>
                    {getStatusIcon(subscriptionStatus?.status || 'inactive')}
                    <span className="capitalize">{subscriptionStatus?.status || 'Inactive'}</span>
@@ -420,7 +419,7 @@ const BillingDashboard = () => {
               ) : (
                 <div className="text-center py-6 md:py-8">
                   <CreditCard className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3 md:mb-4" />
-                  <h3 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 mb-2">No Active Subscription</h3>
+                  <h3 className="text-base sm:text-lg md:text-xl font-normal text-white mb-2">No Active Subscription</h3>
                   <p className="text-xs sm:text-sm md:text-base text-gray-500 mb-4 px-4">You don't have an active subscription. Choose a plan to get started.</p>
                   <button
                     onClick={() => window.location.href = '/subscription'}
@@ -437,7 +436,7 @@ const BillingDashboard = () => {
             {trialInfo && (
               <div className="bg-white/70 backdrop-blur-sm rounded-xl md:rounded-2xl shadow-xl border border-gray-200/50 p-4 md:p-6 lg:p-8 hover:shadow-2xl transition-all duration-300">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 md:mb-6 gap-3 sm:gap-0">
-                  <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900">Trial Status</h2>
+                  <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-normal text-white">Trial Status</h2>
                   <div className={`flex items-center space-x-1.5 sm:space-x-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium ${
                     trialInfo.trial_active 
                       ? 'bg-blue-100 text-blue-800' 
@@ -459,7 +458,7 @@ const BillingDashboard = () => {
                     <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg sm:rounded-xl p-3 sm:p-4">
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
                         <div className="flex-1">
-                          <h3 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 mb-1 sm:mb-2">🎉 Free Trial Active</h3>
+                          <h3 className="text-base sm:text-lg md:text-xl font-normal text-white mb-1 sm:mb-2">🎉 Free Trial Active</h3>
                           <p className="text-xs sm:text-sm md:text-base text-gray-600">
                             You have <span className="font-semibold text-blue-600">{trialInfo.days_remaining}</span> days remaining
                           </p>
@@ -490,7 +489,7 @@ const BillingDashboard = () => {
                 ) : trialInfo.subscription_status === 'expired' ? (
                   <div className="text-center py-4 md:py-6">
                     <Clock className="w-12 h-12 sm:w-16 sm:h-16 text-orange-400 mx-auto mb-3 md:mb-4" />
-                    <h3 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 mb-2">Trial Expired</h3>
+                    <h3 className="text-base sm:text-lg md:text-xl font-normal text-white mb-2">Trial Expired</h3>
                     <p className="text-xs sm:text-sm md:text-base text-gray-500 mb-4 px-4">Your free trial has ended. Choose a plan to continue using Emily.</p>
                     <button
                       onClick={() => window.location.href = '/subscription'}
@@ -503,7 +502,7 @@ const BillingDashboard = () => {
                 ) : (
                   <div className="text-center py-4 md:py-6">
                     <Gift className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3 md:mb-4" />
-                    <h3 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 mb-2">No Trial Available</h3>
+                    <h3 className="text-base sm:text-lg md:text-xl font-normal text-white mb-2">No Trial Available</h3>
                     <p className="text-xs sm:text-sm md:text-base text-gray-500 mb-4 px-4">You have already used your free trial or have an active subscription.</p>
                   </div>
                 )}
@@ -511,7 +510,7 @@ const BillingDashboard = () => {
             )}
              <div className="bg-white/70 backdrop-blur-sm rounded-xl md:rounded-2xl shadow-xl border border-gray-200/50 p-4 md:p-6 lg:p-8 hover:shadow-2xl transition-all duration-300">
                <div className="flex items-center justify-between mb-4 md:mb-6 gap-2 sm:gap-3 md:gap-4">
-                 <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900 flex-1 min-w-0">Billing History</h2>
+                 <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-normal text-white flex-1 min-w-0">Billing History</h2>
                  <button 
                    onClick={handleExportBilling}
                    className="flex items-center space-x-1.5 sm:space-x-2 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-gray-600 hover:text-gray-900 transition-colors rounded-md sm:rounded-lg text-xs sm:text-sm md:text-base font-medium whitespace-nowrap flex-shrink-0"
@@ -561,7 +560,7 @@ const BillingDashboard = () => {
               ) : (
                 <div className="text-center py-6 md:py-8">
                   <FileText className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3 md:mb-4" />
-                  <h3 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 mb-2">No Billing History</h3>
+                  <h3 className="text-base sm:text-lg md:text-xl font-normal text-white mb-2">No Billing History</h3>
                   <p className="text-xs sm:text-sm md:text-base text-gray-500 px-4">Your billing history will appear here once you make your first payment.</p>
                 </div>
               )}
@@ -569,7 +568,7 @@ const BillingDashboard = () => {
 
              {/* Payment Method */}
              <div className="bg-white/70 backdrop-blur-sm rounded-xl md:rounded-2xl shadow-xl border border-gray-200/50 p-4 md:p-6 lg:p-8 hover:shadow-2xl transition-all duration-300">
-               <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900 mb-3 md:mb-4">Payment Method</h2>
+               <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-normal text-white mb-3 md:mb-4">Payment Method</h2>
                <div className="flex items-center justify-between gap-2 sm:gap-3 md:gap-4">
                  <div className="flex items-center space-x-2 sm:space-x-3 md:space-x-4 flex-1 min-w-0">
                    <div className="w-10 h-7 sm:w-12 sm:h-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded flex items-center justify-center flex-shrink-0">
@@ -592,7 +591,7 @@ const BillingDashboard = () => {
             {/* Subscription Management */}
             {subscriptionStatus?.has_active_subscription && (
               <div className="bg-white/70 backdrop-blur-sm rounded-xl md:rounded-2xl shadow-xl border border-gray-200/50 p-4 md:p-6 lg:p-8 hover:shadow-2xl transition-all duration-300">
-                <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900 mb-3 md:mb-4">Subscription Management</h2>
+                <h2 className="text-base sm:text-lg md:text-xl lg:text-2xl font-normal text-white mb-3 md:mb-4">Subscription Management</h2>
                 <div className="flex items-center space-x-2 sm:space-x-3 md:space-x-4 flex-wrap gap-2">
                   <button 
                     onClick={handleUpgradePlan}

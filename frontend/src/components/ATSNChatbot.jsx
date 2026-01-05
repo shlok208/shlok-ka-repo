@@ -8,6 +8,7 @@ import remarkGfm from 'remark-gfm'
 import ContentCard from './ContentCard'
 import ATSNContentCard from './ATSNContentCard'
 import ATSNContentModal from './ATSNContentModal'
+import ReelModal from './ReelModal'
 import LeadCard from './LeadCard'
 import MultiMediaUpload from './MultiMediaUpload'
 import CharacterCard from './CharacterCard'
@@ -15,9 +16,10 @@ import { leadsAPI } from '../services/leads'
 import { connectionsAPI } from '../services/connections'
 import { mediaAPI } from '../services/api'
 
-// Get dark mode state from localStorage or default to light mode
+// Get dark mode state from localStorage or default to dark mode
 const getDarkModePreference = () => {
-  return localStorage.getItem('darkMode') === 'true'
+  const saved = localStorage.getItem('darkMode')
+  return saved !== null ? saved === 'true' : true // Default to true (dark mode)
 }
 
 // Listen for storage changes to sync dark mode across components
@@ -93,7 +95,10 @@ const ATSNChatbot = ({ externalConversations = null }) => {
   const [currentRequestIntent, setCurrentRequestIntent] = useState(null)
   const [lastSentMessage, setLastSentMessage] = useState('')
   const [showContentModal, setShowContentModal] = useState(false)
+  const [showReelModal, setShowReelModal] = useState(false)
   const [chatReset, setChatReset] = useState(false) // Track if chat was reset
+  const [freshReset, setFreshReset] = useState(false) // Track if chat was just reset to prevent loading conversations
+  const [resetTimestamp, setResetTimestamp] = useState(null) // Track when reset happened
   const [selectedContentForModal, setSelectedContentForModal] = useState(null)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [selectedDateRange, setSelectedDateRange] = useState({ start: '', end: '' })
@@ -113,9 +118,10 @@ const ATSNChatbot = ({ externalConversations = null }) => {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const lastExternalConversationsRef = useRef(null)
+  const hasScrolledToBottomRef = useRef(false)
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    messagesEndRef.current?.scrollIntoView()
   }
 
   // 1️⃣ Intent-based global keypress handler
@@ -277,13 +283,16 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     return session?.access_token
   }
 
-  // Load conversations from database
+  // Load conversations from database (today's conversations only)
   const loadConversations = async () => {
     try {
       const token = await getAuthToken()
       if (!token) return
 
-      const response = await fetch(`${API_BASE_URL}/atsn/conversations`, {
+      // Get today's date in UTC to match backend timezone handling
+      const today = new Date().toISOString().split('T')[0]
+
+      const response = await fetch(`${API_BASE_URL}/atsn/conversations?date=${today}&limit=20`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -337,12 +346,17 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     // Don't show automatic welcome message - only show when "New Chat" is clicked
   }
 
-
-  // Load today's conversations when component mounts (like Chatbot.jsx)
+  // Load conversations when component mounts
   useEffect(() => {
     // Don't load external conversations if chat was reset
     if (chatReset) {
       setChatReset(false) // Reset the flag
+      return
+    }
+
+    // Don't load conversations if recently reset (within last 10 seconds)
+    if (resetTimestamp && (Date.now() - resetTimestamp) < 10000) {
+      console.log('Recent reset detected - not loading conversations')
       return
     }
 
@@ -353,10 +367,29 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       // Scroll to bottom after loading external conversations
       setTimeout(() => scrollToBottom(), 100)
     } else if (user && messages.length === 0) {
-      // Load all ATSN conversations (not just today's)
+      // Load conversations from database
+      console.log('Loading conversations for user:', user)
       loadConversations()
     }
-  }, [user, externalConversations, chatReset])
+  }, [user, externalConversations, chatReset, resetTimestamp])
+
+  // Reset scroll flag when chat is reset
+  useEffect(() => {
+    if (chatReset) {
+      hasScrolledToBottomRef.current = false
+    }
+  }, [chatReset])
+
+  // Scroll to bottom only once when messages are first loaded (like WhatsApp)
+  useEffect(() => {
+    if (messages.length > 0 && !hasScrolledToBottomRef.current) {
+      // Small delay to ensure DOM is updated
+      setTimeout(() => {
+        scrollToBottom()
+        hasScrolledToBottomRef.current = true
+      }, 100)
+    }
+  }, [messages.length])
 
   // Detect and count completed tasks when results are displayed
   useEffect(() => {
@@ -710,6 +743,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         step: data.current_step,
         payload: data.payload,
         waiting_for_user: data.waiting_for_user,
+        waiting_for_upload: data.waiting_for_upload,
+        upload_type: data.upload_type,
         payload_complete: data.payload_complete,
         error: data.error,
         content_items: data.content_items || null,
@@ -717,9 +752,17 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         lead_items: data.lead_items || null,
         agent_name: data.agent_name || 'emily',
         clarification_options: data.clarification_options || [],
+        clarification_data: data.clarification_data,
         needs_connection: data.needs_connection || false,
         connection_platform: data.connection_platform || null
       }])
+
+      // Auto-open upload modal if waiting for upload
+      if (data.waiting_for_upload) {
+        setTimeout(() => {
+          setShowMediaUploadModal(true)
+        }, 500) // Small delay to ensure modal renders properly
+      }
 
       // Update agent status
       setAgentStatus({
@@ -777,11 +820,33 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       // Clear any selected content/leads
       setSelectedContent([])
       setSelectedLeadId(null)
+      setSelectedLeads([])
       setFetchedLeads({})
+      setSelectedContentForModal(null)
 
       // Clear input
       setInputMessage('')
       setLastSentMessage('')
+
+      // Reset modal data
+      setEditLeadData(null)
+      setScheduleData({ date: '', time: '', contentId: null })
+
+      // Reset date picker states
+      setShowDatePicker(false)
+      setSelectedDateRange({ start: '', end: '' })
+      setShowSingleDatePicker(false)
+      setSelectedSingleDate('')
+
+      // Reset lead filters
+      setLeadFilters({
+        search: '',
+        status: '',
+        tags: [],
+        dateRange: { start: '', end: '' },
+        sortBy: 'created_at',
+        sortOrder: 'desc'
+      })
 
       // Reset loading states
       setIsLoading(false)
@@ -789,19 +854,23 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       setIsDeleting(false)
       setIsScheduling(false)
       setShowScheduleModal(false)
+      setShowContentModal(false)
+      setShowEditLeadModal(false)
       setCurrentRequestIntent(null)
 
       // Mark chat as reset to prevent loading external conversations
       setChatReset(true)
+      setFreshReset(true) // Prevent loading conversations after reset
+      setResetTimestamp(Date.now()) // Record when reset happened
 
-      // Set a short, human-like welcome message
+      // Clear all messages and show welcome message
       setMessages([{
         id: 'welcome-new-chat',
         sender: 'bot',
-        text: `Hi! I'm your ATSN team - Emily, Leo, and Chase.\n\nTogether we can help you create and manage content, publish across platforms, and nurture your leads.\n\nWhat would you like to do today?`,
+        text: `Welcome to atsn ai Discussions!\n\nHi! This is your atsn ai team - **Emily** (content creation & strategy), **Leo** (lead nurturing & CRM), **Chase** (social media & analytics), and **Orion** (creative design & media).\n\nTogether we help you create compelling content, manage publications across platforms, and nurture leads effectively.\n\nWhat would you like to do today?`,
         timestamp: new Date().toISOString(),
         intent: null,
-        agent_name: 'atsn' // Special agent name for welcome message
+        agent_name: 'atsn ai' // Special agent name for welcome message
       }])
 
       showSuccess('New chat started successfully')
@@ -891,11 +960,25 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     }
 
     setSelectedContentForModal(processedContent)
-    setShowContentModal(true)
+
+    // Check if it's a reel and open appropriate modal
+    if (processedContent.content_type === 'short_video or reel' ||
+        processedContent.content_type === 'reel' ||
+        processedContent.content_type?.toLowerCase().includes('reel') ||
+        processedContent.content_type?.toLowerCase().includes('video')) {
+      setShowReelModal(true)
+    } else {
+      setShowContentModal(true)
+    }
   }
 
   const handleCloseContentModal = () => {
     setShowContentModal(false)
+    setSelectedContentForModal(null)
+  }
+
+  const handleCloseReelModal = () => {
+    setShowReelModal(false)
     setSelectedContentForModal(null)
   }
 
@@ -1505,6 +1588,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         step: data.current_step,
         payload: data.payload,
         waiting_for_user: data.waiting_for_user,
+        waiting_for_upload: data.waiting_for_upload,
+        upload_type: data.upload_type,
         payload_complete: data.payload_complete,
         error: data.error,
         content_items: data.content_items || null,
@@ -1512,9 +1597,17 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         lead_items: data.lead_items || null,
         agent_name: data.agent_name || 'emily',
         clarification_options: data.clarification_options || [],
+        clarification_data: data.clarification_data,
         needs_connection: data.needs_connection || false,
         connection_platform: data.connection_platform || null
       }])
+
+      // Auto-open upload modal if waiting for upload
+      if (data.waiting_for_upload) {
+        setTimeout(() => {
+          setShowMediaUploadModal(true)
+        }, 500) // Small delay to ensure modal renders properly
+      }
 
       // Update agent status
       setAgentStatus({
@@ -1608,6 +1701,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         step: data.current_step,
         payload: data.payload,
         waiting_for_user: data.waiting_for_user,
+        waiting_for_upload: data.waiting_for_upload,
+        upload_type: data.upload_type,
         payload_complete: data.payload_complete,
         error: data.error,
         content_items: data.content_items || null,
@@ -1615,9 +1710,17 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         lead_items: data.lead_items || null,
         agent_name: data.agent_name || 'emily',
         clarification_options: data.clarification_options || [],
+        clarification_data: data.clarification_data,
         needs_connection: data.needs_connection || false,
         connection_platform: data.connection_platform || null
       }])
+
+      // Auto-open upload modal if waiting for upload
+      if (data.waiting_for_upload) {
+        setTimeout(() => {
+          setShowMediaUploadModal(true)
+        }, 500) // Small delay to ensure modal renders properly
+      }
 
       // Update agent status
       setAgentStatus({
@@ -1712,6 +1815,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         step: data.current_step,
         payload: data.payload,
         waiting_for_user: data.waiting_for_user,
+        waiting_for_upload: data.waiting_for_upload,
+        upload_type: data.upload_type,
         payload_complete: data.payload_complete,
         error: data.error,
         content_items: data.content_items || null,
@@ -1719,9 +1824,17 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         lead_items: data.lead_items || null,
         agent_name: data.agent_name || 'emily',
         clarification_options: data.clarification_options || [],
+        clarification_data: data.clarification_data,
         needs_connection: data.needs_connection || false,
         connection_platform: data.connection_platform || null
       }])
+
+      // Auto-open upload modal if waiting for upload
+      if (data.waiting_for_upload) {
+        setTimeout(() => {
+          setShowMediaUploadModal(true)
+        }, 500) // Small delay to ensure modal renders properly
+      }
 
       // Update agent status
       setAgentStatus({
@@ -1808,38 +1921,54 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         setUploadedMediaUrls(data.urls || [])
         setShowMediaUploadModal(false)
 
-        // Create a task for media upload
-        const taskMessage = `I uploaded a ${mediaType} for my content. Please help me create engaging content using this media.`
-
         // Clear selected files after capturing media type
         setSelectedFilesForUpload([])
 
-        // Add user message about media upload
-        setMessages(prev => [...prev, {
-          id: Date.now(),
-          sender: 'user',
-          text: taskMessage,
-          timestamp: new Date().toISOString(),
-          media_urls: data.urls || []
-        }])
+        // Check if this is a clarification upload or waiting for upload
+        const lastMessage = messages[messages.length - 1]
+        const isClarificationUpload = lastMessage && lastMessage.clarification_data && lastMessage.clarification_data.type === 'upload_request'
+        const isWaitingForUpload = lastMessage && lastMessage.waiting_for_upload
 
-        // Send to chatbot
-        try {
-          const chatResponse = await fetch(`${API_BASE_URL}/atsn/chat`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              message: taskMessage,
-              media_urls: data.urls || [],
-              conversation_history: [...conversationHistory, taskMessage]
+        if (isClarificationUpload || isWaitingForUpload) {
+          // Send upload response without adding a chat message for waiting_for_upload
+          let messageToSend = ""
+          let conversationHistoryToSend = conversationHistory
+
+          if (isWaitingForUpload) {
+            // For waiting_for_upload, send a special token that won't trigger intent changes
+            messageToSend = "[MEDIA_UPLOAD]"
+          } else {
+            // For clarification uploads, send the upload message
+            messageToSend = `I uploaded the ${mediaType}: ${data.urls[0]}`
+            conversationHistoryToSend = [...conversationHistory, messageToSend]
+
+            // Add to chat for clarification uploads
+            setMessages(prev => [...prev, {
+              id: Date.now(),
+              sender: 'user',
+              text: messageToSend,
+              timestamp: new Date().toISOString(),
+              media_urls: data.urls || []
+            }])
+          }
+
+          // Send upload response
+          try {
+            const chatResponse = await fetch(`${API_BASE_URL}/atsn/chat`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                message: messageToSend,
+                media_urls: data.urls || [],
+                conversation_history: conversationHistoryToSend
+              })
             })
-          })
 
-          if (chatResponse.ok) {
-            const chatData = await chatResponse.json()
+            if (chatResponse.ok) {
+              const chatData = await chatResponse.json()
             // Handle the response similar to regular messages
             setMessages(prev => [...prev, {
               id: Date.now() + 1,
@@ -1850,11 +1979,54 @@ const ATSNChatbot = ({ externalConversations = null }) => {
               agent_name: chatData.agent_name
             }])
           }
-        } catch (chatError) {
-          console.error('Error sending media upload task:', chatError)
-        }
+          } catch (chatError) {
+            console.error('Error sending clarification response:', chatError)
+          }
+        } else {
+          // This is a regular media upload (not clarification) - create new task
+          const taskMessage = `I uploaded a ${mediaType} for my content. Please help me create engaging content using this media.`
 
-        showSuccess('Media uploaded and task created successfully!')
+          setMessages(prev => [...prev, {
+            id: Date.now(),
+            sender: 'user',
+            text: taskMessage,
+            timestamp: new Date().toISOString(),
+            media_urls: data.urls || []
+          }])
+
+          // Send to chatbot
+          try {
+            const chatResponse = await fetch(`${API_BASE_URL}/atsn/chat`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                message: taskMessage,
+                media_urls: data.urls || [],
+                conversation_history: [...conversationHistory, taskMessage]
+              })
+            })
+
+            if (chatResponse.ok) {
+              const chatData = await chatResponse.json()
+              // Handle the response similar to regular messages
+              setMessages(prev => [...prev, {
+                id: Date.now() + 1,
+                sender: 'bot',
+                text: chatData.response || 'Content creation task started!',
+                timestamp: new Date().toISOString(),
+                intent: chatData.intent,
+                agent_name: chatData.agent_name
+              }])
+            }
+          } catch (chatError) {
+            console.error('Error sending media upload task:', chatError)
+          }
+
+          showSuccess('Media uploaded and task created successfully!')
+        }
       } else {
         throw new Error('Upload failed')
       }
@@ -2188,23 +2360,23 @@ const ATSNChatbot = ({ externalConversations = null }) => {
   const renderAgentIcon = (agentName) => {
     switch (agentName?.toLowerCase()) {
       case 'leo':
-        return <img src="/leo_logo.jpg" alt="Leo" className="w-16 h-16 rounded-full object-cover" />
+        return <img src="/leo_logo.png" alt="Leo" className="w-16 h-16 rounded-full object-cover" />
       case 'chase':
         return <img src="/chase_logo.png" alt="Chase" className="w-16 h-16 rounded-full object-cover" />
       case 'orio':
         return <span className="text-xl font-bold text-white">O</span>
-      case 'atsn':
-        // Combined logo for ATSN welcome message
+      case 'atsn ai':
+        // Combined logo for atsn ai welcome message - all four agents
         return (
           <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-green-500 flex items-center justify-center relative overflow-hidden">
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
                 <div className="grid grid-cols-2 gap-1">
                   <img src="/emily_icon.png" alt="E" className="w-4 h-4 rounded-full object-cover" />
-                  <img src="/leo_logo.jpg" alt="L" className="w-4 h-4 rounded-full object-cover" />
+                  <img src="/leo_logo.png" alt="L" className="w-4 h-4 rounded-full object-cover" />
                   <img src="/chase_logo.png" alt="C" className="w-4 h-4 rounded-full object-cover" />
-                  <div className="w-4 h-4 rounded-full bg-white/30 flex items-center justify-center">
-                    <span className="text-xs font-bold text-white">A</span>
+                  <div className="w-4 h-4 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center">
+                    <span className="text-xs font-bold text-white">O</span>
                   </div>
                 </div>
               </div>
@@ -2355,7 +2527,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
       {/* Messages */}
       <div
-        className="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-6"
+        className="flex-1 overflow-y-auto scrollbar-hide p-6 space-y-6"
         onClick={handleChatAreaClick}
       >
         {messages.map((message, index) => (
@@ -2366,7 +2538,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
             {/* Avatar */}
             <div
               className={`${
-                message.agent_name?.toLowerCase() === 'emily' || message.agent_name?.toLowerCase() === 'leo' || message.agent_name?.toLowerCase() === 'chase' || message.agent_name?.toLowerCase() === 'atsn'
+                message.agent_name?.toLowerCase() === 'emily' || message.agent_name?.toLowerCase() === 'leo' || message.agent_name?.toLowerCase() === 'chase' || message.agent_name?.toLowerCase() === 'atsn ai'
                   ? 'w-16 h-16'
                   : 'w-8 h-8'
               } rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -2380,22 +2552,22 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                   ? '' // No background for Chase
                   : message.agent_name?.toLowerCase() === 'emily'
                   ? '' // No background for Emily
-                  : message.agent_name?.toLowerCase() === 'atsn'
-                  ? '' // No background for ATSN combined logo
+                  : message.agent_name?.toLowerCase() === 'atsn ai'
+                  ? '' // No background for atsn ai combined logo
                 : 'bg-gradient-to-br from-purple-500 to-pink-500'
               }`}
               onMouseEnter={message.sender === 'bot' ? (e) => handleAgentHover(message.agent_name, e) : undefined}
               onMouseLeave={message.sender === 'bot' ? handleAgentLeave : undefined}
             >
               {message.sender === 'user' ? (
-                <User className="w-5 h-5 text-white" />
+                <User className="w-4 h-4 text-white" />
               ) : (
                 renderAgentIcon(message.agent_name)
               )}
             </div>
 
             {/* Message bubble */}
-            <div className={`flex-1 max-w-[80%] ${message.sender === 'user' ? 'text-right' : 'text-left'}`}>
+            <div className={`flex-1 max-w-[60%] ${message.sender === 'user' ? 'text-right' : 'text-left'}`}>
               <div
                 className={`inline-block p-4 rounded-2xl backdrop-blur-md border shadow-lg ${
                   message.sender === 'user'
@@ -2501,6 +2673,30 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                       </div>
                       </div>
 
+                    {/* Handle upload requests */}
+                    {message.clarification_data && message.clarification_data.type === 'upload_request' && message.waiting_for_user && (
+                      <div className="mt-4">
+                        <button
+                          onClick={() => {
+                            // Open media upload modal for image upload
+                            setShowMediaUploadModal(true)
+                          }}
+                          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                            isDarkMode
+                              ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                              : 'bg-blue-500 hover:bg-blue-600 text-white'
+                          }`}
+                        >
+                          📤 Upload {message.clarification_data.upload_type === 'image' ? 'Image' : 'Media'}
+                        </button>
+                        <p className={`mt-2 text-sm ${
+                          isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                        }`}>
+                          {message.clarification_data.message}
+                        </p>
+                      </div>
+                    )}
+
                     {/* Render clarification options only for active clarifications */}
                     {message.clarification_options && message.clarification_options.length > 0 && message.waiting_for_user && (
                       <div className="mt-4 flex flex-wrap gap-3">
@@ -2508,10 +2704,26 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                           <button
                             key={index}
                             onClick={() => handleOptionSelect(option.value)}
-                            className={`px-4 py-3 backdrop-blur-sm rounded-xl border shadow-lg hover:shadow-xl transition-all duration-200 text-sm font-normal transform hover:scale-105 ${
-                              isDarkMode
-                                ? 'bg-gray-700/80 text-gray-200 hover:text-white border-gray-600'
-                                : 'bg-white/80 text-gray-800 hover:text-gray-900 border-gray-300'
+                            className={`px-3 py-2 transition-all duration-200 text-base font-normal hover:underline ${
+                              message.agent_name?.toLowerCase() === 'leo'
+                                ? isDarkMode
+                                  ? 'text-blue-300 hover:text-blue-200'
+                                  : 'text-blue-600 hover:text-blue-700'
+                                : message.agent_name?.toLowerCase() === 'emily'
+                                ? isDarkMode
+                                  ? 'text-pink-300 hover:text-pink-200'
+                                  : 'text-purple-600 hover:text-purple-700'
+                                : message.agent_name?.toLowerCase() === 'chase'
+                                ? isDarkMode
+                                  ? 'text-green-300 hover:text-green-200'
+                                  : 'text-green-800 hover:text-amber-800'
+                                : message.agent_name?.toLowerCase() === 'atsn'
+                                ? isDarkMode
+                                  ? 'text-purple-300 hover:text-blue-300'
+                                  : 'text-purple-500 hover:text-blue-500'
+                                : isDarkMode
+                                ? 'text-purple-400 hover:text-pink-400'
+                                : 'text-purple-600 hover:text-pink-500'
                             }`}
                           >
                             <div className="font-normal text-center">{option.label}</div>
@@ -2560,8 +2772,9 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                       </div>
                                     )}
 
-                                    {/* Use ATSNContentCard for posts, ContentCard for others */}
-                                    {contentItem.raw_data?.content_type === 'post' || contentItem.content_type?.toLowerCase().includes('post') ? (
+                                    {/* Use ATSNContentCard for posts and reels, ContentCard for others */}
+                                    {contentItem.raw_data?.content_type === 'post' || contentItem.content_type?.toLowerCase().includes('post') ||
+                                     contentItem.content_type?.toLowerCase().includes('reel') || contentItem.content_type?.toLowerCase().includes('video') ? (
                                       <ATSNContentCard
                                         content={{
                                           id: contentItem.content_id,
@@ -2640,8 +2853,9 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                           }
                                         }}
                                         onPreview={(content) => {
-                                          // Open content preview modal or navigate to detail view
-                                          console.log('Preview content:', content);
+                                          // Open content preview modal
+                                          setSelectedContentForModal(content);
+                                          setShowContentModal(true);
                                         }}
                                         onEdit={() => {
                                           // Handle edit action - could navigate to edit page or open modal
@@ -3147,15 +3361,15 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                   </span>
                                 </div>
 
-                                <div className="overflow-x-auto">
-                                  <table className="w-full">
+                                <div className="overflow-x-auto max-w-[90%]">
+                                  <table className="w-full min-w-[600px]">
                                     <thead className={`border-b ${
                                       isDarkMode
                                         ? 'bg-gray-700 border-gray-600'
                                         : 'bg-green-100 border-green-200'
                                     }`}>
                                       <tr>
-                                        <th className="px-4 py-3 text-left">
+                                        <th className="px-2 md:px-4 py-3 text-left">
                                           {(message.intent === 'view_leads' || message.intent === 'delete_leads') && (
                                             <button
                                               onClick={() => {
@@ -3169,41 +3383,41 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                               }`}
                                               title="Select All Filtered"
                                             >
-                                              <CheckSquare className="w-4 h-4" />
+                                              <CheckSquare className="w-3 h-3 md:w-4 md:h-4" />
                                             </button>
                                           )}
                                         </th>
-                                        <th className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
+                                        <th className={`px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
                                           isDarkMode ? 'text-gray-300' : 'text-gray-600'
                                         }`}>
                                           Lead Name
                                         </th>
-                                        <th className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
+                                        <th className={`hidden sm:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
                                           isDarkMode ? 'text-gray-300' : 'text-gray-600'
                                         }`}>
                                           Email
                                         </th>
-                                        <th className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
+                                        <th className={`hidden md:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
                                           isDarkMode ? 'text-gray-300' : 'text-gray-600'
                                         }`}>
                                           Phone
                                         </th>
-                                        <th className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
+                                        <th className={`px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
                                           isDarkMode ? 'text-gray-300' : 'text-gray-600'
                                         }`}>
                                           Status
                                         </th>
-                                        <th className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
+                                        <th className={`hidden lg:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
                                           isDarkMode ? 'text-gray-300' : 'text-gray-600'
                                         }`}>
                                           Source
                                         </th>
-                                        <th className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
+                                        <th className={`hidden xl:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
                                           isDarkMode ? 'text-gray-300' : 'text-gray-600'
                                         }`}>
                                           Latest Remark
                                         </th>
-                                        <th className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
+                                        <th className={`hidden xl:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
                                           isDarkMode ? 'text-gray-300' : 'text-gray-600'
                                         }`}>
                                           Created
@@ -3217,11 +3431,11 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                         <tr key={`${message.id}-${index}`} className={`transition-colors ${
                                           isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-amber-50'
                                         }`}>
-                                          <td className="px-4 py-3">
+                                          <td className="px-2 md:px-4 py-3">
                                             {(message.intent === 'view_leads' || message.intent === 'delete_leads') && (
                                               <button
                                                 onClick={() => handleLeadSelect(leadItem.lead_id || leadItem.id, message.intent)}
-                                                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                                className={`w-4 h-4 md:w-5 md:h-5 rounded border-2 flex items-center justify-center transition-colors ${
                                                   selectedLeads.includes(leadItem.lead_id || leadItem.id)
                                                     ? 'bg-green-600 border-green-600 text-white'
                                                     : isDarkMode
@@ -3230,37 +3444,37 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                                 }`}
                                               >
                                                 {selectedLeads.includes(leadItem.lead_id || leadItem.id) ? (
-                                                  <CheckSquare className="w-3 h-3" />
+                                                  <CheckSquare className="w-2.5 h-2.5 md:w-3 md:h-3" />
                                                 ) : (
-                                                  <Square className="w-3 h-3" />
+                                                  <Square className="w-2.5 h-2.5 md:w-3 md:h-3" />
                                                 )}
                                               </button>
                                             )}
                                           </td>
-                                          <td className="px-4 py-3">
-                                            <div className="flex items-center gap-3">
-                                              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                                                <User className="w-4 h-4 text-white" />
+                                          <td className="px-2 md:px-4 py-3">
+                                            <div className="flex items-center gap-2 md:gap-3">
+                                              <div className="w-6 h-6 md:w-8 md:h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                                <User className="w-2.5 h-2.5 md:w-3 md:h-3 text-white" />
                                               </div>
-                                              <span className={`font-medium truncate ${
+                                              <span className={`font-medium truncate text-sm md:text-base ${
                                                 isDarkMode ? 'text-gray-100' : 'text-gray-900'
                                               }`}>
                                                 {leadItem.name || 'Unknown Lead'}
                                               </span>
                                             </div>
                                           </td>
-                                          <td className={`px-4 py-3 text-sm truncate max-w-xs ${
+                                          <td className={`hidden sm:table-cell px-2 md:px-4 py-3 text-sm truncate max-w-xs ${
                                             isDarkMode ? 'text-gray-300' : 'text-gray-600'
                                           }`}>
                                             {leadItem.email || 'No email'}
                                           </td>
-                                          <td className={`px-4 py-3 text-sm ${
+                                          <td className={`hidden md:table-cell px-2 md:px-4 py-3 text-sm ${
                                             isDarkMode ? 'text-gray-300' : 'text-gray-600'
                                           }`}>
                                             {leadItem.phone || 'No phone'}
                                           </td>
-                                          <td className="px-4 py-3">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                          <td className="px-2 md:px-4 py-3">
+                                            <span className={`px-1.5 md:px-2 py-0.5 md:py-1 rounded-full text-xs font-medium ${
                                               leadItem.status === 'new' ? 'bg-blue-100 text-blue-800' :
                                               leadItem.status === 'contacted' ? 'bg-purple-100 text-purple-800' :
                                               leadItem.status === 'responded' ? 'bg-green-100 text-green-800' :
@@ -3273,17 +3487,17 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                               {leadItem.status ? leadItem.status.charAt(0).toUpperCase() + leadItem.status.slice(1) : 'Unknown'}
                                             </span>
                                           </td>
-                                          <td className={`px-4 py-3 text-sm ${
+                                          <td className={`hidden lg:table-cell px-2 md:px-4 py-3 text-sm ${
                                             isDarkMode ? 'text-gray-300' : 'text-gray-600'
                                           }`}>
                                             {leadItem.source || leadItem.source_platform || 'Unknown'}
                                           </td>
-                                          <td className={`px-4 py-3 text-sm max-w-xs truncate ${
+                                          <td className={`hidden xl:table-cell px-2 md:px-4 py-3 text-sm max-w-xs truncate ${
                                             isDarkMode ? 'text-gray-300' : 'text-gray-600'
                                           }`} title={leadItem.last_remark}>
                                             {leadItem.last_remark || 'No remarks'}
                                           </td>
-                                          <td className={`px-4 py-3 text-sm ${
+                                          <td className={`hidden xl:table-cell px-2 md:px-4 py-3 text-sm ${
                                             isDarkMode ? 'text-gray-400' : 'text-gray-500'
                                           }`}>
                                             {leadItem.created_at || 'Unknown'}
@@ -3452,8 +3666,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                 )}
               </div>
 
-              {/* Message metadata */}
-              {message.intent && (
+              {/* Message metadata - Hidden */}
+              {/* {message.intent && (
                 <div className="mt-1 text-xs text-gray-500 flex items-center gap-2">
                   <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
                     {message.intent}
@@ -3464,12 +3678,12 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                     </span>
                   )}
                 </div>
-              )}
+              )} */}
 
               {/* Thinking text below user messages when loading */}
               {isLoading && message.sender === 'user' && index === messages.length - 1 && (
                 <div className="mt-2 ml-12">
-                  <span className="text-sm text-gray-500 italic animate-pulse">
+                  <span className="text-sm text-white italic animate-pulse">
                     {getThinkingMessage()}
                   </span>
                 </div>
@@ -3505,31 +3719,31 @@ const ATSNChatbot = ({ externalConversations = null }) => {
           </div>
         </div>
         <div className="relative">
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Ask me to manage your content or leads..."
-            className={`w-full px-4 pr-12 py-3 text-base rounded-[10px] backdrop-blur-sm focus:outline-none shadow-lg ${
-              isDarkMode
-                ? 'bg-gray-700/80 border-0 focus:ring-0 text-gray-100 placeholder-gray-400'
-                : 'bg-white/80 border border-white/20 focus:ring-2 focus:ring-white/30 focus:border-white/50 text-gray-900 placeholder-gray-500'
-            }`}
-            disabled={isLoading}
-          />
-          <button
-            onClick={handleSendMessage}
-            disabled={isLoading || !inputMessage.trim()}
-            className={`absolute right-2 top-1/2 transform -translate-y-1/2 w-6 h-6 transition-all flex items-center justify-center ${
-              isDarkMode
-                ? 'text-green-400 hover:text-green-300 disabled:text-gray-500'
-                : 'text-blue-600 hover:text-blue-700 disabled:text-gray-400'
-            } disabled:cursor-not-allowed`}
-          >
-            <Send className="w-5 h-5 transform rotate-45" />
-          </button>
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Ask me to manage your content or leads..."
+              className={`w-full px-6 pr-14 py-4 text-base rounded-[10px] backdrop-blur-sm focus:outline-none shadow-lg ${
+                isDarkMode
+                  ? 'bg-gray-700/80 border-0 focus:ring-0 text-gray-100 placeholder-gray-400'
+                  : 'bg-white/80 border border-white/20 focus:ring-2 focus:ring-white/30 focus:border-white/50 text-gray-900 placeholder-gray-500'
+              }`}
+              disabled={isLoading}
+            />
+            <button
+              onClick={handleSendMessage}
+              disabled={isLoading || !inputMessage.trim()}
+              className={`absolute right-3 top-1/2 transform -translate-y-1/2 w-7 h-7 transition-all flex items-center justify-center ${
+                isDarkMode
+                  ? 'text-green-400 hover:text-green-300 disabled:text-gray-500'
+                  : 'text-blue-600 hover:text-blue-700 disabled:text-gray-400'
+              } disabled:cursor-not-allowed`}
+            >
+              <Send className="w-5 h-5 transform rotate-45" />
+            </button>
         </div>
         
         <div className={`mt-2 text-xs text-center ${
@@ -3544,6 +3758,14 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         <ATSNContentModal
           content={selectedContentForModal}
           onClose={handleCloseContentModal}
+        />
+      )}
+
+      {/* Reel Modal */}
+      {showReelModal && selectedContentForModal && (
+        <ReelModal
+          content={selectedContentForModal}
+          onClose={handleCloseReelModal}
         />
       )}
 

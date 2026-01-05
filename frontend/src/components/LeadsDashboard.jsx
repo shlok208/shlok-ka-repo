@@ -12,7 +12,8 @@ import AddLeadModal from './AddLeadModal'
 const useDarkMode = () => {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     // Check localStorage for saved preference, default to light mode
-    return localStorage.getItem('darkMode') === 'true'
+    const saved = localStorage.getItem('darkMode')
+    return saved !== null ? saved === 'true' : true // Default to true (dark mode)
   })
 
   useEffect(() => {
@@ -123,7 +124,8 @@ const LeadsDashboard = () => {
   const [importingCSV, setImportingCSV] = useState(false)
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterPlatform, setFilterPlatform] = useState('all')
-  const [filterDateRange, setFilterDateRange] = useState('today')
+  const [filterDateRange, setFilterDateRange] = useState('this_week')
+  const [showOverdueFollowUpsOnly, setShowOverdueFollowUpsOnly] = useState(false)
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false)
@@ -210,6 +212,19 @@ const LeadsDashboard = () => {
       setPollingInterval(null)
     }
   }, [user, pollingInterval])
+
+  // Check for URL parameters to apply filters
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const filterParam = urlParams.get('filter')
+
+    if (filterParam === 'overdue_followups') {
+      setShowOverdueFollowUpsOnly(true)
+      // Clear the URL parameter to avoid re-applying on refresh
+      const newUrl = window.location.pathname
+      window.history.replaceState({}, '', newUrl)
+    }
+  }, [])
 
   // Initial fetch and refetch when filters change
   useEffect(() => {
@@ -454,8 +469,8 @@ const LeadsDashboard = () => {
         return false
       }
 
-      // Date range filter
-      if (filterDateRange !== 'all') {
+      // Date range filter (skip when showing overdue follow-ups only)
+      if (!showOverdueFollowUpsOnly && filterDateRange !== 'all') {
         let dateRange = null
 
         if (filterDateRange === 'custom' && customStartDate && customEndDate) {
@@ -488,9 +503,22 @@ const LeadsDashboard = () => {
         }
       }
 
+      // Overdue follow-ups filter
+      if (showOverdueFollowUpsOnly) {
+        if (!lead.follow_up_at) return false
+
+        const date = new Date(lead.follow_up_at)
+        const now = new Date()
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        const followUpDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+        const diffInDays = Math.floor((followUpDate - today) / (1000 * 60 * 60 * 24))
+
+        if (diffInDays >= 0) return false // Not overdue
+      }
+
       return true
     })
-  }, [leads, filterStatus, filterDateRange, customStartDate, customEndDate, searchQuery])
+  }, [leads, filterStatus, filterDateRange, customStartDate, customEndDate, searchQuery, showOverdueFollowUpsOnly])
 
   const dateRangeFilters = [
     { value: 'today', label: 'Today' },
@@ -613,7 +641,9 @@ const LeadsDashboard = () => {
                       }
                     }}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${filterDateRange === filter.value
-                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md'
+                      ? isDarkMode
+                        ? 'bg-white text-gray-900 shadow-md'
+                        : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md'
                       : isDarkMode
                       ? 'bg-gray-700 text-gray-200 hover:bg-gray-600 border border-gray-600'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
@@ -712,7 +742,9 @@ const LeadsDashboard = () => {
                         setShowFilterDropdown(false)
                       }}
                       className={`w-full text-left px-4 py-2 text-sm first:rounded-t-lg ${filterPlatform === 'all'
-                        ? 'bg-green-100 text-green-700 font-medium'
+                        ? isDarkMode
+                          ? 'bg-white text-gray-900 font-medium'
+                          : 'bg-green-100 text-green-700 font-medium'
                         : isDarkMode
                         ? 'text-gray-200 hover:bg-gray-700'
                         : 'text-gray-700 hover:bg-gray-50'
@@ -727,7 +759,9 @@ const LeadsDashboard = () => {
                       }}
                       className={`w-full text-left px-4 py-2 text-sm ${
                         filterPlatform === 'facebook'
-                          ? 'bg-green-100 text-green-700 font-medium'
+                          ? isDarkMode
+                            ? 'bg-white text-gray-900 font-medium'
+                            : 'bg-green-100 text-green-700 font-medium'
                           : isDarkMode
                           ? 'text-gray-200 hover:bg-gray-700'
                           : 'text-gray-700 hover:bg-gray-50'
@@ -742,7 +776,9 @@ const LeadsDashboard = () => {
                       }}
                       className={`w-full text-left px-4 py-2 text-sm ${
                         filterPlatform === 'instagram'
-                          ? 'bg-green-100 text-green-700 font-medium'
+                          ? isDarkMode
+                            ? 'bg-white text-gray-900 font-medium'
+                            : 'bg-green-100 text-green-700 font-medium'
                           : isDarkMode
                           ? 'text-gray-200 hover:bg-gray-700'
                           : 'text-gray-700 hover:bg-gray-50'
@@ -757,7 +793,9 @@ const LeadsDashboard = () => {
                       }}
                       className={`w-full text-left px-4 py-2 text-sm ${
                         filterPlatform === 'walk_ins'
-                          ? 'bg-green-100 text-green-700 font-medium'
+                          ? isDarkMode
+                            ? 'bg-white text-gray-900 font-medium'
+                            : 'bg-green-100 text-green-700 font-medium'
                           : isDarkMode
                           ? 'text-gray-200 hover:bg-gray-700'
                           : 'text-gray-700 hover:bg-gray-50'
@@ -772,7 +810,9 @@ const LeadsDashboard = () => {
                       }}
                       className={`w-full text-left px-4 py-2 text-sm ${
                         filterPlatform === 'referral'
-                          ? 'bg-green-100 text-green-700 font-medium'
+                          ? isDarkMode
+                            ? 'bg-white text-gray-900 font-medium'
+                            : 'bg-green-100 text-green-700 font-medium'
                           : isDarkMode
                           ? 'text-gray-200 hover:bg-gray-700'
                           : 'text-gray-700 hover:bg-gray-50'
@@ -787,7 +827,9 @@ const LeadsDashboard = () => {
                       }}
                       className={`w-full text-left px-4 py-2 text-sm ${
                         filterPlatform === 'email'
-                          ? 'bg-green-100 text-green-700 font-medium'
+                          ? isDarkMode
+                            ? 'bg-white text-gray-900 font-medium'
+                            : 'bg-green-100 text-green-700 font-medium'
                           : isDarkMode
                           ? 'text-gray-200 hover:bg-gray-700'
                           : 'text-gray-700 hover:bg-gray-50'
@@ -802,7 +844,9 @@ const LeadsDashboard = () => {
                       }}
                       className={`w-full text-left px-4 py-2 text-sm ${
                         filterPlatform === 'website'
-                          ? 'bg-green-100 text-green-700 font-medium'
+                          ? isDarkMode
+                            ? 'bg-white text-gray-900 font-medium'
+                            : 'bg-green-100 text-green-700 font-medium'
                           : isDarkMode
                           ? 'text-gray-200 hover:bg-gray-700'
                           : 'text-gray-700 hover:bg-gray-50'
@@ -817,7 +861,9 @@ const LeadsDashboard = () => {
                       }}
                       className={`w-full text-left px-4 py-2 text-sm last:rounded-b-lg ${
                         filterPlatform === 'phone_call'
-                          ? 'bg-green-100 text-green-700 font-medium'
+                          ? isDarkMode
+                            ? 'bg-white text-gray-900 font-medium'
+                            : 'bg-green-100 text-green-700 font-medium'
                           : isDarkMode
                           ? 'text-gray-200 hover:bg-gray-700'
                           : 'text-gray-700 hover:bg-gray-50'
@@ -828,6 +874,27 @@ const LeadsDashboard = () => {
                   </div>
                 )}
               </div>
+
+              {/* Overdue Filter Indicator */}
+              {showOverdueFollowUpsOnly && (
+                <div className="flex items-center space-x-2 flex-shrink-0">
+                  <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm ${
+                    isDarkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    <CalendarDays className="w-4 h-4" />
+                    <span>Showing overdue follow-ups only</span>
+                    <button
+                      onClick={() => setShowOverdueFollowUpsOnly(false)}
+                      className={`ml-2 p-0.5 rounded hover:bg-black/10 ${
+                        isDarkMode ? 'hover:bg-white/10' : ''
+                      }`}
+                      title="Clear filter"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex items-center space-x-2 flex-shrink-0">
@@ -939,7 +1006,7 @@ const LeadsDashboard = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-1.5">
                             <StatusIcon className={`w-3 h-3 ${statusConfig.textColor}`} />
-                            <h3 className={`font-semibold text-sm ${statusConfig.textColor}`}>{statusFilter.label}</h3>
+                            <h3 className={`font-normal text-sm ${statusConfig.textColor}`}>{statusFilter.label}</h3>
                           </div>
                           <span className={`text-sm font-medium ${statusConfig.textColor}`}>
                             {columnLeads.length}

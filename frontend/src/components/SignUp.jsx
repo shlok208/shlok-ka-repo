@@ -225,27 +225,27 @@ function SignUp() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-900">
       <div className="max-w-md w-full">
         {/* Header Section */}
         <div className="text-center mb-8">
           <div className="mx-auto h-16 w-16 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg mb-4">
-            <span className="text-2xl font-bold text-white">E</span>
+            <span className="text-2xl font-bold text-white">A</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            Join Emily
+          <h1 className="text-3xl font-normal text-white mb-2">
+            Start working with atsn ai
           </h1>
-          <p className="text-gray-600">
+          <p className="text-gray-300">
             Create your account to get started
           </p>
         </div>
 
         {/* Sign Up Form Card */}
-        <div className="bg-white rounded-2xl shadow-lg p-8">
+        <div className="bg-gray-800 rounded-2xl shadow-lg p-8 border border-gray-700">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Name Field */}
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-2">
                 Full Name
               </label>
               <input
@@ -255,14 +255,14 @@ function SignUp() {
                 required
                 value={formData.name}
                 onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-colors bg-blue-50"
+                className="w-full px-4 py-3 border border-gray-600 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-colors bg-gray-700 text-white placeholder-gray-500"
                 placeholder="Enter your full name"
               />
             </div>
 
             {/* Email Field */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
                 Email address
               </label>
               <div className="relative">
@@ -273,14 +273,14 @@ function SignUp() {
                   required
                   value={formData.email}
                   onChange={handleChange}
-                  className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-colors bg-blue-50 ${
-                    emailValidation.isValid === true 
-                      ? 'border-green-300 focus:ring-green-500' 
-                      : emailValidation.isValid === false 
-                      ? 'border-red-300 focus:ring-red-500' 
-                      : 'border-gray-200'
+                  className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-colors bg-gray-700 text-white placeholder-gray-500 ${
+                    emailValidation.isValid === true
+                      ? 'border-green-500 focus:ring-green-500'
+                      : emailValidation.isValid === false
+                      ? 'border-red-500 focus:ring-red-500'
+                      : 'border-gray-600'
                   }`}
-                  placeholder="Enter your email"
+                  placeholder="Enter your email address"
                 />
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                   {emailValidation.isValidating && (
@@ -301,15 +301,15 @@ function SignUp() {
             <div className="relative">
               <label htmlFor="password" className={`block text-sm font-medium mb-2 ${
                 emailValidation.isValid === false || emailValidation.isValidating
-                  ? 'text-gray-400'
-                  : 'text-gray-700'
+                  ? 'text-gray-500'
+                  : 'text-gray-300'
               }`}>
                 Password
                 {emailValidation.isValid === false && (
-                  <span className="text-xs text-gray-400 ml-1">(Blocked - email exists)</span>
+                  <span className="text-xs text-gray-500 ml-1">(Blocked - email exists)</span>
                 )}
                 {emailValidation.isValidating && (
-                  <span className="text-xs text-gray-400 ml-1">(Checking email...)</span>
+                  <span className="text-xs text-gray-500 ml-1">(Checking email...)</span>
                 )}
               </label>
               <div className="relative">
@@ -323,11 +323,11 @@ function SignUp() {
                   disabled={emailValidation.isValid === false || emailValidation.isValidating}
                   className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-colors ${
                     emailValidation.isValid === false || emailValidation.isValidating
-                      ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-blue-50 border-gray-200'
+                      ? 'bg-gray-600 border-gray-500 text-gray-500 cursor-not-allowed'
+                      : 'bg-gray-700 border-gray-600 text-white placeholder-gray-500'
                   }`}
                   placeholder={
-                    emailValidation.isValid === false 
+                    emailValidation.isValid === false
                       ? "Email already exists - password not needed"
                       : emailValidation.isValidating
                       ? "Checking email availability..."
@@ -367,15 +367,15 @@ function SignUp() {
             <div>
               <label htmlFor="confirmPassword" className={`block text-sm font-medium mb-2 ${
                 emailValidation.isValid === false || emailValidation.isValidating
-                  ? 'text-gray-400'
-                  : 'text-gray-700'
+                  ? 'text-gray-500'
+                  : 'text-gray-300'
               }`}>
                 Confirm Password
                 {emailValidation.isValid === false && (
-                  <span className="text-xs text-gray-400 ml-1">(Blocked - email exists)</span>
+                  <span className="text-xs text-gray-500 ml-1">(Blocked - email exists)</span>
                 )}
                 {emailValidation.isValidating && (
-                  <span className="text-xs text-gray-400 ml-1">(Checking email...)</span>
+                  <span className="text-xs text-gray-500 ml-1">(Checking email...)</span>
                 )}
               </label>
               <div className="relative">
@@ -389,15 +389,15 @@ function SignUp() {
                   disabled={emailValidation.isValid === false || emailValidation.isValidating}
                   className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-colors ${
                     emailValidation.isValid === false || emailValidation.isValidating
-                      ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                      ? 'bg-gray-600 border-gray-500 text-gray-500 cursor-not-allowed'
                       : passwordMatch.isValid && formData.confirmPassword
-                      ? 'bg-green-50 border-green-300 focus:ring-green-500'
+                      ? 'bg-green-900/20 border-green-500 focus:ring-green-500 text-white'
                       : passwordMatch.isValid === false && formData.confirmPassword
-                      ? 'bg-red-50 border-red-300 focus:ring-red-500'
-                      : 'bg-blue-50 border-gray-200'
+                      ? 'bg-red-900/20 border-red-500 focus:ring-red-500 text-white'
+                      : 'bg-gray-700 border-gray-600 text-white placeholder-gray-500'
                   }`}
                   placeholder={
-                    emailValidation.isValid === false 
+                    emailValidation.isValid === false
                       ? "Email already exists - password not needed"
                       : emailValidation.isValidating
                       ? "Checking email availability..."
@@ -439,14 +439,14 @@ function SignUp() {
 
             {/* Error Message */}
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-red-900/20 border border-red-700 text-red-400 px-4 py-3 rounded-lg text-sm">
                 {error}
               </div>
             )}
 
             {/* Success Message */}
             {successMessage && (
-              <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-green-900/20 border border-green-700 text-green-400 px-4 py-3 rounded-lg text-sm">
                 {successMessage}
               </div>
             )}
@@ -463,10 +463,10 @@ function SignUp() {
             {/* Separator */}
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200" />
+                <div className="w-full border-t border-gray-600" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">or</span>
+                <span className="px-2 bg-gray-800 text-gray-400">or</span>
               </div>
             </div>
 
@@ -475,7 +475,7 @@ function SignUp() {
               type="button"
               onClick={handleGoogleSignIn}
               disabled={loading}
-              className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg shadow-sm bg-white text-gray-700 hover:bg-gray-50 focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md"
+              className="w-full flex items-center justify-center px-4 py-3 border border-gray-600 rounded-lg shadow-sm bg-gray-700 text-gray-300 hover:bg-gray-600 focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md"
             >
               <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -488,10 +488,10 @@ function SignUp() {
 
             {/* Sign In Link */}
             <div className="text-center">
-              <span className="text-gray-500">Already have an account? </span>
+              <span className="text-gray-400">Already have an account? </span>
               <Link
                 to="/login"
-                className="text-pink-600 hover:text-pink-700 font-medium transition-colors"
+                className="text-pink-400 hover:text-pink-300 font-medium transition-colors"
               >
                 Sign in
               </Link>
@@ -501,7 +501,7 @@ function SignUp() {
 
         {/* Footer */}
         <div className="text-center mt-8">
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-gray-500">
             Secure connection • Powered by AI
           </p>
         </div>

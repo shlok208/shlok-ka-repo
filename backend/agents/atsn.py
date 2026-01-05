@@ -37,6 +37,8 @@ Key Features:
 import os
 import logging
 import re
+import random
+import uuid
 from typing import List, Optional, Literal, Dict, Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
@@ -45,11 +47,55 @@ import google.generativeai as genai
 import openai
 import aiohttp
 from supabase import create_client, Client
-from utils.embedding_context import get_profile_context_with_embedding
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def get_contextual_suggestion(field_type: str, conversation_context: str, all_options: List[Dict]) -> str:
+    """Get LLM suggestion for the most appropriate option based on context"""
+
+    if field_type == "Post_type":
+        options_text = "\n".join([f"- {opt['label']}" for opt in all_options])
+        prompt = f"""Based on the user's conversation, suggest the most appropriate post type from these options:
+
+{options_text}
+
+User conversation:
+{conversation_context}
+
+Return only the exact label of the most appropriate option. If none seem particularly relevant, return the first option "Educational tips"."""
+
+    elif field_type == "Image_type":
+        options_text = "\n".join([f"- {opt['label']}" for opt in all_options])
+        prompt = f"""Based on the user's conversation and content idea, suggest the most appropriate image style from these options:
+
+{options_text}
+
+User conversation:
+{conversation_context}
+
+Return only the exact label of the most appropriate option. If none seem particularly relevant, return the first option "Minimal & Clean with Bold Typography"."""
+
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
+        response = model.generate_content(prompt)
+
+        if response and response.text:
+            suggested_option = response.text.strip().strip('"\'')
+            # Validate that the suggestion is actually in our options
+            for opt in all_options:
+                if opt['label'] == suggested_option:
+                    return suggested_option
+            # Fallback to first option if LLM returned invalid suggestion
+            return all_options[0]['label']
+
+    except Exception as e:
+        logger.error(f"Error getting contextual suggestion: {str(e)}")
+
+    # Fallback to first option
+    return all_options[0]['label']
 
 
 def generate_clarifying_question(base_question: str, user_context: str, user_input: str = "") -> str:
@@ -315,12 +361,8 @@ RULES: - Provide 3 to 5 relevant trends - Trends must be practical and currently
 
                         return parsed_result
                     else:
-                        logger.error(f"Could not extract JSON from image enhancer response: {content}")
-                        return {
-                            "image_prompt": f"Create a professional Instagram image for: {generated_post.get('title', '')}",
-                            "aspect_ratio": "1:1",
-                            "negative_prompt": "text, logos, watermarks"
-                        }
+                        logger.error(f"Could not extract JSON from Grok response: {content}")
+                        return {"trends": []}
                 else:
                     logger.error(f"Grok API error: {response.status} - {await response.text()}")
                     return {"trends": []}
@@ -356,7 +398,7 @@ def parse_trends_for_content(trends_json: dict) -> dict:
     }
 
 
-def get_instagram_prompt(payload: dict, business_context: dict, parsed_trends: dict, profile_assets: dict = None, post_design_type: str = "general", image_type: str = "general") -> str:
+def get_instagram_prompt(payload: dict, business_context: dict, parsed_trends: dict, profile_assets: dict = None) -> str:
     """Generate Instagram-optimized content prompt"""
 
     from datetime import datetime
@@ -376,7 +418,6 @@ Industry: {business_context.get('industry', 'General')}
 Target Audience: {business_context.get('target_audience', 'General audience')}
 Brand Voice: {business_context.get('brand_voice', 'Professional and friendly')}
 Brand Tone: {business_context.get('brand_tone', 'Approachable')}
-Post Design Type: {post_design_type}
 {brand_context}
 
 CONTENT STRATEGY INPUT (FROM TREND ANALYSIS):
@@ -393,7 +434,7 @@ INSTAGRAM CONTENT REQUIREMENTS:
 - Platform: Instagram
 - Format: {parsed_trends.get('format')}
 - Caption Style: Scroll-stopping, conversational, value-driven
-- Emoji Usage: Natural and engaging
+- Emoji Usage: DO NOT include any emojis in the caption or title
 - CTA: Include exactly ONE clear CTA
 - Line Breaks: Use short paragraphs for readability
 - Avoid generic advice — be specific and actionable
@@ -419,11 +460,7 @@ def get_platform_specific_prompt(platform: str, payload: dict, business_context:
     platform_lower = platform.lower()
 
     if platform_lower == 'instagram':
-        # Extract classified types from payload for Instagram
-        post_design_type = payload.get('post_design_type', 'general')
-        if post_design_type != 'general':
-            post_design_type = classify_post_design_type(post_design_type)
-        return get_instagram_prompt(payload, business_context, parsed_trends, profile_assets, post_design_type)
+        return get_instagram_prompt(payload, business_context, parsed_trends, profile_assets)
     else:
         # Fallback to general social media prompt for now
         from datetime import datetime
@@ -494,8 +531,12 @@ def parse_instagram_response(response_text: str) -> dict:
     return content_data
 
 
-async def generate_image_enhancer_prompt(generated_post: dict, payload: dict, business_context: dict, parsed_trends: dict, profile_assets: dict = None, image_type: str = "general") -> dict:
+async def generate_image_enhancer_prompt(generated_post: dict, payload: dict, business_context: dict, parsed_trends: dict, profile_assets: dict = None) -> dict:
     """Generate an enhanced image prompt using AI based on the generated content"""
+
+    import json
+    import os
+    import httpx
 
     from datetime import datetime
     current_datetime = datetime.now()
@@ -506,7 +547,105 @@ async def generate_image_enhancer_prompt(generated_post: dict, payload: dict, bu
     brand_assets_context = build_image_enhancer_brand_assets(profile_assets or {}, business_context)
     location_context = build_location_context(business_context)
 
-    image_prompt_enhancer = f"""
+    # Check if logo is available and prepare logo context
+    logo_context = ""
+    logo_available = False
+
+    if profile_assets and profile_assets.get('logo'):
+        logo_url = profile_assets.get('logo')
+        logo_context = f"""
+LOGO REQUIREMENTS (MANDATORY - NO EXCEPTIONS):
+- Business Logo URL: {logo_url}
+- CRITICAL: Include this EXACT logo prominently in the generated image
+- DO NOT modify, alter, change, or edit the logo in ANY way
+- DO NOT recolor, resize disproportionately, distort, or transform the logo
+- DO NOT create variations, simplified versions, or stylized versions of the logo
+- DO NOT use generic logos, placeholders, or substitute logos
+- Use ONLY the original, unchanged logo file exactly as provided
+- Logo placement options: bottom-right corner (recommended), top-left corner, or integrated into design
+- Ensure logo is clearly visible and professionally positioned
+- Maintain original logo proportions, colors, and quality perfectly
+- Logo should not interfere with main content readability
+- Size: appropriate for social media (typically 10-20% of image area)
+- Position strategically for brand recognition and visual balance
+- PRESERVE ALL original elements, text, colors, and design details exactly
+"""
+        logo_available = True
+        logger.info(f"✅ Logo included in image enhancer prompt: {logo_url}")
+
+    # Load image enhancer prompts and get style-specific complete prompt
+    image_type = payload.get('Image_type')
+    image_prompt_enhancer = ""
+
+    if image_type:
+        try:
+            # Load the image enhancer prompts configuration
+            config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'image_enhancer_prompts.json')
+            with open(config_path, 'r') as f:
+                enhancer_config = json.load(f)
+
+            # Map Image_type to config key (convert spaces to underscores and lowercase)
+            config_key_map = {
+                "Minimal & Clean with Bold Typography": "minimal_clean_bold_typography",
+                "Modern Corporate / B2B Professional": "modern_corporate_b2b",
+                "Luxury Editorial (Black, White, Gold Accents)": "luxury_editorial",
+                "Photography-Led Lifestyle Aesthetic": "photography_led_lifestyle",
+                "Product-Focused Clean Commercial Style": "product_focused_commercial",
+                "Flat Illustration with Friendly Characters": "flat_illustration_characters",
+                "Isometric / Explainer Illustration Style": "isometric_explainer",
+                "Playful & Youthful (Memphis / Stickers / Emojis)": "playful_youthful_memphis",
+                "High-Impact Color-Blocking with Loud Type": "high_impact_color_blocking",
+                "Retro / Vintage Poster Style": "retro_vintage_poster",
+                "Futuristic Tech / AI-Inspired Dark Mode": "futuristic_tech_dark",
+                "Glassmorphism / Neumorphism UI Style": "glassmorphism_neumorphism",
+                "Abstract Shapes & Fluid Gradient Art": "abstract_shapes_gradients",
+                "Infographic / Data-Driven Educational Layout": "infographic_data_driven",
+                "Quote Card / Thought-Leadership Typography Post": "quote_card_typography",
+                "Meme-Style / Social-Native Engagement Post": "meme_style_engagement",
+                "Festive / Campaign-Based Creative": "festive_campaign_creative",
+                "Textured Design (Paper, Grain, Handmade Feel)": "textured_design_paper",
+                "Magazine / Editorial Layout with Strong Hierarchy": "magazine_editorial_layout",
+                "Experimental / Artistic Concept-Driven Design": "experimental_artistic_concept"
+            }
+
+            config_key = config_key_map.get(image_type)
+            if config_key and config_key in enhancer_config.get('image_enhancer_prompts', {}):
+                style_config = enhancer_config['image_enhancer_prompts'][config_key]
+                style_prompts = style_config.get('prompts', [])
+
+                # Use the first (and only) complete prompt template for this style
+                if style_prompts:
+                    image_prompt_enhancer = style_prompts[0]
+
+                    # Replace placeholder variables with actual values
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{current_date}", current_date)
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{current_time}", current_time)
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{parsed_trends.get('format', 'Feed Post')}", parsed_trends.get('format', 'Feed Post'))
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{business_context.get('industry', 'General')}", business_context.get('industry', 'General'))
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{business_context.get('target_audience', 'General audience')}", business_context.get('target_audience', 'General audience'))
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{business_context.get('brand_tone', 'Approachable')}", business_context.get('brand_tone', 'Approachable'))
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{business_context.get('brand_voice', 'Professional and friendly')}", business_context.get('brand_voice', 'Professional and friendly'))
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{brand_assets_context}", brand_assets_context)
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{location_context}", location_context)
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{generated_post.get('title', '')}", generated_post.get('title', ''))
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{generated_post.get('content', '')}", generated_post.get('content', ''))
+
+                    # Add logo context if available
+                    if logo_context:
+                        # Insert logo context before the VISUAL STYLE REQUIREMENT section
+                        vis_pos = image_prompt_enhancer.find("VISUAL STYLE REQUIREMENT:")
+                        if vis_pos != -1:
+                            image_prompt_enhancer = image_prompt_enhancer[:vis_pos] + logo_context + "\n" + image_prompt_enhancer[vis_pos:]
+                        else:
+                            # Fallback: add logo context before PRIMARY GOAL
+                            goal_pos = image_prompt_enhancer.find("PRIMARY GOAL:")
+                            if goal_pos != -1:
+                                image_prompt_enhancer = image_prompt_enhancer[:goal_pos] + logo_context + "\n" + image_prompt_enhancer[goal_pos:]
+
+        except Exception as e:
+            logger.warning(f"Could not load image enhancer prompts for Image_type '{image_type}': {e}")
+            # Fall back to default prompt structure if style-specific prompt fails
+            image_prompt_enhancer = f"""
 You are an expert visual prompt engineer for AI image generation, specializing in Instagram content. CURRENT DATE/TIME: {current_date} at {current_time}
 
 INPUT CONTEXT:
@@ -516,16 +655,16 @@ Industry: {business_context.get('industry', 'General')}
 Target Audience: {business_context.get('target_audience', 'General audience')}
 Brand Tone: {business_context.get('brand_tone', 'Approachable')}
 Brand Voice: {business_context.get('brand_voice', 'Professional and friendly')}
-Image Type: {image_type} (classified from user input)
 
 {brand_assets_context}
 
 {location_context}
 
+{logo_context}
+
 INSTAGRAM POST CONTENT:
 Title: {generated_post.get('title', '')}
 Caption: {generated_post.get('content', '')}
-Original Idea: {payload.get('content_idea', '')}
 
 PRIMARY GOAL:
 Create a visually compelling image prompt that:
@@ -548,6 +687,56 @@ OUTPUT FORMAT (Return ONLY this JSON):
 
 {{
   "image_prompt": "A single, detailed image generation prompt",
+  "visual_style": "{image_type if image_type else 'photorealistic'}",
+  "aspect_ratio": "1:1 or 4:5",
+  "negative_prompt": "Things to avoid in the image"
+}}
+"""
+    else:
+        # No Image_type specified, use default prompt structure
+        image_prompt_enhancer = f"""
+You are an expert visual prompt engineer for AI image generation, specializing in Instagram content. CURRENT DATE/TIME: {current_date} at {current_time}
+
+INPUT CONTEXT:
+Platform: Instagram
+Post Format: {parsed_trends.get('format', 'Feed Post')}
+Industry: {business_context.get('industry', 'General')}
+Target Audience: {business_context.get('target_audience', 'General audience')}
+Brand Tone: {business_context.get('brand_tone', 'Approachable')}
+Brand Voice: {business_context.get('brand_voice', 'Professional and friendly')}
+
+{brand_assets_context}
+
+{location_context}
+
+{logo_context}
+
+INSTAGRAM POST CONTENT:
+Title: {generated_post.get('title', '')}
+Caption: {generated_post.get('content', '')}
+
+PRIMARY GOAL:
+Create a visually compelling image prompt that:
+- Instantly communicates the core message of the post
+- Matches Instagram aesthetics and trends
+- Feels natural, human, and scroll-stopping
+- Aligns with the brand tone and audience
+
+IMAGE PROMPT REQUIREMENTS:
+- Describe the main subject clearly
+- Specify environment/background
+- Define mood, lighting, and color palette
+- Include composition and camera perspective
+- Ensure Instagram-friendly framing (4:5 or square)
+- Avoid text-heavy visuals (no captions on image)
+- Avoid logos, watermarks, or brand names
+- Photorealistic unless illustration fits better
+
+OUTPUT FORMAT (Return ONLY this JSON):
+
+{{
+  "image_prompt": "A single, detailed image generation prompt",
+  "visual_style": "{image_type if image_type else 'photorealistic'}",
   "aspect_ratio": "1:1 or 4:5",
   "negative_prompt": "Things to avoid in the image"
 }}
@@ -573,7 +762,6 @@ OUTPUT FORMAT (Return ONLY this JSON):
             enhancer_response = response.choices[0].message.content.strip()
 
             # Parse JSON response
-            import json
             json_start = enhancer_response.find('{')
             json_end = enhancer_response.rfind('}') + 1
 
@@ -587,7 +775,7 @@ OUTPUT FORMAT (Return ONLY this JSON):
                 logger.error(f"Could not parse JSON from image enhancer response: {enhancer_response}")
                 return {
                     "image_prompt": f"Create a professional Instagram image for: {generated_post.get('title', '')}",
-                    "visual_style": "photorealistic",
+                    "visual_style": image_type if image_type else "photorealistic",
                     "aspect_ratio": "1:1",
                     "negative_prompt": "text, logos, watermarks, blurry"
                 }
@@ -595,7 +783,7 @@ OUTPUT FORMAT (Return ONLY this JSON):
             logger.warning("OpenAI client not available for image enhancer")
             return {
                 "image_prompt": f"Create a professional Instagram image for: {generated_post.get('title', '')}",
-                "visual_style": "photorealistic",
+                "visual_style": image_type if image_type else "photorealistic",
                 "aspect_ratio": "1:1",
                 "negative_prompt": "text, logos, watermarks, blurry"
             }
@@ -604,153 +792,10 @@ OUTPUT FORMAT (Return ONLY this JSON):
         logger.error(f"❌ Error generating enhanced image prompt: {e}")
         return {
             "image_prompt": f"Create a professional Instagram image for: {generated_post.get('title', '')}",
+            "visual_style": image_type if image_type else "photorealistic",
             "aspect_ratio": "1:1",
             "negative_prompt": "text, logos, watermarks, blurry"
         }
-
-
-# ==================== CLASSIFICATION HELPERS ====================
-
-def classify_post_design_type(user_input: str) -> str:
-    """Classify user input into post design categories for content generation"""
-    if not user_input:
-        return "general"
-
-    user_input_lower = user_input.lower()
-
-    # News category
-    if any(word in user_input_lower for word in ['news', 'update', 'announcement', 'breaking', 'latest', 'current']):
-        return "news"
-
-    # Trendy category
-    elif any(word in user_input_lower for word in ['trendy', 'trend', 'viral', 'popular', 'hot', 'fashion', 'style']):
-        return "trendy"
-
-    # Educational category
-    elif any(word in user_input_lower for word in ['educational', 'learn', 'teach', 'tutorial', 'guide', 'how to', 'tips', 'advice']):
-        return "educational"
-
-    # Informative category
-    elif any(word in user_input_lower for word in ['informative', 'info', 'facts', 'data', 'statistics', 'insights', 'analysis']):
-        return "informative"
-
-    # Announcement category
-    elif any(word in user_input_lower for word in ['announcement', 'launch', 'release', 'new', 'coming soon']):
-        return "announcement"
-
-    # BTS (Behind-the-Scenes) category
-    elif any(word in user_input_lower for word in ['bts', 'behind the scenes', 'behind-the-scenes', 'process', 'making of', 'how we']):
-        return "bts"
-
-    # UGC (User-Generated Content) category
-    elif any(word in user_input_lower for word in ['ugc', 'user generated', 'user-generated', 'customer', 'testimonial', 'review']):
-        return "ugc"
-
-    else:
-        return "general"
-
-
-def get_visual_style_from_image_type(image_type: str) -> str:
-    """Map classified image type to appropriate visual style for image generation"""
-    if not image_type or image_type == "general":
-        return "photorealistic"
-
-    image_type_lower = image_type.lower()
-
-    # Graphic-First Post Types → illustration/flat design
-    if any(word in image_type_lower for word in ['poster', 'graphic', 'typography', 'text-only', 'quote card', 'stat', 'data card', 'announcement banner', 'offer', 'discount poster', 'countdown', 'event poster', 'reminder card', 'cta graphic', 'infographic']):
-        return "flat design"
-
-    # Photo-Based Post Types → photorealistic
-    elif any(word in image_type_lower for word in ['product photo', 'lifestyle', 'flat-lay', 'close-up', 'studio', 'environmental', 'in-use', 'team photo', 'founder photo', 'office', 'workspace', 'behind-the-scenes photo']):
-        return "photorealistic"
-
-    # Illustration & Visual Art → illustration/3D
-    elif any(word in image_type_lower for word in ['illustration', 'vector', 'character', 'icon', 'isometric', 'hand-drawn', 'abstract']):
-        return "illustration"
-
-    # Brand Identity Posts → flat design
-    elif any(word in image_type_lower for word in ['brand color', 'mood board', 'font', 'typography', 'pattern', 'texture', 'logo placement', 'rebrand']):
-        return "flat design"
-
-    # Social Proof Visuals → photorealistic or illustration
-    elif any(word in image_type_lower for word in ['testimonial', 'review', 'star-rating', 'case-study', 'client logo']):
-        return "photorealistic"
-
-    # Informational Visuals → illustration/flat design
-    elif any(word in image_type_lower for word in ['chart', 'graph', 'timeline', 'process flow', 'faq']):
-        return "flat design"
-
-    # Creative / Experimental → illustration
-    elif any(word in image_type_lower for word in ['collage', 'split-screen', 'brutalist', 'minimalist', 'maximalist', 'editorial', 'magazine']):
-        return "illustration"
-
-    # Default fallback
-    else:
-        return "photorealistic"
-
-
-def classify_image_type(user_input: str) -> str:
-    """Classify user input into detailed image type categories for image generation"""
-    if not user_input:
-        return "general"
-
-    user_input_lower = user_input.lower()
-
-    # Graphic-First Post Types
-    if any(word in user_input_lower for word in ['poster', 'graphic', 'banner', 'typography', 'text-only', 'quote card', 'stat', 'data card', 'announcement banner', 'offer', 'discount poster', 'countdown', 'event poster', 'reminder card', 'cta graphic']):
-        return "graphic"
-
-    # Photo-Based Post Types
-    elif any(word in user_input_lower for word in ['product photo', 'lifestyle', 'flat-lay', 'close-up', 'studio', 'environmental', 'in-use', 'team photo', 'founder photo', 'office', 'workspace', 'behind-the-scenes photo']):
-        return "photo"
-
-    # Photo + Graphic Hybrid
-    elif any(word in user_input_lower for word in ['text overlay', 'brand frame', 'gradient overlay', 'icon overlay', 'highlighted callout', 'before-after', 'comparison']):
-        return "hybrid"
-
-    # Illustration & Visual Art
-    elif any(word in user_input_lower for word in ['illustration', 'vector', 'character', 'icon', 'isometric', 'hand-drawn', '3d', 'abstract']):
-        return "illustration"
-
-    # Carousel-Style Static Sets
-    elif any(word in user_input_lower for word in ['carousel', 'multi-slide', 'quote set', 'step-by-step', 'listicle', 'comparison slides', 'storytelling slides']):
-        return "carousel"
-
-    # Brand Identity Posts
-    elif any(word in user_input_lower for word in ['brand color', 'mood board', 'font', 'typography', 'pattern', 'texture', 'logo placement', 'rebrand']):
-        return "brand"
-
-    # Social Proof Visuals
-    elif any(word in user_input_lower for word in ['testimonial', 'review', 'star-rating', 'case-study', 'client logo']):
-        return "social_proof"
-
-    # Informational Visuals
-    elif any(word in user_input_lower for word in ['infographic', 'chart', 'graph', 'timeline', 'process flow', 'faq']):
-        return "informational"
-
-    # Community & Culture
-    elif any(word in user_input_lower for word in ['employee spotlight', 'culture quote', 'team celebration', 'milestone', 'thank-you']):
-        return "community"
-
-    # Seasonal & Occasion
-    elif any(word in user_input_lower for word in ['festival', 'holiday', 'seasonal', 'special-day']):
-        return "seasonal"
-
-    # Interactive Static Visuals
-    elif any(word in user_input_lower for word in ['question card', 'poll', 'this or that', 'guess-the-answer', 'comment-to-engage']):
-        return "interactive"
-
-    # Creative / Experimental
-    elif any(word in user_input_lower for word in ['collage', 'split-screen', 'brutalist', 'minimalist', 'maximalist', 'editorial', 'magazine']):
-        return "creative"
-
-    # Utility / Filler Visuals
-    elif any(word in user_input_lower for word in ['grid', 'spacer', 'filler', 'placeholder', 'schedule reminder']):
-        return "utility"
-
-    else:
-        return "general"
 
 
 # ==================== BUSINESS CONTEXT HELPERS ====================
@@ -979,6 +1024,8 @@ def build_image_enhancer_brand_assets(profile_assets: dict, business_context: di
     primary = profile_assets.get('primary_color')
     secondary = profile_assets.get('secondary_color')
     brand_colors = profile_assets.get('brand_colors', [])
+    primary_typography = profile_assets.get('primary_typography')
+    secondary_typography = profile_assets.get('secondary_typography')
 
     if primary and secondary:
         color_text = f"""
@@ -989,6 +1036,11 @@ Color Usage: Use primary color for main elements, secondary for accents and high
 
         if brand_colors:
             color_text += f"\nAdditional Brand Colors: {', '.join(brand_colors)}"
+
+        if primary_typography:
+            color_text += f"\nPrimary Typography: {primary_typography}"
+        if secondary_typography:
+            color_text += f"\nSecondary Typography: {secondary_typography}"
 
         return color_text
 
@@ -1001,47 +1053,88 @@ Color Usage: Use this color consistently throughout the design"""
         if brand_colors:
             color_text += f"\nAdditional Brand Colors: {', '.join(brand_colors)}"
 
+        if primary_typography:
+            color_text += f"\nPrimary Typography: {primary_typography}"
+        if secondary_typography:
+            color_text += f"\nSecondary Typography: {secondary_typography}"
+
         return color_text
 
     elif brand_colors:
-        return f"""
+        color_text = f"""
 BRAND ASSETS:
 Available Brand Colors: {', '.join(brand_colors)}
 Color Usage: Use these brand colors strategically in the composition"""
 
+        if primary_typography:
+            color_text += f"\nPrimary Typography: {primary_typography}"
+        if secondary_typography:
+            color_text += f"\nSecondary Typography: {secondary_typography}"
+
+        return color_text
+
     else:
-        return f"""
+        color_text = f"""
 COLOR APPROACH:
 Use a professional color palette suitable for {business_context.get('industry', 'General')} industry
 Focus on colors that resonate with {business_context.get('target_audience', 'General audience')}"""
+
+        if primary_typography:
+            color_text += f"\nPrimary Typography: {primary_typography}"
+        if secondary_typography:
+            color_text += f"\nSecondary Typography: {secondary_typography}"
+
+        return color_text
 
 
 # ==================== PYDANTIC MODELS ====================
 
 class CreateContentPayload(BaseModel):
-    channel: Optional[Literal["Social Media", "Blog", "Email", "messages"]] = None
-    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", "Whatsapp"]] = None
-    content_type: Optional[Literal["Post", "short video", "long video", "Email", "message"]] = None
+    channel: Optional[Literal["Social Media", "Blog"]] = None
+    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube"]] = None
+    content_type: Optional[Literal["static_post", "carousel", "short_video or reel", "long_video", "blog"]] = None
     media: Optional[Literal["Generate", "Upload", "without media"]] = None
     media_file: Optional[str] = None
     content_idea: Optional[str] = Field(None, min_length=10)
     content_id: Optional[str] = None
-    agent_name: Optional[str] = None
-    post_design_type: Optional[str] = None
-    image_type: Optional[str] = None
+    agent_name: Optional[str] = None                                                                                
+    Post_type: Optional[Literal[
+        "Educational tips", "Quote / motivation", "Promotional offer", "Product showcase",
+        "Carousel infographic", "Announcement", "Testimonial / review", "Before–after",
+        "Behind-the-scenes", "User-generated content", "Brand story", "Meme / humor",
+        "Facts / did-you-know", "Event highlight", "Countdown", "FAQ post", "Comparison",
+        "Case study snapshot", "Milestone / achievement", "Call-to-action post"
+    ]] = None
+    Image_type: Optional[Literal[
+        "Minimal & Clean with Bold Typography", "Modern Corporate / B2B Professional",
+        "Luxury Editorial (Black, White, Gold Accents)", "Photography-Led Lifestyle Aesthetic",
+        "Product-Focused Clean Commercial Style", "Flat Illustration with Friendly Characters",
+        "Isometric / Explainer Illustration Style", "Playful & Youthful (Memphis / Stickers / Emojis)",
+        "High-Impact Color-Blocking with Loud Type", "Retro / Vintage Poster Style",
+        "Futuristic Tech / AI-Inspired Dark Mode", "Glassmorphism / Neumorphism UI Style",
+        "Abstract Shapes & Fluid Gradient Art", "Infographic / Data-Driven Educational Layout",
+        "Quote Card / Thought-Leadership Typography Post", "Meme-Style / Social-Native Engagement Post",
+        "Festive / Campaign-Based Creative", "Textured Design (Paper, Grain, Handmade Feel)",
+        "Magazine / Editorial Layout with Strong Hierarchy", "Experimental / Artistic Concept-Driven Design"
+    ]] = None
 
 
 class EditContentPayload(BaseModel):
-    channel: Optional[Literal["Social Media", "Blog", "Email", "messages"]] = None
-    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", "Whatsapp"]] = None
-    content_type: Optional[Literal["Image", "text"]] = None
-    content_id: Optional[str] = None
-    edit_instruction: Optional[str] = None
+    channel: Optional[Literal["Social Media", "Blog"]] = None
+    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube"]] = None
+    date_range: Optional[str] = None  # Natural language date concept: "yesterday", "today", "this week", etc.
+    start_date: Optional[str] = None  # Format: YYYY-MM-DD (calculated from date_range)
+    end_date: Optional[str] = None    # Format: YYYY-MM-DD (calculated from date_range)
+    status: Optional[Literal["generated", "scheduled", "published"]] = None
+    content_type: Optional[Literal["post", "short_video", "long_video", "blog"]] = None
+    content_id: Optional[str] = None  # Specific content to edit (selected by user)
+    query: Optional[str] = None  # Search query for semantic search in title and content
+    edit_instruction: Optional[str] = None  # What changes to make to the content
 
 
 class DeleteContentPayload(BaseModel):
-    channel: Optional[Literal["Social Media", "Blog", "Email", "messages"]] = None
-    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", "Whatsapp"]] = None
+    channel: Optional[Literal["Social Media", "Blog"]] = None
+    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube"]] = None
     date_range: Optional[str] = None  # Natural language date concept: "yesterday", "today", etc.
     start_date: Optional[str] = None  # Calculated from date_range (YYYY-MM-DD)
     end_date: Optional[str] = None    # Calculated from date_range (YYYY-MM-DD)
@@ -1050,19 +1143,20 @@ class DeleteContentPayload(BaseModel):
 
 
 class ViewContentPayload(BaseModel):
-    channel: Optional[Literal["Social Media", "Blog", "Email", "messages"]] = None
-    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", "Whatsapp"]] = None
+    channel: Optional[Literal["Social Media", "Blog"]] = None
+    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube"]] = None
     date_range: Optional[str] = None  # Natural language date concept: "yesterday", "today", "this week", etc.
     start_date: Optional[str] = None  # Format: YYYY-MM-DD (calculated from date_range)
     end_date: Optional[str] = None    # Format: YYYY-MM-DD (calculated from date_range)
     status: Optional[Literal["generated", "scheduled", "published"]] = None
-    content_type: Optional[Literal["post", "short_video", "long_video", "blog", "email", "message"]] = None
+    content_type: Optional[Literal["post", "short_video", "long_video", "blog"]] = None
     query: Optional[str] = None  # Search query for semantic search in title and content
+    all: Optional[bool] = None  # When true, show all posts without limits
 
 
 class PublishContentPayload(BaseModel):
-    channel: Optional[Literal["Social Media", "Blog", "Email", "messages"]] = None
-    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", "Whatsapp"]] = None
+    channel: Optional[Literal["Social Media", "Blog"]] = None
+    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube"]] = None
     date_range: Optional[str] = None  # Natural language date concept: "yesterday", "today", "this week", etc.
     start_date: Optional[str] = None  # Format: YYYY-MM-DD (calculated from date_range)
     end_date: Optional[str] = None    # Format: YYYY-MM-DD (calculated from date_range)
@@ -1072,8 +1166,8 @@ class PublishContentPayload(BaseModel):
 
 
 class ScheduleContentPayload(BaseModel):
-    channel: Optional[Literal["Social Media", "Blog", "Email", "messages"]] = None
-    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", "Whatsapp"]] = None
+    channel: Optional[Literal["Social Media", "Blog"]] = None
+    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube"]] = None
     content_id: Optional[str] = None
     schedule_date: Optional[str] = None
     schedule_time: Optional[str] = None
@@ -1132,29 +1226,33 @@ class FollowUpLeadsPayload(BaseModel):
 
 
 class ViewInsightsPayload(BaseModel):
-    channel: Optional[Literal["Social Media", "Blog", "Email", "messages"]] = None
-    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", "Whatsapp"]] = None
+    channel: Optional[Literal["Social Media", "Blog"]] = None
+    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube"]] = None
     metrics: Optional[List[str]] = None
     date_range: Optional[Literal["today", "this week", "last week", "yesterday", "custom date"]] = None
 
 
 class ViewAnalyticsPayload(BaseModel):
-    channel: Optional[Literal["Social Media", "Blog", "Email", "messages"]] = None
-    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", "Whatsapp"]] = None
+    channel: Optional[Literal["Social Media", "Blog"]] = None
+    platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube"]] = None
     date_range: Optional[Literal["today", "this week", "last week", "yesterday", "custom date"]] = None
 
 
 # ==================== STATE ====================
 
 class AgentState(BaseModel):
-    user_query: str = ""  # Contains full conversation context (all messages appended)
+    user_query: str = ""  # Contains current message for intent classification
+    full_conversation: str = ""  # Contains full conversation history for context
     conversation_history: List[str] = Field(default_factory=list)  # Deprecated: kept for compatibility, not used
     intent: Optional[str] = None
     payload: Optional[Dict[str, Any]] = Field(default_factory=dict)
     payload_complete: bool = False
     clarification_question: Optional[str] = None
     clarification_options: Optional[List[Dict[str, Any]]] = None  # Clickable options for clarification
+    clarification_data: Optional[Dict[str, Any]] = None  # Additional clarification data (e.g., upload requests)
     waiting_for_user: bool = False
+    waiting_for_upload: bool = False  # Whether the agent is waiting for a file upload
+    upload_type: Optional[str] = None  # Type of upload expected ('image', 'video', etc.)
     result: Optional[str] = None
     error: Optional[str] = None
     current_step: str = "intent_classification"
@@ -1166,6 +1264,20 @@ class AgentState(BaseModel):
     lead_items: Optional[List[Dict[str, Any]]] = None  # Structured lead data for frontend card rendering
     needs_connection: Optional[bool] = None  # Whether user needs to connect an account
     connection_platform: Optional[str] = None  # Platform that needs to be connected
+    intent_change_detected: bool = False  # Whether an intent change was detected
+    previous_intent: Optional[str] = None  # Previous intent before change
+    intent_change_type: str = "none"  # Type of intent change: 'none', 'refinement', 'complete_shift'
+    # Temporary fields for PII handling
+    temp_original_email: Optional[str] = None
+    temp_original_phone: Optional[str] = None
+    temp_filter_emails: Optional[List[str]] = None
+    temp_filter_phones: Optional[List[str]] = None
+    temp_original_emails: Optional[List[str]] = None
+    temp_original_phones: Optional[List[str]] = None
+    temp_delete_emails: Optional[List[str]] = None
+    temp_delete_phones: Optional[List[str]] = None
+    temp_followup_emails: Optional[List[str]] = None
+    temp_followup_phones: Optional[List[str]] = None
 
     # Temporary fields for PII privacy protection
     temp_original_email: Optional[str] = None  # Original email from user input (create operations)
@@ -1190,6 +1302,54 @@ class AgentState(BaseModel):
 
 # ==================== INTENT CLASSIFICATION ====================
 
+def get_intent_change_message(from_intent: str, to_intent: str, agent_name: str = None) -> str:
+    """Generate a helpful message explaining what the AI can do for the new intent"""
+
+    # Map intents to agents
+    intent_to_agent = {
+        "create_content": "Leo",
+        "edit_content": "Leo",
+        "delete_content": "Emily",
+        "view_content": "Emily",
+        "publish_content": "Emily",
+        "schedule_content": "Emily",
+        "create_leads": "Chase",
+        "view_leads": "Chase",
+        "edit_leads": "Chase",
+        "delete_leads": "Chase",
+        "follow_up_leads": "Chase",
+        "view_insights": "Orion",
+        "view_analytics": "Orion"
+    }
+
+    # Determine agent name
+    if not agent_name:
+        agent_name = intent_to_agent.get(to_intent, "Emily")  # Default to Emily
+
+    intent_help = {
+        "create_content": "I can help you create engaging content for social media platforms like Instagram, Facebook, LinkedIn, and YouTube. Tell me your topic and target audience, and I'll craft compelling posts, captions, and hashtags.",
+        "edit_content": "I can help you modify your existing content. Show me which content you'd like to edit and what changes you need, and I'll help refine it for better engagement.",
+        "delete_content": "I can help you remove content from your social media platforms. Just specify which content and platform, and I'll assist with the deletion process.",
+        "view_content": "I can show you all your created content across different platforms. I can filter by platform, date, or status to help you find exactly what you're looking for.",
+        "publish_content": "I can help you publish your content to social media platforms. Tell me which content and when you'd like it published, and I'll handle the publishing process.",
+        "schedule_content": "I can help you schedule content for future publishing. Choose your content, set the date and time, and I'll ensure it gets posted at the right moment.",
+        "create_leads": "I can help you create and manage leads from various sources. Provide lead details and I'll help you organize and track them effectively.",
+        "view_leads": "I can show you all your leads with filtering options. You can view leads by status, source, or date to track your sales pipeline.",
+        "edit_leads": "I can help you update lead information. Tell me which lead and what information needs to be changed, and I'll assist with the updates.",
+        "delete_leads": "I can help you remove leads from your system. Just specify which leads and I'll assist with the deletion process.",
+        "follow_up_leads": "I can help you manage follow-ups with your leads. I can suggest follow-up strategies, create messages, and track interactions.",
+        "view_insights": "I can show you detailed analytics and insights about your content performance across all platforms. Get metrics on engagement, reach, and growth.",
+        "view_analytics": "I can provide comprehensive analytics about your social media performance. Track follower growth, engagement rates, and content performance over time."
+    }
+
+    from_display = from_intent.replace('_', ' ')
+    to_display = to_intent.replace('_', ' ')
+
+    help_text = intent_help.get(to_intent, "I can help you with this task. Just let me know what you need assistance with.")
+
+    return f"Hey, I am {agent_name}! I can help you with {to_display}.\n\n{help_text}\n\nHow can I assist you with this?"
+
+
 INTENT_MAP = {
     "greeting": None,  # No payload needed for greetings
     "general_talks": None,  # No payload needed for general conversation
@@ -1209,6 +1369,145 @@ INTENT_MAP = {
 }
 
 
+def detect_intent_changes(state: AgentState) -> AgentState:
+    """Continuously monitor for intent changes throughout conversation using LLM"""
+    if not state.intent:
+        return state
+
+    # Skip intent detection for very short responses to clarifications
+    last_message = state.user_query.strip().split('\n')[-1].strip()
+
+    # Special case: skip intent detection for media upload messages
+    if last_message.lower() == "[media_upload]":
+        print(f"   Skipping intent detection for media upload message")
+        return state
+
+    if len(last_message.split()) <= 2:  # Reduced from 3 to 2 for more sensitivity
+        print(f"   Skipping intent detection for short response: '{last_message}'")
+        # Likely a short clarification response, preserve current intent
+        return state
+
+    # Prepare conversation context for intent analysis
+    conversation_context = f"""
+You are an intent change detector. Analyze if the user has changed their intent.
+
+Current Intent: {state.intent}
+Full Conversation: {state.user_query}
+
+CORE INTENTS: greeting, general_talks, create_content, edit_content, delete_content, view_content, publish_content, schedule_content, create_leads, view_leads, edit_leads, delete_leads, follow_up_leads, view_insights, view_analytics
+
+TASK: Determine if the user's LATEST message indicates a change in intent.
+
+Return ONLY ONE of these exact formats:
+"same_intent"
+"intent_changed: create_content"
+"intent_changed: edit_content"
+"intent_changed: delete_content"
+"intent_changed: view_content"
+"intent_changed: publish_content"
+"intent_changed: schedule_content"
+"intent_changed: create_leads"
+"intent_changed: view_leads"
+"intent_changed: edit_leads"
+"intent_changed: delete_leads"
+"intent_changed: follow_up_leads"
+"intent_changed: view_insights"
+"intent_changed: view_analytics"
+"intent_changed: greeting"
+"intent_changed: general_talks"
+
+EXAMPLES:
+- User says "Actually, show me my leads" → intent_changed: view_leads
+- User says "Instagram platform" as clarification → same_intent
+- User says "Nevermind, delete that post instead" → intent_changed: delete_content
+- User says "How are my analytics?" → intent_changed: view_analytics
+- User says "Schedule this for tomorrow" → intent_changed: schedule_content
+"""
+
+    try:
+        print(f"🔍 Checking for intent changes in conversation...")
+        print(f"   Current intent: {state.intent}")
+        print(f"   Last message: {last_message[:100]}...")
+
+        response = model.generate_content(conversation_context)
+        result = response.text.strip().lower()
+
+        print(f"   LLM Response: {result}")
+
+        if result.startswith("intent_changed:"):
+            # Extract new intent
+            new_intent = result.split(":", 1)[1].strip()
+
+            print(f"   Detected intent change to: {new_intent}")
+
+            # Validate the new intent
+            if new_intent in INTENT_MAP:
+                # Intent change detected!
+                old_intent = state.intent
+
+                # Update intent change tracking
+                state.intent_change_detected = True
+                state.previous_intent = old_intent
+
+                # Determine change type
+                content_intents = ['create_content', 'edit_content', 'delete_content', 'view_content', 'publish_content', 'schedule_content']
+                lead_intents = ['create_leads', 'view_leads', 'edit_leads', 'delete_leads', 'follow_up_leads']
+                analytics_intents = ['view_insights', 'view_analytics']
+
+                old_category = None
+                new_category = None
+
+                if old_intent in content_intents:
+                    old_category = 'content'
+                elif old_intent in lead_intents:
+                    old_category = 'leads'
+                elif old_intent in analytics_intents:
+                    old_category = 'analytics'
+
+                if new_intent in content_intents:
+                    new_category = 'content'
+                elif new_intent in lead_intents:
+                    new_category = 'leads'
+                elif new_intent in analytics_intents:
+                    new_category = 'analytics'
+
+                if old_category == new_category:
+                    state.intent_change_type = 'refinement'
+                else:
+                    state.intent_change_type = 'complete_shift'
+
+                # Update intent
+                state.intent = new_intent
+
+                # Handle the change
+                if state.intent_change_type == 'complete_shift':
+                    # Reset state for complete shifts
+                    state.payload = {}
+                    state.payload_complete = False
+                    state.clarification_question = None
+                    state.clarification_options = None
+                    state.waiting_for_user = False
+                    state.result = get_intent_change_message(old_intent, new_intent)
+                    state.current_step = "payload_construction"  # Restart payload construction
+
+                print(f"🎯 Continuous intent change detected: {old_intent} → {new_intent} ({state.intent_change_type})")
+
+            else:
+                print(f"⚠️ Detected invalid intent change: {new_intent}, keeping current intent")
+
+        else:
+            print(f"   No intent change detected, continuing with {state.intent}")
+            # If no change detected, continue with current intent
+            return state
+
+    except Exception as e:
+        print(f"❌ Error in continuous intent detection: {e}")
+        import traceback
+        print(f"   Traceback: {traceback.format_exc()}")
+        # On error, preserve current intent
+        return state
+
+
 def classify_intent(state: AgentState) -> AgentState:
     """Classify user intent using Gemini"""
     
@@ -1218,11 +1517,19 @@ def classify_intent(state: AgentState) -> AgentState:
         print(f" Intent preserved: {state.intent} (continuing from clarification)")
         return state
     
-    # Check for greetings first (simple pattern matching)
+    # Check for special upload message that should preserve existing intent
     user_query_lower = state.user_query.lower().strip()
-    greeting_words = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 
+    if user_query_lower == "[media_upload]":
+        # This is an upload completion - preserve existing intent and continue
+        if state.intent:
+            print(f" Media upload detected, preserving intent: {state.intent}")
+            state.current_step = "payload_construction"
+            return state
+
+    # Check for greetings first (simple pattern matching)
+    greeting_words = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening',
                       'greetings', 'howdy', 'what\'s up', 'whats up', 'sup', 'yo']
-    
+
     if any(greeting in user_query_lower for greeting in greeting_words) and len(user_query_lower.split()) <= 5:
         state.intent = "greeting"
         state.current_step = "action_execution"
@@ -1267,7 +1574,71 @@ If the query doesn't match any specific task, return "general_talks"."""
             else:
                 # Default to general_talks for unmatched intents
                 intent = "general_talks"
-        
+
+        # Intent Change Detection
+        previous_intent = state.intent
+        if previous_intent and previous_intent != intent:
+            state.intent_change_detected = True
+
+            # Determine change type
+            content_intents = ['create_content', 'edit_content', 'delete_content', 'view_content', 'publish_content', 'schedule_content']
+            lead_intents = ['create_leads', 'view_leads', 'edit_leads', 'delete_leads', 'follow_up_leads']
+            analytics_intents = ['view_insights', 'view_analytics']
+
+            prev_category = None
+            new_category = None
+
+            if previous_intent in content_intents:
+                prev_category = 'content'
+            elif previous_intent in lead_intents:
+                prev_category = 'leads'
+            elif previous_intent in analytics_intents:
+                prev_category = 'analytics'
+            elif previous_intent in ['greeting', 'general_talks']:
+                prev_category = 'conversation'
+
+            if intent in content_intents:
+                new_category = 'content'
+            elif intent in lead_intents:
+                new_category = 'leads'
+            elif intent in analytics_intents:
+                new_category = 'analytics'
+            elif intent in ['greeting', 'general_talks']:
+                new_category = 'conversation'
+
+            if prev_category == new_category and prev_category != 'conversation':
+                state.intent_change_type = 'refinement'
+            else:
+                state.intent_change_type = 'complete_shift'
+
+            state.previous_intent = previous_intent
+
+            # Store full conversation and isolate latest message for clean classification
+            if not state.full_conversation:
+                state.full_conversation = state.user_query  # Preserve complete conversation history
+            # Use only the latest message for intent classification (last non-empty line)
+            source_text = state.full_conversation or state.user_query
+            conversation_lines = [line.strip() for line in source_text.split('\n') if line.strip()]
+            state.user_query = conversation_lines[-1] if conversation_lines else source_text
+
+            print(f"🎯 Intent change detected: {previous_intent} → {intent} ({state.intent_change_type})")
+
+            # For complete shifts, add a brief acknowledgment and reset state
+            if state.intent_change_type == 'complete_shift':
+                state.result = get_intent_change_message(previous_intent, intent)
+                # Reset payload and clarification state for complete shifts
+                state.payload = {}
+                state.payload_complete = False
+                state.clarification_question = None
+                state.clarification_options = None
+                state.waiting_for_user = False
+                print(f"📝 Added intent change acknowledgment for complete shift and reset state")
+
+        else:
+            state.intent_change_detected = False
+            state.intent_change_type = 'none'
+            state.previous_intent = previous_intent or intent
+
         state.intent = intent
         
         # For greeting, handle directly and end
@@ -1303,78 +1674,86 @@ Return ONLY the JSON object, nothing else."""
 
 def construct_create_content_payload(state: AgentState) -> AgentState:
     """Construct payload for create content task"""
-    
+
     # Use user_query which contains the full conversation context
     conversation = state.user_query
-    
+
     prompt = f"""You are extracting information to create content. Analyze the user's query and extract relevant fields.
 
 User conversation:
 {conversation}
 
 Extract these fields if mentioned:
-- channel: "Social Media", "Blog", "Email", or "messages"
-- platform: "Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", or "Whatsapp"
-- content_type: "Post", "short video", "long video", "Email", or "message"
+- channel: "Social Media" or "Blog"
+- platform: "Instagram", "Facebook", "LinkedIn", or "Youtube"
+- content_type: "static_post", "carousel", "short_video or reel", "long_video", or "blog"
 - media: "Generate", "Upload", or "without media"
 - content_idea: The main idea/topic for the content (minimum 10 words)
-- post_design_type: The style/type of post (News, Trendy, Educational, Informative, Announcement, BTS, UGC, etc.)
-- image_type: The type of image/visual (product photo, poster graphic, quote card, infographic, etc.)
 
-IMPORTANT: Do NOT set post_design_type to null - if not mentioned, omit it entirely so clarifying question is asked.
-For image_type, only include if explicitly mentioned in the context of image generation.
+SPECIAL RULE: If user says something generic like "i want to post", "make a post", "create a post", or similar vague post requests, set content_type to null (do not classify it automatically). Only set content_type if they specify the exact type like "static post", "carousel", "short video", etc.
+
+Based on the content_idea and overall context, classify:
+- Post_type: Choose ONE from ["Educational tips", "Quote / motivation", "Promotional offer", "Product showcase", "Carousel infographic", "Announcement", "Testimonial / review", "Before–after", "Behind-the-scenes", "User-generated content", "Brand story", "Meme / humor", "Facts / did-you-know", "Event highlight", "Countdown", "FAQ post", "Comparison", "Case study snapshot", "Milestone / achievement", "Call-to-action post"] or return null
+- Image_type: Choose ONE from ["Minimal & Clean with Bold Typography", "Modern Corporate / B2B Professional", "Luxury Editorial (Black, White, Gold Accents)", "Photography-Led Lifestyle Aesthetic", "Product-Focused Clean Commercial Style", "Flat Illustration with Friendly Characters", "Isometric / Explainer Illustration Style", "Playful & Youthful (Memphis / Stickers / Emojis)", "High-Impact Color-Blocking with Loud Type", "Retro / Vintage Poster Style", "Futuristic Tech / AI-Inspired Dark Mode", "Glassmorphism / Neumorphism UI Style", "Abstract Shapes & Fluid Gradient Art", "Infographic / Data-Driven Educational Layout", "Quote Card / Thought-Leadership Typography Post", "Meme-Style / Social-Native Engagement Post", "Festive / Campaign-Based Creative", "Textured Design (Paper, Grain, Handmade Feel)", "Magazine / Editorial Layout with Strong Hierarchy", "Experimental / Artistic Concept-Driven Design"] or return null
 
 Examples:
 
-Query: "Create a trendy Instagram post about sustainable fashion trends for 2025"
+Query: "Create an Instagram static post about sustainable fashion trends for 2025"
 {{
     "channel": "Social Media",
     "platform": "Instagram",
-    "content_type": "Post",
+    "content_type": "static_post",
     "media": null,
     "content_idea": "sustainable fashion trends for 2025 including eco-friendly materials and circular economy practices",
-    "post_design_type": "Trendy"
+    "Post_type": "Educational tips",
+    "Image_type": "Photography-Led Lifestyle Aesthetic"
 }}
 
-Query: "I need an informative LinkedIn video discussing AI impact on healthcare"
+Query: "Create a carousel post for Facebook"
+{{
+    "channel": "Social Media",
+    "platform": "Facebook",
+    "content_type": "carousel",
+    "media": null,
+    "content_idea": null,
+    "Post_type": null,
+    "Image_type": null
+}}
+
+Query: "I want to post something"
+{{
+    "channel": null,
+    "platform": null,
+    "content_type": null,
+    "media": null,
+    "content_idea": null,
+    "Post_type": null,
+    "Image_type": null
+}}
+
+Query: "I need a LinkedIn short video discussing AI impact on healthcare"
 {{
     "channel": "Social Media",
     "platform": "LinkedIn",
-    "content_type": "short video",
+    "content_type": "short_video or reel",
     "media": null,
     "content_idea": "artificial intelligence impact on healthcare industry transformation including diagnostics and patient care",
-    "post_design_type": "Informative"
+    "Post_type": "Educational tips",
+    "Image_type": "Modern Corporate / B2B Professional"
 }}
 
-Query: "Write an educational blog post with infographics about productivity hacks for remote workers"
+Query: "Write a blog post with images about productivity hacks for remote workers"
 {{
     "channel": "Blog",
     "platform": null,
-    "content_type": "Post",
+    "content_type": "blog",
     "media": "Generate",
     "content_idea": "productivity hacks for remote workers including time management techniques and workspace optimization strategies",
-    "post_design_type": "Educational",
-    "image_type": "Infographic"
+    "Post_type": "Educational tips",
+    "Image_type": "Infographic / Data-Driven Educational Layout"
 }}
 
-Query: "Create an educational Instagram post with a quote card about learning new skills"
-{{
-    "channel": "Social Media",
-    "platform": "Instagram",
-    "content_type": "Post",
-    "media": "Generate",
-    "content_idea": "importance of continuous learning and skill development in today's fast-paced world",
-    "post_design_type": "Educational",
-    "image_type": "Quote card"
-}}
-
-Extract ONLY explicitly mentioned information.
-
-IMPORTANT RULES:
-- Set basic fields (channel, platform, content_type, media, content_idea) to null if not mentioned
-- For post_design_type: ONLY include if explicitly mentioned as a post style/type, otherwise omit entirely
-- For image_type: ONLY include if explicitly mentioned in context of image generation, otherwise omit entirely
-
+Extract ONLY explicitly mentioned information. For classification fields, set to null if not applicable. Set fields to null if not mentioned.
 {JSON_ONLY_INSTRUCTION}"""
 
     return _extract_payload(state, prompt)
@@ -1386,36 +1765,76 @@ def construct_edit_content_payload(state: AgentState) -> AgentState:
     # Use user_query which contains the full conversation context
     conversation = state.user_query
     
-    prompt = f"""You are extracting information to edit existing content.
+    prompt = f"""You are extracting information for editing content. The user may be:
+1. Searching for content to edit (provide filters to find content)
+2. Selecting specific content and providing edit instructions (provide content_id and edit_instruction)
 
 User conversation:
 {conversation}
 
 Extract these fields if mentioned:
-- channel: "Social Media", "Blog", "Email", or "messages"
-- platform: "Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", or "Whatsapp"
-- content_type: "Image" or "text"
-- content_id: Specific content identifier
-- edit_instruction: What changes to make
+- channel: "Social Media" or "Blog"
+- platform: "Instagram", "Facebook", "LinkedIn", or "Youtube"
+- date_range: Natural language date like "yesterday", "today", "this week", "last week"
+- status: "generated", "scheduled", or "published"
+- content_type: "post", "short_video", "long_video", "blog", "email"
+- content_id: Specific content identifier (UUID) if user selects specific content
+- query: Search keywords for finding content
+- edit_instruction: What changes to make to the content
+
+CONTENT SELECTION PATTERNS:
+- "content 1", "content 2", "edit content 3" → refers to content shown in numbered list (will be mapped to actual content_id)
+- "the Instagram post", "the Facebook post" → refers to specific content by description
+- Specific UUID or content ID → direct content selection
+- "content_1", "content_2" → direct content reference by number
 
 Examples:
 
-Query: "Edit my Instagram post from yesterday to add more emojis"
+Query: "Edit my Instagram post from yesterday"
 {{
     "channel": "Social Media",
     "platform": "Instagram",
-    "content_type": "text",
+    "date_range": "yesterday",
+    "content_type": "post",
     "content_id": null,
-    "edit_instruction": "add more emojis to the post"
+    "query": null,
+    "edit_instruction": null
 }}
 
-Query: "Change the text in my LinkedIn article about AI to be more professional"
+Query: "Edit content 1 to add more emojis"
 {{
-    "channel": "Social Media",
+    "content_id": "content_1",
+    "edit_instruction": "add more emojis",
+    "channel": null,
+    "platform": null,
+    "date_range": null,
+    "status": null,
+    "content_type": null,
+    "query": null
+}}
+
+Query: "Change the LinkedIn post about AI to be more professional"
+{{
     "platform": "LinkedIn",
-    "content_type": "text",
+    "query": "AI",
+    "edit_instruction": "make more professional",
     "content_id": null,
-    "edit_instruction": "make the text more professional and formal"
+    "channel": null,
+    "date_range": null,
+    "status": null,
+    "content_type": null
+}}
+
+Query: "Add hashtags to content 3"
+{{
+    "content_id": "content_3",
+    "edit_instruction": "add hashtags",
+    "channel": null,
+    "platform": null,
+    "date_range": null,
+    "status": null,
+    "content_type": null,
+    "query": null
 }}
 
 Extract ONLY explicitly mentioned information. Set fields to null if not mentioned.
@@ -1453,8 +1872,8 @@ User conversation:
 {conversation}
 
 Extract these fields ONLY if explicitly mentioned:
-- channel: "Social Media", "Blog", "Email", or "messages"
-- platform: "Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", or "Whatsapp"
+- channel: "Social Media" or "Blog"
+- platform: "Instagram", "Facebook", "LinkedIn", or "Youtube"
 - date_range: PARSE dates into YYYY-MM-DD format (e.g., "2025-12-27") or date ranges like "2025-12-20 to 2025-12-27"
 - status: "generated", "scheduled", or "published"
 - content_id: Specific content identifier
@@ -1551,12 +1970,13 @@ User conversation:
 {conversation}
 
 Extract these fields ONLY if explicitly mentioned:
-- channel: "Social Media", "Blog", "Email", or "messages"
-- platform: "Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", or "Whatsapp"
+- channel: "Social Media" or "Blog"
+- platform: "Instagram", "Facebook", "LinkedIn", or "Youtube"
 - date_range: PARSE dates into YYYY-MM-DD format (e.g., "2025-12-27") or date ranges like "2025-12-20 to 2025-12-27"
 - status: "generated", "scheduled", or "published"
 - content_type: "post", "short_video", "long_video", "blog", "email", or "message"
 - query: Any search terms or phrases the user wants to search for in content (e.g., "posts for new year", "christmas content", "product launch")
+- all: Set to true if user wants to see ALL posts without any limits (e.g., "show all posts", "all posts", "every post")
 
 CRITICAL DATE PARSING RULES:
 - Parse ALL date mentions into YYYY-MM-DD format without errors
@@ -1616,11 +2036,13 @@ Your response must start with {{ and end with }}. No other text is allowed.
 
 Return ONLY this format:
 {{
-    "channel": null or "Social Media" or "Blog" or "Email" or "messages",
-    "platform": null or "Instagram" or "Facebook" or "LinkedIn" or "Youtube" or "Gmail" or "Whatsapp",
+    "channel": null or "Social Media" or "Blog",
+    "platform": null or "Instagram" or "Facebook" or "LinkedIn" or "Youtube",
     "date_range": null or "YYYY-MM-DD" or "YYYY-MM-DD to YYYY-MM-DD",
     "status": null or "generated" or "scheduled" or "published",
-    "content_type": null or "post" or "short_video" or "long_video" or "blog" or "email" or "message"
+    "content_type": null or "post" or "short_video" or "long_video" or "blog",
+    "query": null or "search phrase",
+    "all": null or true
 }}"""
 
     return _extract_payload(state, prompt)
@@ -1655,8 +2077,8 @@ User conversation:
 {conversation}
 
 Extract these fields ONLY if explicitly mentioned:
-- channel: "Social Media", "Blog", "Email", or "messages"
-- platform: "Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", or "Whatsapp"
+- channel: "Social Media" or "Blog"
+- platform: "Instagram", "Facebook", "LinkedIn", or "Youtube"
 - date_range: PARSE dates into YYYY-MM-DD format (e.g., "2025-12-27") or date ranges like "2025-12-20 to 2025-12-27"
 - status: "generated", "scheduled"
 - content_id: Specific content identifier (e.g., "abc123", "content_001")
@@ -1724,8 +2146,8 @@ Extract ONLY explicitly mentioned information. Set fields to null if not mention
 
 Return ONLY this format:
 {{
-    "channel": null or "Social Media" or "Blog" or "Email" or "messages",
-    "platform": null or "Instagram" or "Facebook" or "LinkedIn" or "Youtube" or "Gmail" or "Whatsapp",
+    "channel": null or "Social Media" or "Blog",
+    "platform": null or "Instagram" or "Facebook" or "LinkedIn" or "Youtube",
     "date_range": null or "YYYY-MM-DD" or "YYYY-MM-DD to YYYY-MM-DD",
     "status": null or "generated" or "scheduled",
     "content_id": null or string,
@@ -1748,8 +2170,10 @@ def construct_schedule_content_payload(state: AgentState) -> AgentState:
 User conversation:
 {conversation}
 
-Extract these fields ONLY if explicitly mentioned:
-- content_id: Specific content identifier (if user mentions a specific post by ID)
+Extract these fields if mentioned:
+- channel: "Social Media" or "Blog"
+- platform: "Instagram", "Facebook", "LinkedIn", or "Youtube"
+- content_id: Specific content identifier
 - schedule_date: Date to publish (format: YYYY-MM-DD or relative like "tomorrow", "next Monday")
 - schedule_time: Time to publish (format: HH:MM or "morning", "afternoon", "evening")
 
@@ -2214,8 +2638,8 @@ User conversation:
 {conversation}
 
 Extract these fields if mentioned:
-- channel: "Social Media", "Blog", "Email", or "messages"
-- platform: "Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", or "Whatsapp"
+- channel: "Social Media" or "Blog"
+- platform: "Instagram", "Facebook", "LinkedIn", or "Youtube"
 - metrics: List of metrics (engagement, reach, clicks, conversions, etc.)
 - date_range: "today", "this week", "last week", "yesterday", or "custom date"
 
@@ -2263,8 +2687,8 @@ User conversation:
 {conversation}
 
 Extract these fields if mentioned:
-- channel: "Social Media", "Blog", "Email", or "messages"
-- platform: "Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", or "Whatsapp"
+- channel: "Social Media" or "Blog"
+- platform: "Instagram", "Facebook", "LinkedIn", or "Youtube"
 - date_range: "today", "this week", "last week", "yesterday", or "custom date"
 
 Examples:
@@ -2380,16 +2804,10 @@ def _extract_payload(state: AgentState, prompt: str) -> AgentState:
             if state.payload:
                 # Only update fields that are not null in the extracted payload
                 for key, value in extracted_payload.items():
-                    # For required clarifying question fields, treat null as "not present"
-                    if key in ['post_design_type', 'image_type'] and value is None:
-                        continue  # Skip null values for clarifying question fields
-                    elif value is not None:
+                    if value is not None:
                         state.payload[key] = value
             else:
-                # Filter out null values for clarifying question fields
-                filtered_payload = {k: v for k, v in extracted_payload.items()
-                                  if not (k in ['post_design_type', 'image_type'] and v is None)}
-                state.payload = filtered_payload
+                state.payload = extracted_payload
             
             state.current_step = "payload_completion"
             print(f" Payload constructed: {state.payload}")
@@ -2424,9 +2842,7 @@ FIELD_CLARIFICATIONS = {
             "question": "Hello! Let's create some content together.\n\nWhich channel would you like to focus on?",
             "options": [
                 {"label": "Social Media", "value": "Social Media"},
-                {"label": "Blog", "value": "Blog"},
-                {"label": "Email", "value": "Email"},
-                {"label": "Messages", "value": "Messages"}
+                {"label": "Blog", "value": "Blog"}
             ]
         },
         "platform": {
@@ -2435,19 +2851,17 @@ FIELD_CLARIFICATIONS = {
                 {"label": "Instagram", "value": "Instagram"},
                 {"label": "Facebook", "value": "Facebook"},
                 {"label": "LinkedIn", "value": "LinkedIn"},
-                {"label": "YouTube", "value": "YouTube"},
-                {"label": "Gmail", "value": "Gmail"},
-                {"label": "WhatsApp", "value": "WhatsApp"}
+                {"label": "YouTube", "value": "YouTube"}
             ]
         },
         "content_type": {
             "question": "Perfect! What kind of content are you thinking?",
             "options": [
-                {"label": "Post", "value": "Post"},
-                {"label": "Short video", "value": "Short video"},
-                {"label": "Long video", "value": "Long video"},
-                {"label": "Email", "value": "Email"},
-                {"label": "Message", "value": "Message"}
+                {"label": "Static Post", "value": "static_post"},
+                {"label": "Carousel", "value": "carousel"},
+                {"label": "Short Video/Reel", "value": "short_video or reel"},
+                {"label": "Long Video", "value": "long_video"},
+                {"label": "Blog Post", "value": "blog"}
             ]
         },
         "media": {
@@ -2462,45 +2876,111 @@ FIELD_CLARIFICATIONS = {
             "question": "Love it! Tell me more about what you have in mind. What's the main idea or topic you want to cover? (Aim for at least 10 words to give me a good sense of what you're looking for)",
             "options": []
         },
-        "post_design_type": {
-            "question": "What kind of post design are you looking for? (News, Trendy, Educational, Informative, Announcement, BTS, UGC, etc.)",
-            "options": []
+        "Post_type": {
+            "question": "What kind of post are you thinking of?",
+            "options": [],  # No multiple choice options - open-ended
+            "full_options": [  # Full list for contextual LLM suggestion
+                {"label": "Educational tips", "value": "Educational tips"},
+                {"label": "Quote / motivation", "value": "Quote / motivation"},
+                {"label": "Promotional offer", "value": "Promotional offer"},
+                {"label": "Product showcase", "value": "Product showcase"},
+                {"label": "Carousel infographic", "value": "Carousel infographic"},
+                {"label": "Announcement", "value": "Announcement"},
+                {"label": "Testimonial / review", "value": "Testimonial / review"},
+                {"label": "Before–after", "value": "Before–after"},
+                {"label": "Behind-the-scenes", "value": "Behind-the-scenes"},
+                {"label": "User-generated content", "value": "User-generated content"},
+                {"label": "Brand story", "value": "Brand story"},
+                {"label": "Meme / humor", "value": "Meme / humor"},
+                {"label": "Facts / did-you-know", "value": "Facts / did-you-know"},
+                {"label": "Event highlight", "value": "Event highlight"},
+                {"label": "Countdown", "value": "Countdown"},
+                {"label": "FAQ post", "value": "FAQ post"},
+                {"label": "Comparison", "value": "Comparison"},
+                {"label": "Case study snapshot", "value": "Case study snapshot"},
+                {"label": "Milestone / achievement", "value": "Milestone / achievement"},
+                {"label": "Call-to-action post", "value": "Call-to-action post"}
+            ]
         },
-        "image_type": {
-            "question": "What type of image would you like? (e.g., product photo, poster graphic, quote card, infographic, etc.)",
-            "options": []
+        "Image_type": {
+            "question": "What's the visual style you have in mind for your images?",
+            "options": [],  # No multiple choice options - open-ended
+            "full_options": [  # Full list for contextual LLM suggestion
+                {"label": "Minimal & Clean with Bold Typography", "value": "Minimal & Clean with Bold Typography"},
+                {"label": "Modern Corporate / B2B Professional", "value": "Modern Corporate / B2B Professional"},
+                {"label": "Luxury Editorial (Black, White, Gold Accents)", "value": "Luxury Editorial (Black, White, Gold Accents)"},
+                {"label": "Photography-Led Lifestyle Aesthetic", "value": "Photography-Led Lifestyle Aesthetic"},
+                {"label": "Product-Focused Clean Commercial Style", "value": "Product-Focused Clean Commercial Style"},
+                {"label": "Flat Illustration with Friendly Characters", "value": "Flat Illustration with Friendly Characters"},
+                {"label": "Isometric / Explainer Illustration Style", "value": "Isometric / Explainer Illustration Style"},
+                {"label": "Playful & Youthful (Memphis / Stickers / Emojis)", "value": "Playful & Youthful (Memphis / Stickers / Emojis)"},
+                {"label": "High-Impact Color-Blocking with Loud Type", "value": "High-Impact Color-Blocking with Loud Type"},
+                {"label": "Retro / Vintage Poster Style", "value": "Retro / Vintage Poster Style"},
+                {"label": "Futuristic Tech / AI-Inspired Dark Mode", "value": "Futuristic Tech / AI-Inspired Dark Mode"},
+                {"label": "Glassmorphism / Neumorphism UI Style", "value": "Glassmorphism / Neumorphism UI Style"},
+                {"label": "Abstract Shapes & Fluid Gradient Art", "value": "Abstract Shapes & Fluid Gradient Art"},
+                {"label": "Infographic / Data-Driven Educational Layout", "value": "Infographic / Data-Driven Educational Layout"},
+                {"label": "Quote Card / Thought-Leadership Typography Post", "value": "Quote Card / Thought-Leadership Typography Post"},
+                {"label": "Meme-Style / Social-Native Engagement Post", "value": "Meme-Style / Social-Native Engagement Post"},
+                {"label": "Festive / Campaign-Based Creative", "value": "Festive / Campaign-Based Creative"},
+                {"label": "Textured Design (Paper, Grain, Handmade Feel)", "value": "Textured Design (Paper, Grain, Handmade Feel)"},
+                {"label": "Magazine / Editorial Layout with Strong Hierarchy", "value": "Magazine / Editorial Layout with Strong Hierarchy"},
+                {"label": "Experimental / Artistic Concept-Driven Design", "value": "Experimental / Artistic Concept-Driven Design"}
+            ]
         },
     },
     "edit_content": {
         "channel": {
-            "question": "Let's edit some content! Which channel is your content currently on?",
+            "question": "Which channel contains the content you want to edit? I can help you edit content in Social Media, Blog, Email, or Messages.",
             "options": [
-                {"label": "Social Media", "value": "Social Media", "description": "Posts and updates"},
-                {"label": "Blog", "value": "Blog", "description": "Articles and long-form content"},
-                {"label": "Email", "value": "Email", "description": "Newsletters and campaigns"},
-                {"label": "Messages", "value": "Messages", "description": "Direct messaging content"}
+                {"label": "Social Media", "value": "Social Media"},
+                {"label": "Blog", "value": "Blog"}
             ]
         },
         "platform": {
-            "question": "Got it! Which platform are we working with?",
+            "question": "Which platform is your content on? I can help you edit content from Instagram, Facebook, LinkedIn, YouTube, Gmail, or WhatsApp.",
             "options": [
-                {"label": "Instagram", "value": "Instagram", "description": "Visual content"},
-                {"label": "Facebook", "value": "Facebook", "description": "Community posts"},
-                {"label": "LinkedIn", "value": "LinkedIn", "description": "Professional content"},
-                {"label": "YouTube", "value": "YouTube", "description": "Video content"},
-                {"label": "Gmail", "value": "Gmail", "description": "Email content"},
-                {"label": "WhatsApp", "value": "WhatsApp", "description": "Messages"}
+                {"label": "Instagram", "value": "Instagram"},
+                {"label": "Facebook", "value": "Facebook"},
+                {"label": "LinkedIn", "value": "LinkedIn"},
+                {"label": "YouTube", "value": "YouTube"}
+            ]
+        },
+        "date_range": {
+            "question": "When was the content created? I can help you find content from Today, This week, Last week, Yesterday, or you can specify a custom date range.",
+            "options": [
+                {"label": "Today", "value": "today"},
+                {"label": "This week", "value": "this week"},
+                {"label": "Last week", "value": "last week"},
+                {"label": "Yesterday", "value": "yesterday"},
+                {"label": "Custom date", "value": "show_date_picker"}
+            ]
+        },
+        "status": {
+            "question": "What status is the content you're looking to edit? I can help you edit Generated (drafts), Scheduled (waiting to publish), or Published content.",
+            "options": [
+                {"label": "Generated/Drafts", "value": "generated"},
+                {"label": "Scheduled", "value": "scheduled"},
+                {"label": "Published", "value": "published"}
             ]
         },
         "content_type": {
-            "question": "Perfect! What would you like to edit?",
+            "question": "What type of content would you like to edit? I can help you edit Posts, Short videos, Long videos, Blogs, Emails, or Messages.",
             "options": [
-                {"label": "Image", "value": "image", "description": "Update photos or graphics"},
-                {"label": "Text", "value": "text", "description": "Modify the written content"}
+                {"label": "Post", "value": "post"},
+                {"label": "Short video", "value": "short_video"},
+                {"label": "Long video", "value": "long_video"},
+                {"label": "Blog", "value": "blog"},
+                {"label": "Email", "value": "email"},
+                {"label": "Message", "value": "message"}
             ]
         },
+        "query": {
+            "question": "You can also search for specific content by keywords. What would you like to search for? (Leave empty to see all matching content)",
+            "options": []
+        },
         "edit_instruction": {
-            "question": "Sounds good! What changes would you like to make? Feel free to describe exactly what you want to update, change, or improve!",
+            "question": "Perfect! What changes would you like to make to this content? Feel free to describe exactly what you want to update, change, or improve!",
             "options": []
         },
     },
@@ -2509,9 +2989,7 @@ FIELD_CLARIFICATIONS = {
             "question": "Let's clean up some content! Which channel should we look in?",
             "options": [
                 {"label": "Social Media", "value": "Social Media"},
-                {"label": "Blog", "value": "Blog"},
-                {"label": "Email", "value": "Email"},
-                {"label": "Messages", "value": "Messages"}
+                {"label": "Blog", "value": "Blog"}
             ]
         },
         "platform": {
@@ -2520,9 +2998,7 @@ FIELD_CLARIFICATIONS = {
                 {"label": "Instagram", "value": "Instagram"},
                 {"label": "Facebook", "value": "Facebook"},
                 {"label": "LinkedIn", "value": "LinkedIn"},
-                {"label": "YouTube", "value": "YouTube"},
-                {"label": "Gmail", "value": "Gmail"},
-                {"label": "WhatsApp", "value": "WhatsApp"}
+                {"label": "YouTube", "value": "YouTube"}
             ]
         },
         "date_range": {
@@ -2549,9 +3025,7 @@ FIELD_CLARIFICATIONS = {
             "question": "Which channel would you like to explore? I can show you your content in Social Media, Blog, Email, or Messages.",
             "options": [
                 {"label": "Social Media", "value": "Social Media"},
-                {"label": "Blog", "value": "Blog"},
-                {"label": "Email", "value": "Email"},
-                {"label": "Messages", "value": "Messages"}
+                {"label": "Blog", "value": "Blog"}
             ]
         },
         "platform": {
@@ -2560,9 +3034,7 @@ FIELD_CLARIFICATIONS = {
                 {"label": "Instagram", "value": "Instagram"},
                 {"label": "Facebook", "value": "Facebook"},
                 {"label": "LinkedIn", "value": "LinkedIn"},
-                {"label": "YouTube", "value": "YouTube"},
-                {"label": "Gmail", "value": "Gmail"},
-                {"label": "WhatsApp", "value": "WhatsApp"}
+                {"label": "YouTube", "value": "YouTube"}
             ]
         },
         "date_range": {
@@ -2600,9 +3072,7 @@ FIELD_CLARIFICATIONS = {
             "question": "Which content do you want to publish? I can show you your content for Social Media, Blog, Email, or Messages.",
             "options": [
                 {"label": "Social Media", "value": "Social Media"},
-                {"label": "Blog", "value": "Blog"},
-                {"label": "Email", "value": "Email"},
-                {"label": "Messages", "value": "Messages"}
+                {"label": "Blog", "value": "Blog"}
             ]
         },
         "platform": {
@@ -2611,9 +3081,7 @@ FIELD_CLARIFICATIONS = {
                 {"label": "Instagram", "value": "Instagram"},
                 {"label": "Facebook", "value": "Facebook"},
                 {"label": "LinkedIn", "value": "LinkedIn"},
-                {"label": "YouTube", "value": "YouTube"},
-                {"label": "Gmail", "value": "Gmail"},
-                {"label": "WhatsApp", "value": "WhatsApp"}
+                {"label": "YouTube", "value": "YouTube"}
             ]
         },
         "date_range": {
@@ -2901,6 +3369,15 @@ def complete_view_content_payload(state: AgentState) -> AgentState:
         state.current_step = "action_execution"
         return state
 
+    # Give priority to "all" requests - if all is true, skip clarifying questions
+    if state.payload.get('all') and state.payload['all'] is True:
+        logger.info("'All posts' detected, skipping clarifying questions and proceeding with unlimited search")
+        state.payload_complete = True
+        state.current_step = "action_execution"
+        print(" View content payload complete - 'all posts' requested, proceeding without clarifications")
+        print(f"  Final payload: {state.payload}")
+        return state
+
     # Give priority to search queries - if query is present, skip clarifying questions
     if state.payload.get('query') and state.payload['query'].strip():
         logger.info("Search query detected, skipping clarifying questions and proceeding with search")
@@ -2916,7 +3393,13 @@ def complete_view_content_payload(state: AgentState) -> AgentState:
     # Convert date_range to start_date and end_date if present
     if state.payload.get("date_range") and state.payload["date_range"]:
         date_range = str(state.payload["date_range"]).strip()
-        date_filter = _parse_date_range_format(date_range)
+
+        # First try natural language date parsing (yesterday, today, this week, etc.)
+        date_filter = _get_date_range_filter(date_range)
+
+        if not date_filter:
+            # Fall back to YYYY-MM-DD format parsing
+            date_filter = _parse_date_range_format(date_range)
 
         if date_filter:
             # Successfully converted date_range to actual dates
@@ -2933,7 +3416,7 @@ def complete_view_content_payload(state: AgentState) -> AgentState:
     # Normalize platform if present (handle case)
     if state.payload.get("platform"):
         platform_val = str(state.payload["platform"]).strip()
-        valid_platforms = ["Instagram", "Facebook", "LinkedIn", "Youtube", "Gmail", "Whatsapp"]
+        valid_platforms = ["Instagram", "Facebook", "LinkedIn", "Youtube"]
         # Keep original case for platform (it's used as-is in queries)
         if platform_val.title() in [p.title() for p in valid_platforms]:
             state.payload["platform"] = platform_val
@@ -2948,15 +3431,11 @@ def complete_view_content_payload(state: AgentState) -> AgentState:
                 state.payload["platform"] = "LinkedIn"
             elif platform_lower in ["youtube", "yt"]:
                 state.payload["platform"] = "Youtube"
-            elif platform_lower == "gmail":
-                state.payload["platform"] = "Gmail"
-            elif platform_lower in ["whatsapp", "wa"]:
-                state.payload["platform"] = "Whatsapp"
     
     # Normalize channel if present
     if state.payload.get("channel"):
         channel_val = str(state.payload["channel"]).strip()
-        valid_channels = ["Social Media", "Blog", "Email", "messages"]
+        valid_channels = ["Social Media", "Blog"]
         if channel_val in valid_channels:
             state.payload["channel"] = channel_val
         else:
@@ -2966,10 +3445,6 @@ def complete_view_content_payload(state: AgentState) -> AgentState:
                 state.payload["channel"] = "Social Media"
             elif channel_lower == "blog":
                 state.payload["channel"] = "Blog"
-            elif channel_lower == "email":
-                state.payload["channel"] = "Email"
-            elif channel_lower in ["message", "messages"]:
-                state.payload["channel"] = "messages"
     
     # Normalize status if present
     if state.payload.get("status"):
@@ -2991,7 +3466,7 @@ def complete_view_content_payload(state: AgentState) -> AgentState:
     # Normalize content_type if present
     if state.payload.get("content_type"):
         content_type_val = str(state.payload["content_type"]).lower().strip()
-        valid_types = ["post", "short_video", "long_video", "blog", "email", "message"]
+        valid_types = ["post", "short_video", "long_video", "blog"]
         if content_type_val in valid_types:
             state.payload["content_type"] = content_type_val
         else:
@@ -3004,10 +3479,6 @@ def complete_view_content_payload(state: AgentState) -> AgentState:
                 state.payload["content_type"] = "long_video"
             elif content_type_val == "blog":
                 state.payload["content_type"] = "blog"
-            elif content_type_val == "email":
-                state.payload["content_type"] = "email"
-            elif content_type_val in ["message", "messages"]:
-                state.payload["content_type"] = "message"
             else:
                 state.payload["content_type"] = None
     
@@ -3054,34 +3525,164 @@ def complete_view_content_payload(state: AgentState) -> AgentState:
 
 def complete_create_content_payload(state: AgentState) -> AgentState:
     """Complete create_content payload"""
-    required_fields = ["channel", "platform", "content_type", "media", "content_idea", "post_design_type"]
+
+    # Define the clarification flow order (media last)
+    clarification_flow = ["channel", "platform", "content_type", "content_idea", "Post_type", "media"]
+
+    # Build required fields list based on current state
+    required_fields = []
+
+    # Check if all fields before media are complete
+    other_fields_complete = True
+    for field in clarification_flow[:-1]:  # All fields except media
+        if field == "Image_type":
+            # Only require Image_type if media is "Generate"
+            if state.payload.get("media") == "Generate":
+                if field not in state.payload or state.payload.get(field) is None or not state.payload.get(field):
+                    other_fields_complete = False
+                    break
+        elif field == "content_idea":
+            # Special handling for content_idea - check word count
+            content_idea = state.payload.get("content_idea", "")
+            if not content_idea or len(content_idea.split()) < 10:
+                other_fields_complete = False
+                break
+        else:
+            # Check if field is missing or empty
+            if field not in state.payload or state.payload.get(field) is None or not state.payload.get(field):
+                other_fields_complete = False
+                break
+
+    for field in clarification_flow:
+        if field == "Image_type":
+            # Only require Image_type if media is "Generate"
+            if state.payload.get("media") == "Generate":
+                if field not in state.payload or state.payload.get(field) is None or not state.payload.get(field):
+                    required_fields.append(field)
+        elif field == "content_idea":
+            # Special handling for content_idea - check word count
+            content_idea = state.payload.get("content_idea", "")
+            if not content_idea or len(content_idea.split()) < 10:
+                required_fields.append(field)
+        elif field == "media":
+            # Only ask for media if all other fields are complete
+            if other_fields_complete:
+                if field not in state.payload or state.payload.get(field) is None or not state.payload.get(field):
+                    required_fields.append(field)
+        else:
+            # Check if field is missing or empty
+            if field not in state.payload or state.payload.get(field) is None or not state.payload.get(field):
+                required_fields.append(field)
+
     clarifications = FIELD_CLARIFICATIONS.get("create_content", {})
 
-    # Add image_type as required if media is "Generate"
-    if state.payload.get("media") == "Generate":
-        required_fields.append("image_type")
-
-    missing_fields = [
-        f for f in required_fields
-        if f not in state.payload or state.payload.get(f) is None or not state.payload.get(f)
-    ]
-
-    if not missing_fields:
+    if not required_fields:
         state.payload_complete = True
         state.current_step = "action_execution"
         print(" Create content payload complete")
         return state
 
-    next_field = missing_fields[0]
+    next_field = required_fields[0]
     clarification_data = clarifications.get(next_field, {})
+
+    # Calculate remaining questions count
+    remaining_questions = len(required_fields)
 
     if isinstance(clarification_data, dict):
         base_question = clarification_data.get("question", f"Please provide: {next_field.replace('_', ' ')}")
 
+        # Question count will be included in the enhanced_base_question for personalization
+
+        # Special handling for channel options when content_type is a post type
+        if next_field == "channel":
+            content_type = state.payload.get("content_type")
+            print(f"DEBUG: Channel clarification - content_type is: {content_type}")
+            post_types = ["static_post", "carousel"]
+            if content_type in post_types:
+                # Filter channel options to only show Social Media for posts
+                original_options = clarification_data.get("options", [])
+                filtered_options = [
+                    option for option in original_options
+                    if option.get("value") in ["Social Media"]
+                ]
+        # Special handling for content_type options when platform is Instagram
+        elif next_field == "content_type":
+            platform = state.payload.get("platform")
+            print(f"DEBUG: Content type clarification - platform is: {platform}")
+            if platform == "Instagram":
+                # Filter out "Blog Post" for Instagram
+                original_options = clarification_data.get("options", [])
+                filtered_options = [
+                    option for option in original_options
+                    if option.get("value") != "blog"
+                ]
+                state.clarification_options = filtered_options
+                # Add question count to the base question that was already modified above
+                state.clarification_question = base_question
+                state.waiting_for_user = True
+                state.result = f"{base_question}\n\nPlease choose one of the options below:"
+                return state
+        # Special handling for media options when platform is Instagram
+        elif next_field == "media":
+            platform = state.payload.get("platform")
+            print(f"DEBUG: Media clarification - platform is: {platform}")
+            if platform == "Instagram":
+                # Filter out "Without media" for Instagram - Instagram requires visual content
+                original_options = clarification_data.get("options", [])
+                filtered_options = [
+                    option for option in original_options
+                    if option.get("value") != "Without media"
+                ]
+                state.clarification_options = filtered_options
+                # Add question count to the base question that was already modified above
+                state.clarification_question = base_question
+                state.waiting_for_user = True
+                state.result = f"{base_question}\n\nPlease choose one of the options below:"
+                return state
+                clarification_data = clarification_data.copy()
+                clarification_data["options"] = filtered_options
+                print(f"DEBUG: Filtered channel options to: {[opt.get('value') for opt in filtered_options]}")
+
+        # Special handling for platform options when channel is "Social Media"
+        if next_field == "platform":
+            channel = state.payload.get("channel")
+            print(f"DEBUG: Platform clarification - channel is: {channel}")
+            if channel == "Social Media":
+                # Filter platform options to only show social media platforms for Social Media channel
+                original_options = clarification_data.get("options", [])
+                filtered_options = [
+                    option for option in original_options
+                    if option.get("value") in ["Instagram", "Facebook", "LinkedIn", "YouTube"]
+                ]
+                clarification_data = clarification_data.copy()
+                clarification_data["options"] = filtered_options
+                print(f"DEBUG: Filtered platform options to: {[opt.get('value') for opt in filtered_options]}")
+
+        # Special handling for content_idea validation
+        if next_field == "content_idea":
+            existing_content = state.payload.get("content_idea", "")
+            if existing_content and len(existing_content.split()) < 10:
+                base_question = f"Your content idea is too short (needs at least 10 words). {base_question}"
+
+        # For Post_type and Image_type, get contextual LLM suggestion
+        if next_field in ["Post_type", "Image_type"]:
+            all_options = clarification_data.get("full_options", [])
+            if all_options:
+                contextual_suggestion = get_contextual_suggestion(
+                    field_type=next_field,
+                    conversation_context=state.user_query or "",
+                    all_options=all_options
+                )
+                base_question = f"{base_question} Based on what you've told me, how about '{contextual_suggestion}'? Or tell me your own preference!"
+
+        # Add remaining questions count to the question for personalization
+        question_count_context = f"I will ask you just {remaining_questions} more question{'s' if remaining_questions > 1 else ''} for further understanding."
+        enhanced_base_question = f"{question_count_context}\n\n{base_question}"
+
         # Generate personalized question using LLM
-        logger.info(f"Calling LLM for clarification question. Base: '{base_question}', User context length: {len(state.user_query or '')}")
+        logger.info(f"Calling LLM for clarification question. Base: '{enhanced_base_question}', User context length: {len(state.user_query or '')}")
         personalized_question = generate_clarifying_question(
-            base_question=base_question,
+            base_question=enhanced_base_question,
             user_context=state.user_query,
             user_input=state.user_query.split('\n')[-1] if state.user_query else ""
         )
@@ -3089,10 +3690,15 @@ def complete_create_content_payload(state: AgentState) -> AgentState:
 
         state.clarification_question = personalized_question
         state.clarification_options = clarification_data.get("options", [])
+        state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
     else:
         # Backward compatibility for string clarifications
-        state.clarification_question = clarification_data or f"Please provide: {next_field.replace('_', ' ')}"
+        question_text = clarification_data or f"Please provide: {next_field.replace('_', ' ')}"
+        # Add remaining questions count to the question
+        question_count_context = f"I will ask you just {remaining_questions} more question{'s' if remaining_questions > 1 else ''} for further understanding."
+        state.clarification_question = f"{question_count_context}\n\n{question_text}"
         state.clarification_options = []
+        state.result = f"{state.clarification_question}\n\nPlease choose one of the options below:"
 
     state.waiting_for_user = True
     state.current_step = "waiting_for_clarification"
@@ -3102,9 +3708,175 @@ def complete_create_content_payload(state: AgentState) -> AgentState:
 
 
 def complete_edit_content_payload(state: AgentState) -> AgentState:
-    """Complete edit_content payload"""
-    required_fields = ["channel", "platform", "edit_instruction"]
+    """Complete edit_content payload - handle content selection and edit instructions"""
+    # If payload is already complete, don't check again
+    if state.payload_complete:
+        logger.info("Payload already complete, skipping completion check")
+        state.current_step = "action_execution"
+        return state
+
+    # Resolve content selection by number (e.g., "content_1" -> actual content_id)
+    if state.payload.get('content_id') and state.payload['content_id'].strip():
+        content_id_ref = state.payload['content_id'].strip()
+
+        # Check if it's a numbered reference like "content_1", "content_2", etc.
+        if content_id_ref.startswith('content_') and hasattr(state, 'content_ids') and state.content_ids:
+            try:
+                # Extract the number (e.g., "content_1" -> 1)
+                content_number = int(content_id_ref.split('_')[1]) - 1  # Convert to 0-based index
+
+                if 0 <= content_number < len(state.content_ids):
+                    # Replace with actual content_id
+                    actual_content_id = state.content_ids[content_number]
+                    state.payload['content_id'] = actual_content_id
+                    logger.info(f"Resolved content reference {content_id_ref} to actual content_id: {actual_content_id}")
+                else:
+                    logger.warning(f"Content number {content_number + 1} is out of range (available: {len(state.content_ids)})")
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Could not resolve content reference {content_id_ref}: {e}")
+
+    # Handle direct content selection with edit instructions (highest priority)
+    if (state.payload.get('content_id') and state.payload['content_id'].strip() and
+        state.payload.get('edit_instruction') and state.payload['edit_instruction'].strip()):
+        logger.info(f"Direct content selection with edit instructions detected: {state.payload['content_id']}")
+        state.payload_complete = True
+        state.current_step = "action_execution"
+        print(f" Edit content payload complete - direct content selection with edit instructions: {state.payload['content_id']}")
+        print(f"  Edit instruction: {state.payload['edit_instruction']}")
+        print(f"  Final payload: {state.payload}")
+        return state
+
+    # Handle content selection only (wait for edit instructions)
+    if state.payload.get('content_id') and state.payload['content_id'].strip():
+        logger.info(f"Content selection detected, waiting for edit instructions: {state.payload['content_id']}")
+        # Ask for edit instructions
+        clarification_data = FIELD_CLARIFICATIONS.get("edit_content", {}).get("edit_instruction", {})
+        if isinstance(clarification_data, dict):
+            base_question = clarification_data.get("question", "What changes would you like to make to this content?")
+
+            # Add remaining questions count to the question for personalization
+            question_count_context = f"I will ask you just {len(missing_fields)} more question{'s' if len(missing_fields) > 1 else ''} for further understanding."
+            enhanced_base_question = f"{question_count_context}\n\n{base_question}"
+
+            personalized_question = generate_clarifying_question(
+                base_question=enhanced_base_question,
+                user_context=state.user_query,
+                user_input=state.user_query.split('\n')[-1] if state.user_query else ""
+            )
+            state.clarification_question = personalized_question
+            state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
+        else:
+            state.clarification_question = clarification_data or "What changes would you like to make to this content?"
+            state.result = f"{state.clarification_question}\n\nPlease choose one of the options below:"
+
+        state.waiting_for_user = True
+        state.current_step = "waiting_for_clarification"
+        print(f"? Clarification needed for edit_content: waiting for edit instructions for content {state.payload['content_id']}")
+        return state
+
+    # Give priority to search queries - if query is present, skip clarifying questions
+    if state.payload.get('query') and state.payload['query'].strip():
+        logger.info("Search query detected, skipping clarifying questions and proceeding with search")
+        state.payload_complete = True
+        state.current_step = "action_execution"
+        print(" Edit content payload complete - search query provided, proceeding without clarifications")
+        print(f"  Final payload: {state.payload}")
+        return state
+
+    required_fields = ["channel", "platform", "content_type", "date_range", "status"]
     clarifications = FIELD_CLARIFICATIONS.get("edit_content", {})
+
+    # Convert date_range to start_date and end_date if present
+    if state.payload.get("date_range") and state.payload["date_range"]:
+        date_range = str(state.payload["date_range"]).strip()
+
+        # First try natural language date parsing (yesterday, today, this week, etc.)
+        date_filter = _get_date_range_filter(date_range)
+
+        if not date_filter:
+            # Fall back to YYYY-MM-DD format parsing
+            date_filter = _parse_date_range_format(date_range)
+
+        if date_filter:
+            # Successfully converted date_range to actual dates
+            state.payload["start_date"] = date_filter.get("start") if date_filter.get("start") else None
+            state.payload["end_date"] = date_filter.get("end") if date_filter.get("end") else None
+            print(f" Converted '{date_range}' to start_date: {state.payload['start_date']}, end_date: {state.payload['end_date']}")
+        else:
+            # Could not parse date_range
+            print(f"⚠️ Could not parse date_range '{date_range}', treating as missing")
+            state.payload["date_range"] = None
+            state.payload["start_date"] = None
+            state.payload["end_date"] = None
+
+    # Normalize platform if present (handle case)
+    if state.payload.get("platform"):
+        platform_val = str(state.payload["platform"]).strip()
+        valid_platforms = ["Instagram", "Facebook", "LinkedIn", "Youtube"]
+        # Keep original case for platform (it's used as-is in queries)
+        if platform_val.title() in [p.title() for p in valid_platforms]:
+            state.payload["platform"] = platform_val
+        else:
+            # Try to match common variations
+            platform_lower = platform_val.lower()
+            if platform_lower in ["instagram", "ig"]:
+                state.payload["platform"] = "Instagram"
+            elif platform_lower in ["facebook", "fb"]:
+                state.payload["platform"] = "Facebook"
+            elif platform_lower in ["linkedin", "li"]:
+                state.payload["platform"] = "LinkedIn"
+            elif platform_lower in ["youtube", "yt"]:
+                state.payload["platform"] = "Youtube"
+
+    # Normalize channel if present
+    if state.payload.get("channel"):
+        channel_val = str(state.payload["channel"]).strip()
+        valid_channels = ["Social Media", "Blog"]
+        if channel_val in valid_channels:
+            state.payload["channel"] = channel_val
+        else:
+            # Try to match variations
+            channel_lower = channel_val.lower()
+            if "social" in channel_lower or "media" in channel_lower:
+                state.payload["channel"] = "Social Media"
+            elif channel_lower == "blog":
+                state.payload["channel"] = "Blog"
+
+    # Normalize status if present
+    if state.payload.get("status"):
+        status_val = str(state.payload["status"]).lower().strip()
+        valid_statuses = ["generated", "scheduled", "published"]
+        if status_val in valid_statuses:
+            state.payload["status"] = status_val
+        else:
+            # Try to match variations
+            if status_val in ["draft", "create", "new"]:
+                state.payload["status"] = "generated"
+            elif status_val in ["schedule", "pending"]:
+                state.payload["status"] = "scheduled"
+            elif status_val in ["publish", "posted", "live"]:
+                state.payload["status"] = "published"
+            else:
+                state.payload["status"] = None
+
+    # Normalize content_type if present
+    if state.payload.get("content_type"):
+        content_type_val = str(state.payload["content_type"]).lower().strip()
+        valid_types = ["post", "short_video", "long_video", "blog"]
+        if content_type_val in valid_types:
+            state.payload["content_type"] = content_type_val
+        else:
+            # Try to match variations
+            if content_type_val in ["posts", "post"]:
+                state.payload["content_type"] = "post"
+            elif "short" in content_type_val and "video" in content_type_val:
+                state.payload["content_type"] = "short_video"
+            elif "long" in content_type_val and "video" in content_type_val:
+                state.payload["content_type"] = "long_video"
+            elif content_type_val == "blog":
+                state.payload["content_type"] = "blog"
+            else:
+                state.payload["content_type"] = None
 
     missing_fields = [
         f for f in required_fields
@@ -3114,7 +3886,8 @@ def complete_edit_content_payload(state: AgentState) -> AgentState:
     if not missing_fields:
         state.payload_complete = True
         state.current_step = "action_execution"
-        print(" Edit content payload complete")
+        print(" Edit content payload complete - all fields provided")
+        print(f"  Final payload: {state.payload}")
         return state
 
     next_field = missing_fields[0]
@@ -3122,6 +3895,11 @@ def complete_edit_content_payload(state: AgentState) -> AgentState:
 
     if isinstance(clarification_data, dict):
         base_question = clarification_data.get("question", f"Please provide: {next_field.replace('_', ' ')}")
+
+        # Add remaining questions count to the question for personalization
+        remaining_questions = len(missing_fields)
+        question_count_context = f"I will ask you just {remaining_questions} more question{'s' if remaining_questions > 1 else ''} for further understanding."
+        base_question = f"{question_count_context}\n\n{base_question}"
 
         # Generate personalized question using LLM
         logger.info(f"Calling LLM for clarification question. Base: '{base_question}', User context length: {len(state.user_query or '')}")
@@ -3136,13 +3914,16 @@ def complete_edit_content_payload(state: AgentState) -> AgentState:
         state.clarification_options = clarification_data.get("options", [])
     else:
         # Backward compatibility for string clarifications
-        state.clarification_question = clarification_data or f"Please provide: {next_field.replace('_', ' ')}"
+        question_text = clarification_data or f"Please provide: {next_field.replace('_', ' ')}"
+        # Add remaining questions count to the question
+        remaining_questions = len(missing_fields)
+        question_count_context = f"I will ask you just {remaining_questions} more question{'s' if remaining_questions > 1 else ''} for further understanding."
+        state.clarification_question = f"{question_count_context}\n\n{question_text}"
         state.clarification_options = []
 
     state.waiting_for_user = True
     state.current_step = "waiting_for_clarification"
     print(f"? Clarification needed for edit_content: {state.clarification_question}")
-
     return state
 
 
@@ -3313,7 +4094,13 @@ def complete_publish_content_payload(state: AgentState) -> AgentState:
     # Convert date_range to start_date and end_date if present
     if state.payload.get("date_range") and state.payload["date_range"]:
         date_range = str(state.payload["date_range"]).strip()
-        date_filter = _parse_date_range_format(date_range)
+
+        # First try natural language date parsing (yesterday, today, this week, etc.)
+        date_filter = _get_date_range_filter(date_range)
+
+        if not date_filter:
+            # Fall back to YYYY-MM-DD format parsing
+            date_filter = _parse_date_range_format(date_range)
 
         if date_filter:
             # Successfully converted date_range to actual dates
@@ -3517,119 +4304,194 @@ def complete_create_leads_payload(state: AgentState) -> AgentState:
         print(" Create leads payload complete")
         return state
 
+    # Calculate remaining questions
+    missing_count = sum([not has_name, not (has_email or has_phone), not has_source, not has_status, not has_follow_up, not has_remarks])
+
     # Ask for what's missing - check in priority order
     if not has_name:
         clarification_data = clarifications.get("lead_name", {})
         if isinstance(clarification_data, dict):
             base_question = clarification_data.get("question", "What's the lead's name?")
+            # Question count will be included in the enhanced_base_question for personalization
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            enhanced_base_question = f"{question_count_context}\n\n{base_question}"
+
             personalized_question = generate_clarifying_question(
-                base_question=base_question,
+                base_question=enhanced_base_question,
                 user_context=state.user_query,
                 user_input=state.user_query.split('\n')[-1] if state.user_query else ""
             )
             state.clarification_question = personalized_question
             state.clarification_options = clarification_data.get("options", [])
+            state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
         else:
-            state.clarification_question = clarification_data or "What's the lead's name?"
+            question_text = clarification_data or "What's the lead's name?"
+            # Add remaining questions count to the question
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            state.clarification_question = f"{question_count_context}\n\n{question_text}"
             state.clarification_options = []
+            state.result = f"{state.clarification_question}\n\nPlease choose one of the options below:"
     elif not has_email and not has_phone:
         clarification_data = clarifications.get("lead_email", {})
         if isinstance(clarification_data, dict):
             base_question = clarification_data.get("question", "What's their email address?")
+            # Question count will be included in the enhanced_base_question for personalization
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            enhanced_base_question = f"{question_count_context}\n\n{base_question}"
+
             personalized_question = generate_clarifying_question(
-                base_question=base_question,
+                base_question=enhanced_base_question,
                 user_context=state.user_query,
                 user_input=state.user_query.split('\n')[-1] if state.user_query else ""
             )
             state.clarification_question = personalized_question
             state.clarification_options = clarification_data.get("options", [])
+            state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
         else:
-            state.clarification_question = clarification_data or "What's their email address?"
+            question_text = clarification_data or "What's their email address?"
+            # Add remaining questions count to the question
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            state.clarification_question = f"{question_count_context}\n\n{question_text}"
             state.clarification_options = []
+            state.result = f"{state.clarification_question}\n\nPlease choose one of the options below:"
     elif not has_email:
         clarification_data = clarifications.get("lead_email", {})
         if isinstance(clarification_data, dict):
             base_question = clarification_data.get("question", "What's their email address?")
+            # Question count will be included in the enhanced_base_question for personalization
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            enhanced_base_question = f"{question_count_context}\n\n{base_question}"
+
             personalized_question = generate_clarifying_question(
-                base_question=base_question,
+                base_question=enhanced_base_question,
                 user_context=state.user_query,
                 user_input=state.user_query.split('\n')[-1] if state.user_query else ""
             )
             state.clarification_question = personalized_question
             state.clarification_options = clarification_data.get("options", [])
+            state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
         else:
-            state.clarification_question = clarification_data or "What's their email address?"
+            question_text = clarification_data or "What's their email address?"
+            # Add remaining questions count to the question
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            state.clarification_question = f"{question_count_context}\n\n{question_text}"
             state.clarification_options = []
+            state.result = f"{state.clarification_question}\n\nPlease choose one of the options below:"
     elif not has_phone:
         clarification_data = clarifications.get("lead_phone", {})
         if isinstance(clarification_data, dict):
             base_question = clarification_data.get("question", "What's their phone number?")
+            # Question count will be included in the enhanced_base_question for personalization
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            enhanced_base_question = f"{question_count_context}\n\n{base_question}"
+
             personalized_question = generate_clarifying_question(
-                base_question=base_question,
+                base_question=enhanced_base_question,
                 user_context=state.user_query,
                 user_input=state.user_query.split('\n')[-1] if state.user_query else ""
             )
             state.clarification_question = personalized_question
             state.clarification_options = clarification_data.get("options", [])
+            state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
         else:
-            state.clarification_question = clarification_data or "What's their phone number?"
+            question_text = clarification_data or "What's their phone number?"
+            # Add remaining questions count to the question
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            state.clarification_question = f"{question_count_context}\n\n{question_text}"
             state.clarification_options = []
+            state.result = f"{state.clarification_question}\n\nPlease choose one of the options below:"
     elif not has_source:
         clarification_data = clarifications.get("lead_source", {})
         if isinstance(clarification_data, dict):
             base_question = clarification_data.get("question", "How did you connect with this lead?")
+            # Question count will be included in the enhanced_base_question for personalization
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            enhanced_base_question = f"{question_count_context}\n\n{base_question}"
+
             personalized_question = generate_clarifying_question(
-                base_question=base_question,
+                base_question=enhanced_base_question,
                 user_context=state.user_query,
                 user_input=state.user_query.split('\n')[-1] if state.user_query else ""
             )
             state.clarification_question = personalized_question
             state.clarification_options = clarification_data.get("options", [])
+            state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
         else:
-            state.clarification_question = clarification_data or "How did you connect with this lead?"
+            question_text = clarification_data or "How did you connect with this lead?"
+            # Add remaining questions count to the question
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            state.clarification_question = f"{question_count_context}\n\n{question_text}"
             state.clarification_options = []
+            state.result = f"{state.clarification_question}\n\nPlease choose one of the options below:"
     elif not has_status:
         clarification_data = clarifications.get("lead_status", {})
         if isinstance(clarification_data, dict):
             base_question = clarification_data.get("question", "What's their current status?")
+            # Question count will be included in the enhanced_base_question for personalization
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            enhanced_base_question = f"{question_count_context}\n\n{base_question}"
+
             personalized_question = generate_clarifying_question(
-                base_question=base_question,
+                base_question=enhanced_base_question,
                 user_context=state.user_query,
                 user_input=state.user_query.split('\n')[-1] if state.user_query else ""
             )
             state.clarification_question = personalized_question
             state.clarification_options = clarification_data.get("options", [])
+            state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
         else:
-            state.clarification_question = clarification_data or "What's their current status?"
+            question_text = clarification_data or "What's their current status?"
+            # Add remaining questions count to the question
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            state.clarification_question = f"{question_count_context}\n\n{question_text}"
             state.clarification_options = []
+            state.result = f"{state.clarification_question}\n\nPlease choose one of the options below:"
     elif not has_follow_up:
         clarification_data = clarifications.get("follow_up", {})
         if isinstance(clarification_data, dict):
             base_question = clarification_data.get("question", "When should we follow up with this lead?")
+            # Question count will be included in the enhanced_base_question for personalization
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            enhanced_base_question = f"{question_count_context}\n\n{base_question}"
+
             personalized_question = generate_clarifying_question(
-                base_question=base_question,
+                base_question=enhanced_base_question,
                 user_context=state.user_query,
                 user_input=state.user_query.split('\n')[-1] if state.user_query else ""
             )
             state.clarification_question = personalized_question
             state.clarification_options = clarification_data.get("options", [])
+            state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
         else:
-            state.clarification_question = clarification_data or "When should we follow up with this lead?"
+            question_text = clarification_data or "When should we follow up with this lead?"
+            # Add remaining questions count to the question
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            state.clarification_question = f"{question_count_context}\n\n{question_text}"
             state.clarification_options = []
+            state.result = f"{state.clarification_question}\n\nPlease choose one of the options below:"
     elif not has_remarks:
         clarification_data = clarifications.get("remarks", {})
         if isinstance(clarification_data, dict):
             base_question = clarification_data.get("question", "Any additional notes or remarks about this lead?")
+            # Question count will be included in the enhanced_base_question for personalization
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            enhanced_base_question = f"{question_count_context}\n\n{base_question}"
+
             personalized_question = generate_clarifying_question(
-                base_question=base_question,
+                base_question=enhanced_base_question,
                 user_context=state.user_query,
                 user_input=state.user_query.split('\n')[-1] if state.user_query else ""
             )
             state.clarification_question = personalized_question
             state.clarification_options = clarification_data.get("options", [])
+            state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
         else:
-            state.clarification_question = clarification_data or "Any additional notes or remarks about this lead?"
+            question_text = clarification_data or "Any additional notes or remarks about this lead?"
+            # Add remaining questions count to the question
+            question_count_context = f"I will ask you just {missing_count} more question{'s' if missing_count > 1 else ''} for further understanding."
+            state.clarification_question = f"{question_count_context}\n\n{question_text}"
             state.clarification_options = []
+            state.result = f"{state.clarification_question}\n\nPlease choose one of the options below:"
 
     state.waiting_for_user = True
     state.current_step = "waiting_for_clarification"
@@ -3893,6 +4755,27 @@ def complete_payload(state: AgentState) -> AgentState:
     if state.intent not in INTENT_MAP:
         state.current_step = "end"
         return state
+
+    # Check for intent changes in the user's latest response before proceeding
+    print(f"🔄 Calling detect_intent_changes in complete_payload for intent: {state.intent}")
+    old_state = state
+    state = detect_intent_changes(state)
+    if state and state.intent_change_detected:
+        print(f"✅ Intent change detected in complete_payload: {state.previous_intent} → {state.intent} ({state.intent_change_type})")
+    elif not state:
+        print(f"❌ detect_intent_changes returned None in complete_payload, restoring old state")
+        state = old_state
+
+    # If a complete intent shift was detected, restart the workflow
+    if state.intent_change_detected and state.intent_change_type == 'complete_shift':
+        print("🔄 Complete intent shift detected during payload completion, restarting workflow")
+        # Reset to initial state and return to classification
+        state.current_step = "intent_classification"
+        state.payload_complete = False
+        state.clarification_question = None
+        state.clarification_options = None
+        state.waiting_for_user = False
+        return state
     
     # Route to specific completer
     completers = {
@@ -4121,7 +5004,9 @@ async def handle_create_content(state: AgentState) -> AgentState:
                         'primary_color': profile_data.get('primary_color'),
                         'secondary_color': profile_data.get('secondary_color'),
                         'brand_colors': profile_data.get('brand_colors') or [],  # Ensure it's always a list
-                        'logo': profile_data.get('logo_url')  # Use correct column name
+                        'logo': profile_data.get('logo_url'),  # Use correct column name
+                        'primary_typography': profile_data.get('primary_typography'),
+                        'secondary_typography': profile_data.get('secondary_typography')
                     }
 
                     logger.info(f"✅ Loaded structured business context for: {business_context.get('business_name', 'Business')}")
@@ -4129,6 +5014,7 @@ async def handle_create_content(state: AgentState) -> AgentState:
                     brand_colors_len = len(profile_assets.get('brand_colors') or [])
                     logger.info(f"   Brand colors array: {brand_colors_len} colors")
                     logger.info(f"   Logo: {bool(profile_assets.get('logo'))}")
+                    logger.info(f"   Typography: {bool(profile_assets.get('primary_typography'))}/{bool(profile_assets.get('secondary_typography'))}")
                     logger.info(f"   Industry: {business_context.get('industry', 'N/A')}")
                     logger.info(f"   Target audience: {business_context.get('target_audience', 'N/A')}")
                 else:
@@ -4151,29 +5037,13 @@ async def handle_create_content(state: AgentState) -> AgentState:
         # Handle different content types
         content_type = payload.get('content_type', '')
 
-        if content_type == 'Post':
+        if content_type in ['static_post', 'carousel']:
             # Step 1: Get trends from Grok API for trend-aware content
             topic = payload.get('content_idea', '')
             trends_data = await get_trends_from_grok(topic, business_context)
             parsed_trends = parse_trends_for_content(trends_data)
 
-            # Step 2: Classify post design type and image type for better content generation
-            post_design_type = payload.get('post_design_type')
-            if post_design_type:
-                classified_post_design = classify_post_design_type(post_design_type)
-                logger.info(f"🎨 Classified post design type: '{post_design_type}' → '{classified_post_design}'")
-            else:
-                classified_post_design = "general"
-
-            image_type = payload.get('image_type')
-            if image_type:
-                classified_image_type = classify_image_type(image_type)
-                logger.info(f"🖼️ Image type input: '{image_type}' → Classified as: '{classified_image_type}'")
-            else:
-                classified_image_type = "general"
-                logger.info(f"🖼️ No image type specified, using default: '{classified_image_type}'")
-
-            # Step 3: Get platform-specific prompt
+            # Step 2: Get platform-specific prompt
             platform = payload.get('platform', 'Instagram')
             prompt = get_platform_specific_prompt(platform, payload, business_context, parsed_trends, profile_assets)
 
@@ -4182,6 +5052,11 @@ async def handle_create_content(state: AgentState) -> AgentState:
             logger.info("=" * 80)
             logger.info(prompt)
             logger.info("=" * 80)
+
+            # Initialize variables
+            title = ""
+            content = ""
+            hashtags = []
 
             # Generate structured content with GPT-4o-mini
             from datetime import datetime
@@ -4204,9 +5079,7 @@ async def handle_create_content(state: AgentState) -> AgentState:
                     hashtags = parsed_content['hashtags']
                 else:
                     # Fallback parsing for other platforms
-                    title = ""
-                    content = ""
-                    hashtags = []
+                    # Variables already initialized above
 
                     lines = generated_response.split('\n')
                     current_section = None
@@ -4239,53 +5112,265 @@ async def handle_create_content(state: AgentState) -> AgentState:
                 content_data['title'] = "Content Generation Failed"
                 content_data['content'] = generated_content
                 content_data['hashtags'] = []
+                title = "Content Generation Failed"
+                content = generated_content
 
-        elif content_type == 'short video':
-            # Generate short video script using GPT-4o-mini
-            prompt = f"""You are a professional video script writer specializing in short-form video content for {payload.get('platform', 'social media')}.
+        elif content_type == 'short_video or reel':
+            # Check if user wants to upload their own video
+            if payload.get('media') == 'Upload':
+                # Set flag for upload requirement - user will upload both video and cover
+                if not payload.get('media_file'):
+                    state.waiting_for_upload = True
+                    state.upload_type = 'video'  # They need to upload video file
+                    state.result = "Ready to upload your short video/reel. Please select and upload a video file."
+                    return state
+                else:
+                    # File already uploaded, use it
+                    generated_image_url = payload.get('media_file')
+                    if generated_image_url:
+                        content_data['images'] = [generated_image_url]
+
+            # Step 1: Get viral content trends from Grok
+            topic = payload.get('content_idea', 'viral content trends')
+            trends_data = await get_trends_from_grok(topic, business_context)
+
+            # Step 2: Generate short video script using GPT-4o-mini with trend insights
+            viral_content = ""
+            if trends_data and 'trends' in trends_data:
+                viral_content = "\n\nVIRAL CONTENT INSIGHTS:\n" + "\n".join([
+                    f"- {trend.get('trend_name', '')}: {trend.get('description', '')[:100]}..."
+                    for trend in trends_data['trends'][:3]  # Top 3 trends
+                ])
+
+            prompt = f"""You are a professional short-form video script writer creating viral content for {payload.get('platform', 'social media')} Reels.
 
 BUSINESS CONTEXT:
 {business_context.get('business_name', 'Business')}
 Industry: {business_context.get('industry', 'General')}
 Target Audience: {business_context.get('target_audience', 'General audience')}
 Brand Voice: {business_context.get('brand_voice', 'Professional and friendly')}
+Business Description: {business_context.get('business_description', 'N/A')}
 
 CONTENT REQUIREMENTS:
-- Platform: {payload.get('platform', 'TikTok/Instagram Reels/YouTube Shorts')}
+- Platform: {payload.get('platform', 'Instagram Reels/TikTok/YouTube Shorts')}
 - Content Idea: {payload.get('content_idea', '')}
-- Duration: 15-60 seconds (keep script concise)
+- Duration: 15-30 seconds (keep script concise and punchy)
+- Goal: Create engaging, scroll-stopping content{viral_content}
 
 TASK:
-Create a complete short video script that includes:
-1. Hook (first 3-5 seconds - grab attention)
-2. Main content (deliver value based on the content idea)
-3. Call-to-action (what you want viewers to do)
-4. Visual cues and transitions
+Create a complete 15-30 second video script optimized for virality that includes:
+1. STRONG HOOK (0-3 seconds - shock, question, or surprising fact)
+2. VALUE DELIVERY (3-20 seconds - solve problem or provide insight)
+3. EMOTIONAL CLOSE (20-25 seconds - build connection)
+4. CLEAR CTA (25-30 seconds - what to do next)
 
 SCRIPT FORMAT:
-[0-3s] HOOK: [Compelling opening line]
-[3-45s] MAIN CONTENT: [Core message and value]
-[45-60s] CTA: [Call to action with clear next steps]
+🎬 SCENE BREAKDOWN:
+[0-3s] HOOK: [One powerful sentence that stops the scroll]
+[3-20s] VALUE: [2-3 key points that deliver real value]
+[20-25s] STORY/CONNECTION: [Make it relatable, add emotion]
+[25-30s] CTA: [Specific action + urgency]
 
-Keep total script length suitable for 15-60 second video.
-Use engaging, conversational language.
-Include timing cues for editing."""
+VISUAL CUES:
+- Background music suggestions
+- Text overlays for key points
+- Transitions between sections
+- Thumbnail-worthy moments
+
+Make it conversational, authentic, and optimized for the algorithm."""
 
             if openai_client:
                 response = openai_client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=800,
-                    temperature=0.7
+                    max_tokens=1000,
+                    temperature=0.8
                 )
                 generated_script = response.choices[0].message.content.strip()
                 content_data['short_video_script'] = generated_script  # Save to short_video_script column
-                generated_content = f"Short Video Script Generated:\n\n{generated_script}"
+                content_data['content'] = generated_script  # Required field for database
+
+                # Step 3: Generate video cover image using Gemini (only if not uploading)
+                if payload.get('media') != 'Upload' and not payload.get('media_url'):
+                    cover_prompt = f"""Create a professional, eye-catching thumbnail image for a {payload.get('platform', 'social media')} short video about: {payload.get('content_idea', 'viral content')}
+
+Business: {business_context.get('business_name', 'Business')}
+Style: Scroll-stopping, viral-worthy, modern and engaging
+Visual elements: Bold text overlays, vibrant gradients, clean mobile-first design
+Composition: High contrast, clear focal point, optimized for 9:16 aspect ratio
+Make it irresistible to click and watch!"""
+
+                logger.info(f"🎨 Complete video cover generation prompt:")
+                logger.info("=" * 80)
+                logger.info(cover_prompt)
+                logger.info("=" * 80)
+
+                # Import datetime locally (following working image generation pattern)
+                from datetime import datetime
+
+                # Check if logo is available and prepare to send it to Gemini
+                logo_data = None
+                if profile_assets and profile_assets.get('logo'):
+                    logo_url = profile_assets.get('logo')
+                    logger.info(f"📎 Including logo in video cover generation: {logo_url}")
+                    try:
+                        import httpx
+                        async with httpx.AsyncClient(follow_redirects=True) as client:
+                            logo_response = await client.get(logo_url)
+                            logo_response.raise_for_status()
+                            logo_data = logo_response.content
+                        logger.info(f"✅ Logo downloaded successfully: {len(logo_data)} bytes")
+                    except Exception as e:
+                        logger.warning(f"Failed to download logo: {e}")
+                        logo_data = None
+
+                # Generate image with Gemini
+                logger.info(f"🎨 Generating video cover with Gemini for platform: {payload.get('platform')} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                logger.info(f"   Logo included: {logo_data is not None}")
+
+                gemini_image_model = 'gemini-2.5-flash-image-preview'
+
+                # Prepare contents for Gemini API
+                contents = [cover_prompt]  # Text prompt is always first
+
+                # Add logo as reference image if available
+                if logo_data:
+                    import base64
+                    contents.append({
+                        "inline_data": {
+                            "mime_type": "image/png",  # Assume PNG for transparency
+                            "data": base64.b64encode(logo_data).decode('utf-8')
+                        }
+                    })
+
+                image_response = genai.GenerativeModel(gemini_image_model).generate_content(
+                    contents=contents
+                )
+                logger.info(f"Gemini response received, has candidates: {bool(image_response.candidates)}")
+
+                # Extract image data
+                if image_response.candidates and len(image_response.candidates) > 0:
+                    candidate = image_response.candidates[0]
+                    if candidate.content.parts:
+                        for part in candidate.content.parts:
+                            if part.inline_data is not None and part.inline_data.data:
+                                try:
+                                    # Get image data as bytes
+                                    image_data = part.inline_data.data
+                                    if not isinstance(image_data, bytes):
+                                        import base64
+                                        image_data = base64.b64decode(image_data)
+
+                                    # Generate unique filename
+                                    import uuid
+                                    filename = f"video_covers/{uuid.uuid4()}.png"
+                                    file_path = filename
+
+                                    logger.info(f"📤 Uploading generated video cover to ai-generated-images bucket: {file_path}")
+
+                                    # Upload to ai-generated-images bucket in generated folder
+                                    storage_response = supabase.storage.from_("ai-generated-images").upload(
+                                        file_path,
+                                        image_data,
+                                        file_options={"content-type": "image/png", "upsert": "false"}
+                                    )
+
+                                    if hasattr(storage_response, 'error') and storage_response.error:
+                                        logger.error(f"Storage upload error: {storage_response.error}")
+                                        generated_image_url = None
+                                    else:
+                                        # Get public URL
+                                        generated_image_url = supabase.storage.from_("ai-generated-images").get_public_url(file_path)
+                                        logger.info(f"✅ Video cover uploaded successfully: {generated_image_url}")
+
+                                        if generated_image_url and isinstance(generated_image_url, str):
+                                            content_data['images'] = [generated_image_url]
+
+                                            # Update metadata for video cover
+                                            content_data['metadata'] = {
+                                                'video_cover_generated': True,
+                                                'cover_prompt': cover_prompt,
+                                                'trends_used': trends_data.get('trends', [])[:3] if trends_data else [],
+                                                'generated_with': 'gemini'
+                                            }
+                                        else:
+                                            logger.error(f"Invalid public URL returned: {generated_image_url}")
+
+                                except Exception as upload_error:
+                                    logger.error(f"Error uploading video cover to storage: {upload_error}")
+
+                                break
+                    else:
+                        # When uploading, don't generate cover - user will upload their own
+                        content_data['metadata'] = {
+                            'video_cover_uploaded': True,
+                            'trends_used': trends_data.get('trends', [])[:3] if trends_data else [],
+                            'generated_with': 'user_upload'
+                        }
+
+                # Step 4: Generate compelling title and caption for the reel
+                caption_prompt = f"""Based on this short video script, create a compelling title and Instagram caption for the reel.
+
+VIDEO SCRIPT:
+{generated_script}
+
+BUSINESS CONTEXT:
+{business_context.get('business_name', 'Business')}
+Industry: {business_context.get('industry', 'General')}
+Target Audience: {business_context.get('target_audience', 'General audience')}
+
+TASK:
+Create a viral-worthy Instagram Reel title and caption that will:
+1. Hook viewers in the first 3 words
+2. Use trending hashtags and emojis naturally
+3. Include a strong call-to-action
+4. Be optimized for Instagram's algorithm
+
+FORMAT (Return ONLY this format):
+TITLE: [Compelling 1-5 word title]
+CAPTION: [Scroll-stopping caption with emojis, 100-150 characters]
+
+Make it authentic, engaging, and optimized for maximum engagement!"""
+
+                try:
+                    caption_response = openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": caption_prompt}],
+                        max_tokens=300,
+                        temperature=0.9
+                    )
+                    caption_result = caption_response.choices[0].message.content.strip()
+
+                    # Parse title and caption
+                    title = ""
+                    caption = ""
+                    for line in caption_result.split('\n'):
+                        line = line.strip()
+                        if line.startswith('TITLE:'):
+                            title = line.replace('TITLE:', '').strip()
+                        elif line.startswith('CAPTION:'):
+                            caption = line.replace('CAPTION:', '').strip()
+
+                    # Save title and caption
+                    content_data['title'] = title if title else f"Reel: {payload.get('content_idea', 'Viral Content')[:30]}"
+                    content_data['content'] = caption if caption else generated_script[:200] + "..."
+
+                    logger.info(f"✅ Generated reel title: '{title}' and caption: '{caption[:50]}...'")
+
+                except Exception as caption_error:
+                    logger.warning(f"Failed to generate reel caption: {caption_error}")
+                    # Fallback: use script as content
+                    content_data['title'] = f"Reel: {payload.get('content_idea', 'Viral Content')[:30]}"
+                    content_data['content'] = generated_script[:200] + "..."
+
+                generated_content = f"🎬 Short Video Script Generated:\n\n{generated_script}"
             else:
                 generated_content = "OpenAI client not configured"
                 content_data['short_video_script'] = "Script generation failed - OpenAI client not configured"
+                content_data['title'] = "Reel Generation Failed"
+                content_data['content'] = generated_content
 
-        elif content_type == 'long video':
+        elif content_type == 'long_video':
             # Generate long video script using GPT-4o-mini
             prompt = f"""You are a professional video script writer specializing in long-form video content.
 
@@ -4330,100 +5415,7 @@ Include timing estimates for each section."""
                 generated_content = "OpenAI client not configured"
                 content_data['long_video_script'] = "Script generation failed - OpenAI client not configured"
 
-        elif content_type == 'Email':
-            # Generate email content using GPT-4o-mini
-            prompt = f"""You are a professional email marketer creating compelling email content.
 
-BUSINESS CONTEXT:
-{business_context.get('business_name', 'Business')}
-Industry: {business_context.get('industry', 'General')}
-Target Audience: {business_context.get('target_audience', 'General audience')}
-Brand Voice: {business_context.get('brand_voice', 'Professional and friendly')}
-
-CONTENT REQUIREMENTS:
-- Content Idea: {payload.get('content_idea', '')}
-- Platform: Email
-
-TASK:
-Create email content with:
-1. Compelling subject line (50 characters max)
-2. Engaging email body with clear structure
-3. Strong call-to-action
-
-SUBJECT LINE: [Create an attention-grabbing subject]
-
-EMAIL BODY:
-[Greeting]
-[Hook/Introduction]
-[Main Content - deliver value]
-[Call-to-Action]
-[Sign-off]
-
-Keep email professional and conversion-focused."""
-
-            if openai_client:
-                response = openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=1000,
-                    temperature=0.7
-                )
-                email_content = response.choices[0].message.content.strip()
-
-                # Parse subject and body (simple parsing - could be improved)
-                lines = email_content.split('\n')
-                subject_line = ""
-                body_content = email_content
-
-                for i, line in enumerate(lines):
-                    if line.upper().startswith('SUBJECT:') or line.upper().startswith('SUBJECT LINE:'):
-                        subject_line = line.split(':', 1)[1].strip()
-                        body_content = '\n'.join(lines[i+1:]).strip()
-                        break
-
-                content_data['email_subject'] = subject_line  # Save to email_subject column
-                content_data['email_body'] = body_content      # Save to email_body column
-                generated_content = f"Email Subject: {subject_line}\n\nEmail Body:\n{body_content}"
-            else:
-                generated_content = "OpenAI client not configured"
-                content_data['email_subject'] = "Email generation failed"
-                content_data['email_body'] = "OpenAI client not configured"
-
-        elif content_type == 'message':
-            # Generate message content using GPT-4o-mini
-            prompt = f"""You are a professional communicator creating engaging messages for {payload.get('platform', 'messaging platforms')}.
-
-BUSINESS CONTEXT:
-{business_context.get('business_name', 'Business')}
-Brand Voice: {business_context.get('brand_voice', 'Professional and friendly')}
-
-CONTENT REQUIREMENTS:
-- Platform: {payload.get('platform', 'WhatsApp/SMS')}
-- Content Idea: {payload.get('content_idea', '')}
-
-TASK:
-Create a concise, engaging message that:
-1. Delivers the key message from the content idea
-2. Maintains brand voice
-3. Includes appropriate emojis
-4. Ends with a clear call-to-action
-5. Is optimized for mobile reading
-
-Keep message under 160 characters for SMS, or conversational for WhatsApp."""
-
-            if openai_client:
-                response = openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=300,
-                    temperature=0.7
-                )
-                message_content = response.choices[0].message.content.strip()
-                content_data['message'] = message_content  # Save to message column
-                generated_content = f"Message Content:\n{message_content}"
-            else:
-                generated_content = "OpenAI client not configured"
-                content_data['message'] = "Message generation failed - OpenAI client not configured"
         else:
             # For other content types, use original logic
             generated_content = f"Generated {content_type} for {payload.get('platform', 'platform')}"
@@ -4431,7 +5423,7 @@ Keep message under 160 characters for SMS, or conversational for WhatsApp."""
 
         # Handle media generation based on payload.media
         logger.info(f"Media type: {payload.get('media')}")
-        if payload.get('media') == 'Generate':
+        if payload.get('media') == 'Generate' and not payload.get('media_url'):
             # Generate image using Gemini with the generated content and business context
             try:
                 # First, generate enhanced image prompt using AI
@@ -4441,7 +5433,7 @@ Keep message under 160 characters for SMS, or conversational for WhatsApp."""
                 }
 
                 enhanced_prompt_data = await generate_image_enhancer_prompt(
-                    generated_post, payload, business_context, parsed_trends, profile_assets, classified_image_type
+                    generated_post, payload, business_context, parsed_trends, profile_assets
                 )
 
                 # Build final image generation prompt using the enhanced prompt
@@ -4452,8 +5444,7 @@ Keep message under 160 characters for SMS, or conversational for WhatsApp."""
 
                 # Use the enhanced prompt as the base
                 base_prompt = enhanced_prompt_data.get('image_prompt', f"Create a professional image for: {title}")
-                # Determine visual style from classified image type instead of LLM
-                visual_style = get_visual_style_from_image_type(classified_image_type)
+                visual_style = enhanced_prompt_data.get('visual_style', 'photorealistic')
                 aspect_ratio = enhanced_prompt_data.get('aspect_ratio', '1:1')
                 negative_prompt = enhanced_prompt_data.get('negative_prompt', 'text, logos, watermarks')
 
@@ -4483,12 +5474,44 @@ Create a high-quality, professional image optimized for Instagram that reflects 
                 logger.info(image_prompt)
                 logger.info("=" * 80)
 
+                # Check if logo is available and prepare to send it to Gemini
+                logo_data = None
+                if profile_assets and profile_assets.get('logo'):
+                    logo_url = profile_assets.get('logo')
+                    logger.info(f"📎 Including logo in image generation: {logo_url}")
+                    try:
+                        import httpx
+                        async with httpx.AsyncClient(follow_redirects=True) as client:
+                            logo_response = await client.get(logo_url)
+                            logo_response.raise_for_status()
+                            logo_data = logo_response.content
+                        logger.info(f"✅ Logo downloaded successfully: {len(logo_data)} bytes")
+                    except Exception as e:
+                        logger.warning(f"Failed to download logo: {e}")
+                        logo_data = None
+
                 # Generate image with Gemini
                 logger.info(f"🎨 Generating image with Gemini for platform: {payload.get('platform')} at {current_datetime.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-                logger.info(f"   Image type '{classified_image_type}' → Visual style: {visual_style}, Aspect ratio: {aspect_ratio}")
+                logger.info(f"   Using enhanced prompt with {visual_style} style and {aspect_ratio} aspect ratio")
+                logger.info(f"   Logo included: {logo_data is not None}")
+
                 gemini_image_model = 'gemini-2.5-flash-image-preview'
+
+                # Prepare contents for Gemini API
+                contents = [image_prompt]  # Text prompt is always first
+
+                # Add logo as reference image if available
+                if logo_data:
+                    import base64
+                    contents.append({
+                        "inline_data": {
+                            "mime_type": "image/png",  # Assume PNG for transparency
+                            "data": base64.b64encode(logo_data).decode('utf-8')
+                        }
+                    })
+
                 image_response = genai.GenerativeModel(gemini_image_model).generate_content(
-                    contents=[image_prompt]
+                    contents=contents
                 )
                 logger.info(f"Gemini response received, has candidates: {bool(image_response.candidates)}")
 
@@ -4557,10 +5580,18 @@ Create a high-quality, professional image optimized for Instagram that reflects 
                 generated_image_url = None
 
         elif payload.get('media') == 'Upload':
-            # Use uploaded image (managed by frontend, media_file should contain the URL/path)
-            generated_image_url = payload.get('media_file')
-            if generated_image_url:
-                content_data['images'] = [generated_image_url]
+            # Set flag for upload requirement
+            if not payload.get('media_file'):
+                # No file uploaded yet, set upload flag
+                state.waiting_for_upload = True
+                state.upload_type = 'image'
+                state.result = "Ready to upload an image for your content. Please select and upload an image file."
+                return state
+            else:
+                # File already uploaded, use it
+                generated_image_url = payload.get('media_file')
+                if generated_image_url:
+                    content_data['images'] = [generated_image_url]
         # For "without media", no images added
 
         # Save to Supabase created_content table
@@ -4646,9 +5677,9 @@ Create a high-quality, professional image optimized for Instagram that reflects 
                             content_text = f"Subject: {item['email_subject']}\n\n{item['email_body']}"
                         else:
                             content_text = item.get('content', '')
-                    elif content_type == 'short video':
+                    elif content_type == 'short_video or reel':
                         content_text = item.get('short_video_script', '')
-                    elif content_type == 'long video':
+                    elif content_type == 'long_video':
                         content_text = item.get('long_video_script', '')
                     elif content_type == 'message':
                         content_text = item.get('message', '')
@@ -4731,20 +5762,312 @@ Create a high-quality, professional image optimized for Instagram that reflects 
 
 
 def handle_edit_content(state: AgentState) -> AgentState:
-    """Edit existing content"""
+    """Edit existing content from created_content table with rich formatting similar to dashboard"""
     payload = state.payload
     
-    state.result = f"""Content edit prepared
+    if not supabase:
+        state.error = "Database connection not configured. Please contact support."
+        state.result = "Unable to search for content to edit: Database not available."
+        logger.error("Supabase not configured - cannot search content for editing")
+        return state
 
-Content ID: {payload.get('content_id', 'Will be selected')}
-Edit instruction: {payload.get('edit_instruction')}
+    # Ensure user_id is present for security
+    if not state.user_id:
+        state.error = "User ID is required to edit content"
+        state.result = "Unable to search for content: User authentication required."
+        logger.error("User ID missing in handle_edit_content")
+        return state
 
-Next steps:
-1. Search for content matching criteria
-2. User selects specific content
-3. Apply edits
-4. Confirm save or discard"""
-    
+    try:
+        # Build query for created_content table - select all fields including uuid (id)
+        query = supabase.table('created_content').select('*')
+
+        # Security: Always filter by user_id (required)
+        query = query.eq('user_id', state.user_id)
+
+        # Check if we have a semantic search query
+        has_semantic_search = payload.get('query') and payload['query'].strip()
+
+        if has_semantic_search:
+            # Use semantic search instead of traditional filters
+            search_query = payload['query'].strip()
+            logger.info(f"Performing semantic search for editing: '{search_query}'")
+
+            # Perform text search on title and content columns
+            # Use ilike for case-insensitive partial matching
+            query = query.or_(f"title.ilike.%{search_query}%,content.ilike.%{search_query}%")
+
+            # Apply any additional filters if present
+            if payload.get('channel'):
+                query = query.eq('channel', payload['channel'])
+            if payload.get('platform'):
+                platform_filter = payload['platform'].lower().strip()
+                query = query.eq('platform', platform_filter)
+            if payload.get('status'):
+                status_filter = payload['status'].lower().strip()
+                query = query.eq('status', status_filter)
+            if payload.get('content_type'):
+                query = query.eq('content_type', payload['content_type'])
+
+        else:
+            # Use traditional filters
+            # Apply filters from payload
+            if payload.get('channel'):
+                # Channel filter (Social Media, Blog, Email, Messages)
+                query = query.eq('channel', payload['channel'])
+
+            # Apply filters from payload - convert to lowercase for platform and status
+            if payload.get('platform'):
+                # Convert platform to lowercase to match schema (instagram, facebook, etc.)
+                platform_filter = payload['platform'].lower().strip()
+                query = query.eq('platform', platform_filter)
+
+            if payload.get('status'):
+                # Convert status to lowercase to match schema (generated, scheduled, published)
+                status_filter = payload['status'].lower().strip()
+                query = query.eq('status', status_filter)
+
+            if payload.get('content_type'):
+                query = query.eq('content_type', payload['content_type'])
+
+        # Apply date range filter using start_date and end_date directly
+        if payload.get('start_date'):
+            start_date = payload['start_date']
+            # Check if it's already a full timestamp (contains 'T') or just a date
+            if 'T' in start_date:
+                # Already a full timestamp from _get_date_range_filter
+                start_datetime = start_date
+            else:
+                # YYYY-MM-DD format from _parse_date_range_format, add time components
+                start_datetime = f"{start_date}T00:00:00.000Z"
+            query = query.gte('created_at', start_datetime)
+
+        if payload.get('end_date'):
+            end_date = payload['end_date']
+            # Check if it's already a full timestamp (contains 'T') or just a date
+            if 'T' in end_date:
+                # Already a full timestamp from _get_date_range_filter
+                end_datetime = end_date
+            else:
+                # YYYY-MM-DD format from _parse_date_range_format, add time components
+                end_datetime = f"{end_date}T23:59:59.999Z"
+            query = query.lte('created_at', end_datetime)
+
+        # Order by creation date (newest first) and limit results
+        query = query.order('created_at', desc=True)
+
+        # For semantic search, limit results to avoid too many matches
+        # For traditional filters, show more results
+        if has_semantic_search:
+            result = query.limit(30).execute()  # Limit semantic search results for editing
+        else:
+            result = query.limit(50).execute()  # Allow more results for filtered searches
+
+        logger.info(f"Edit content search executed: Found {len(result.data) if result.data else 0} items (semantic_search: {has_semantic_search})")
+
+        if not result.data or len(result.data) == 0:
+            # Generate personalized "no results" message
+            if has_semantic_search:
+                base_message = f"I couldn't find any content matching your search for '{payload['query']}'. Try different keywords or adjust your filters."
+            else:
+                filters_desc = []
+                if payload.get('channel'): filters_desc.append(f"channel: {payload['channel']}")
+                if payload.get('platform'): filters_desc.append(f"platform: {payload['platform']}")
+                if payload.get('status'): filters_desc.append(f"status: {payload['status']}")
+                if payload.get('content_type'): filters_desc.append(f"type: {payload['content_type']}")
+                if payload.get('start_date') or payload.get('end_date'):
+                    date_desc = ""
+                    if payload.get('start_date'): date_desc += f"from {payload['start_date']}"
+                    if payload.get('end_date'): date_desc += f" to {payload['end_date']}"
+                    filters_desc.append(f"date: {date_desc.strip()}")
+
+                filters_text = ", ".join(filters_desc) if filters_desc else "no filters applied"
+                base_message = f"I couldn't find any content with the specified filters ({filters_text}). Try adjusting your search criteria."
+
+            state.result = generate_personalized_message(
+                base_message=base_message,
+                user_context=state.user_query,
+                message_type="info"
+            )
+            return state
+
+        # Process content items for display
+        content_items = []
+        content_ids = []  # Store all content IDs for payload
+        total_count = len(result.data)
+
+        # Show fewer items for semantic search to avoid overwhelming results
+        # But show ALL items when user requests "all posts"
+        show_all_posts = payload.get('all') and payload['all'] is True
+        if show_all_posts:
+            showing = total_count  # Show all items when "all" is requested
+        else:
+            showing = min(total_count, 20 if has_semantic_search else 50)
+
+        for idx, item in enumerate(result.data[:showing], 1):
+            # Debug logging for images field
+            logger.info(f"Content item {idx}: has images field: {'images' in item}, images value: {item.get('images', 'NOT_FOUND')}")
+
+            # Get content_id (uuid) - store for payload
+            content_id = item.get('id') or item.get('uuid')
+            if content_id:
+                content_ids.append(content_id)
+
+            # Extract image URL from images array (first image if available)
+            images = item.get('images', [])
+            media_url = None
+            if images and len(images) > 0:
+                # Handle both string URLs and object formats
+                first_image = images[0]
+                if isinstance(first_image, str):
+                    media_url = first_image
+                elif isinstance(first_image, dict):
+                    media_url = first_image.get('url') or first_image.get('image_url')
+
+            # Format hashtags
+            hashtags = item.get('hashtags', [])
+            hashtag_text = ''
+            if hashtags:
+                if isinstance(hashtags, list):
+                    hashtag_text = ' '.join([f"#{tag}" if not tag.startswith('#') else tag for tag in hashtags[:10]])
+                else:
+                    hashtag_text = str(hashtags)
+
+            # Format date
+            created_at = item.get('created_at', '')
+            date_display = ''
+            if created_at:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    date_display = dt.strftime('%B %d, %Y at %I:%M %p')
+                except:
+                    date_display = created_at[:10] if len(created_at) >= 10 else created_at
+
+            # Get content text (try multiple field names)
+            content_text = item.get('content') or item.get('content_text') or item.get('text', '')
+
+            # Get title
+            title = item.get('title', '')
+
+            # Process content for display
+            processed_title = title
+            if title and len(title) > 60:
+                processed_title = title[:60] + '...'
+
+            processed_content = content_text
+            if content_text:
+                # Clean up line breaks and extra spaces
+                processed_content = ' '.join(content_text.split())
+                if len(processed_content) > 150:
+                    processed_content = processed_content[:150] + '...'
+
+            processed_hashtags = hashtag_text
+            if hashtag_text:
+                processed_hashtags = hashtag_text.replace(' #', ' #')
+
+            # Create structured content item for frontend card rendering
+            content_item = {
+                'id': idx,
+                'content_id': content_id,
+                'platform': item.get('platform', 'Unknown').title(),
+                'content_type': item.get('content_type', 'post').replace('_', ' ').title(),
+                'status': item.get('status', 'unknown').title(),
+                'created_at': date_display,
+                'created_at_raw': created_at,  # Raw timestamp for sorting/filtering
+                'title': title,
+                'title_display': processed_title,  # Truncated for display
+                'content_text': content_text,
+                'content_preview': processed_content,  # Processed preview
+                'hashtags': hashtag_text,
+                'hashtags_display': processed_hashtags,  # Clean hashtags
+                'media_url': media_url,
+                'has_media': bool(media_url),
+                'images': item.get('images', []),
+                # Additional metadata for frontend
+                'platform_emoji': {
+                    'Instagram': '📸',
+                    'Facebook': '👥',
+                    'Linkedin': '💼',
+                    'Youtube': '🎥',
+                    'Gmail': '✉️',
+                    'Whatsapp': '💬'
+                }.get(item.get('platform', 'Unknown').title(), '🌐'),
+                'status_emoji': {
+                    'Generated': '📝',
+                    'Scheduled': '⏰',
+                    'Published': '✅'
+                }.get(item.get('status', 'unknown').title(), '📄'),
+                'status_color': {
+                    'Generated': 'blue',
+                    'Scheduled': 'orange',
+                    'Published': 'green'
+                }.get(item.get('status', 'unknown').title(), 'gray'),
+                # Raw data for advanced frontend features
+                'metadata': item.get('metadata', {}),
+                'raw_data': item  # Full original item for debugging
+            }
+
+            # Debug logging for content_item
+            logger.info(f"Content item {idx} created with images: {content_item.get('images', 'MISSING')}")
+
+            content_items.append(content_item)
+
+        total_count = len(result.data)
+        showing = len(content_items)
+
+        # Append content_ids to payload for chatbot
+        if content_ids:
+            state.payload['content_ids'] = content_ids
+            state.payload['content_count'] = total_count
+            # Set content_id in AgentState (first content ID if multiple results)
+            state.content_id = content_ids[0] if len(content_ids) > 0 else None
+            # Also add to payload for backward compatibility
+            state.payload['content_id'] = content_ids[0] if len(content_ids) > 0 else None
+
+        # Set structured content data for frontend
+        state.content_items = content_items
+
+        # Format summary message with proper grammar and edit-specific instructions
+        summary_message = _format_view_content_summary(payload, total_count)
+
+        # Modify summary for editing context
+        summary_message = summary_message.replace(
+            "If you want to edit, delete, publish or schedule any post, just click on the post and select options.",
+            "Select any content item below to edit it. You can modify text, images, hashtags, and more."
+        )
+
+        # Build result with summary (frontend will render cards with edit options)
+        result = summary_message
+        if total_count > showing:
+            result += f"\n\nShowing {showing} of {total_count} items."
+
+        # Add content selection instructions
+        result += "\n\n**Next Step**: Select the content you want to edit, then tell me what changes to make!"
+
+        # Generate personalized success message
+        personalized_result = generate_personalized_message(
+            base_message=result,
+            user_context=state.user_query,
+            message_type="success"
+        )
+
+        state.result = personalized_result
+
+        # Set up for content selection - wait for user to select content and provide edit instructions
+        state.waiting_for_user = True
+        state.current_step = "content_selection"
+
+        return state
+
+    except Exception as e:
+        logger.error(f"Database query failed in handle_edit_content: {str(e)}", exc_info=True)
+        state.error = f"Failed to search for content: {str(e)}"
+        state.result = generate_personalized_message(
+            base_message="I encountered an error while searching for your content. Please try again or contact support if the problem persists.",
+            user_context=state.user_query,
+            message_type="error"
+        )
     return state
 
 
@@ -5057,18 +6380,14 @@ def _format_view_content_summary(payload: Dict[str, Any], count: int) -> str:
     # Format content type with proper pluralization
     content_type = payload.get('content_type', '').lower() if payload.get('content_type') else ''
     content_type_display = ''
-    if content_type == 'post':
+    if content_type in ['static_post', 'carousel']:
         content_type_display = 'post' if count == 1 else 'posts'
-    elif content_type == 'short_video':
+    elif content_type == 'short_video or reel':
         content_type_display = 'short video' if count == 1 else 'short videos'
     elif content_type == 'long_video':
         content_type_display = 'long video' if count == 1 else 'long videos'
     elif content_type == 'blog':
         content_type_display = 'blog post' if count == 1 else 'blog posts'
-    elif content_type == 'email':
-        content_type_display = 'email' if count == 1 else 'emails'
-    elif content_type == 'message':
-        content_type_display = 'message' if count == 1 else 'messages'
     else:
         content_type_display = 'item' if count == 1 else 'items'
 
@@ -5111,10 +6430,33 @@ def _format_view_content_summary(payload: Dict[str, Any], count: int) -> str:
     # Build the summary message with proper grammar
     parts = []
 
-    # Check if this is a semantic search result
+    # Check if this is a semantic search result or "all posts" request
     has_query = payload.get('query') and payload['query'].strip()
+    show_all_posts = payload.get('all') and payload['all'] is True
 
-    if has_query:
+    if show_all_posts:
+        # For "all posts" requests, show a special summary
+        parts.append(f"You have ALL {count}")
+        parts.append("item" if count == 1 else "items")
+        parts.append("in your content library")
+
+        # Add any filters that were applied
+        filter_parts = []
+        if status_display != 'content':
+            filter_parts.append(f"status: {status_display}")
+        if channel_display != 'content':
+            filter_parts.append(f"channel: {channel_display}")
+        if content_type_display != 'items':
+            filter_parts.append(f"type: {content_type_display}")
+        if platform_display:
+            filter_parts.append(f"platform: {platform_display}")
+        if date_display:
+            filter_parts.append(date_display.strip())
+
+        if filter_parts:
+            parts.append(f"(showing all matching {', '.join(filter_parts)})")
+
+    elif has_query:
         # For semantic search, use different formatting
         parts.append(f"You have {count}")
         parts.append("item" if count == 1 else "items")
@@ -5173,7 +6515,10 @@ def _format_view_content_summary(payload: Dict[str, Any], count: int) -> str:
         summary += '.'
 
     # Add action instructions
-    summary += "\n\nIf you want to edit, delete, publish or schedule any post, just click on the post and select options."
+    if show_all_posts:
+        summary += "\n\nShowing ALL your content. Click on any item to edit, delete, or take other actions."
+    else:
+        summary += "\n\nIf you want to edit, delete, publish or schedule any post, just click on the post and select options."
 
     return summary
 
@@ -5249,21 +6594,40 @@ def handle_view_content(state: AgentState) -> AgentState:
         
         # Apply date range filter using start_date and end_date directly
         if payload.get('start_date'):
-            # Convert YYYY-MM-DD to PostgreSQL timestamp format (start of day)
-            start_datetime = f"{payload['start_date']}T00:00:00.000Z"
+            start_date = payload['start_date']
+            # Check if it's already a full timestamp (contains 'T') or just a date
+            if 'T' in start_date:
+                # Already a full timestamp from _get_date_range_filter
+                start_datetime = start_date
+            else:
+                # YYYY-MM-DD format from _parse_date_range_format, add time components
+                start_datetime = f"{start_date}T00:00:00.000Z"
             query = query.gte('created_at', start_datetime)
 
         if payload.get('end_date'):
-            # Convert YYYY-MM-DD to PostgreSQL timestamp format (end of day)
-            end_datetime = f"{payload['end_date']}T23:59:59.999Z"
+            end_date = payload['end_date']
+            # Check if it's already a full timestamp (contains 'T') or just a date
+            if 'T' in end_date:
+                # Already a full timestamp from _get_date_range_filter
+                end_datetime = end_date
+            else:
+                # YYYY-MM-DD format from _parse_date_range_format, add time components
+                end_datetime = f"{end_date}T23:59:59.999Z"
             query = query.lte('created_at', end_datetime)
         
         # Order by creation date (newest first) and limit results
         query = query.order('created_at', desc=True)
 
+        # Check if user wants to see ALL posts without limits
+        show_all_posts = payload.get('all') and payload['all'] is True
+
         # For semantic search, limit results to avoid too many matches
         # For traditional filters, show more results
-        if has_semantic_search:
+        # But if user wants ALL posts, don't apply any limits
+        if show_all_posts:
+            result = query.execute()  # No limit when showing all posts
+            logger.info("Showing ALL posts without limits")
+        elif has_semantic_search:
             result = query.limit(50).execute()  # Limit semantic search results
         else:
             result = query.limit(100).execute()  # Allow more results for filtered searches
@@ -5302,7 +6666,12 @@ def handle_view_content(state: AgentState) -> AgentState:
         total_count = len(result.data)
 
         # Show fewer items for semantic search to avoid overwhelming results
-        showing = min(total_count, 20 if has_semantic_search else 50)
+        # But show ALL items when user requests "all posts"
+        show_all_posts = payload.get('all') and payload['all'] is True
+        if show_all_posts:
+            showing = total_count  # Show all items when "all" is requested
+        else:
+            showing = min(total_count, 20 if has_semantic_search else 50)
 
         for idx, item in enumerate(result.data[:showing], 1):
             # Debug logging for images field
@@ -6616,10 +7985,10 @@ def should_continue_to_action(state: AgentState) -> str:
         return "end"
     if state.payload_complete:
         return "execute_action"
-    # When waiting for user clarification, stop graph execution
+    # When waiting for user clarification or upload, stop graph execution
     # The graph will pause and return control. When user responds,
     # process_query will update state and invoke graph again from entry point
-    if state.waiting_for_user:
+    if state.waiting_for_user or state.waiting_for_upload:
         return "end"  # Stop execution - graph pauses naturally
     return "end"
 
@@ -6719,7 +8088,7 @@ class ATSNAgent:
         self.state = None
         self.user_id = user_id
     
-    async def process_query(self, user_query: str, conversation_history: List[str] = None, user_id: Optional[str] = None, media_file: Optional[str] = None) -> Dict[str, Any]:
+    async def process_query(self, user_query: str, conversation_history: List[str] = None, user_id: Optional[str] = None, media_file: Optional[str] = None, media_urls: Optional[List[str]] = None) -> Dict[str, Any]:
         """Process a user query
         
         Maintains conversation context by appending new messages to user_query.
@@ -6740,10 +8109,11 @@ class ATSNAgent:
         # Initialize or update state
         # Check if previous query was completed (has result and payload_complete)
         previous_completed = (
-            self.state is not None 
-            and self.state.payload_complete 
+            self.state is not None
+            and self.state.payload_complete
             and (self.state.result or self.state.current_step == "end")
             and not self.state.waiting_for_user
+            and not self.state.waiting_for_upload
         )
         
         if self.state is None or previous_completed or not self.state.waiting_for_user:
@@ -6763,20 +8133,41 @@ class ATSNAgent:
                 # Append with space separator, ensuring no double spaces
                 existing_query = self.state.user_query.rstrip()
                 self.state.user_query = f"{existing_query} {user_query}"
+                # Also maintain full conversation history
+                if self.state.full_conversation:
+                    existing_full = self.state.full_conversation.rstrip()
+                    self.state.full_conversation = f"{existing_full} {user_query}"
+                else:
+                    self.state.full_conversation = user_query
             else:
                 self.state.user_query = user_query
+                self.state.full_conversation = user_query
             
             self.state.waiting_for_user = False
             self.state.current_step = "payload_construction"
+
+            # Check for intent changes in clarification responses
+            if self.state and self.state.intent:
+                print(f"🔄 Calling detect_intent_changes in process_query for intent: {self.state.intent}")
+                old_state = self.state
+                self.state = detect_intent_changes(self.state)
+                if self.state and self.state.intent_change_detected:
+                    print(f"✅ Intent change detected in process_query: {self.state.previous_intent} → {self.state.intent} ({self.state.intent_change_type})")
+                elif not self.state:
+                    print(f"❌ detect_intent_changes returned None, restoring old state")
+                    self.state = old_state
             
             # Preserve user_id if provided
             if active_user_id:
                 self.state.user_id = active_user_id
 
-        # Handle media_file if provided (for upload functionality)
+        # Handle media_file or media_urls if provided (for upload functionality)
         if media_file:
             self.state.payload['media_file'] = media_file
             logger.info(f"Media file set in payload: {media_file}")
+        elif media_urls and len(media_urls) > 0:
+            self.state.payload['media_file'] = media_urls[0]  # Use first URL
+            logger.info(f"Media URLs set in payload: {media_urls}")
 
         # Handle content selection from temp_content_options (for scheduling)
         if (hasattr(self.state, 'temp_content_options') and
@@ -6816,16 +8207,23 @@ class ATSNAgent:
         if self.state.waiting_for_user and hasattr(self.state, 'clarification_options'):
             clarification_options = getattr(self.state, 'clarification_options', [])
 
+        # Adjust current_step for waiting states
+        current_step = self.state.current_step
+        if self.state.waiting_for_upload:
+            current_step = "waiting_for_upload"
+
         response = {
             "intent": self.state.intent,
             "payload": self.state.payload,
             "payload_complete": self.state.payload_complete,
             "waiting_for_user": self.state.waiting_for_user,
+            "waiting_for_upload": self.state.waiting_for_upload,
+            "upload_type": self.state.upload_type,
             "clarification_question": self.state.clarification_question,
             "clarification_options": clarification_options,  # Only include when waiting
             "result": self.state.result,
             "error": self.state.error,
-            "current_step": self.state.current_step,
+            "current_step": current_step,
             "content_id": self.state.content_id,  # Single content ID (UUID)
             "content_ids": getattr(self.state, 'content_ids', None),  # List of content IDs for selection
             "lead_id": self.state.lead_id,  # Single lead ID (UUID)
