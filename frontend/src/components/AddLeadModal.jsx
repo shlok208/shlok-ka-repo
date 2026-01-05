@@ -4,7 +4,7 @@ import { leadsAPI } from '../services/leads'
 import { useNotifications } from '../contexts/NotificationContext'
 import ImportLeadsModal from './ImportLeadsModal'
 
-const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
+const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false, isDarkMode = false }) => {
   const { showSuccess, showError } = useNotifications()
   const [loading, setLoading] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -169,7 +169,9 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
 
   return (
     <div className="fixed bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto md:left-48 xl:left-64" style={{ right: '0', top: '0', bottom: '0' }}>
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+      <div className={`${
+        isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'
+      } rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col`}>
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-t-xl">
           <div className="flex items-center justify-between">
@@ -185,7 +187,7 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
               <X className="w-6 h-6" />
             </button>
           </div>
-          
+
           {/* CSV Import Option */}
           <div className="mt-4 pt-4 border-t border-white/20">
             <button
@@ -202,10 +204,12 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6">
-          <div className="space-y-6">
+          <div className="space-y-6" style={{ color: isDarkMode ? '#f3f4f6' : 'inherit' }}>
             {/* Name */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${
+                isDarkMode ? 'text-gray-200' : 'text-gray-700'
+              }`}>
                 Name <span className="text-red-500">*</span>
               </label>
               <input
@@ -214,7 +218,11 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
                 value={formData.name}
                 onChange={handleChange}
                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  errors.name ? 'border-red-500' : 'border-gray-300'
+                  errors.name
+                    ? 'border-red-500'
+                    : isDarkMode
+                      ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400'
+                      : 'border-gray-300'
                 }`}
                 placeholder="Enter lead name"
                 disabled={loading}
@@ -230,7 +238,9 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
             {/* Email and Phone */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className={`block text-sm font-medium mb-2 ${
+                  isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                }`}>
                   <Mail className="w-4 h-4 inline mr-1" />
                   Email
                 </label>
@@ -240,7 +250,11 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
                   value={formData.email}
                   onChange={handleChange}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errors.email ? 'border-red-500' : 'border-gray-300'
+                    errors.email
+                      ? 'border-red-500'
+                      : isDarkMode
+                        ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400'
+                        : 'border-gray-300'
                   }`}
                   placeholder="email@example.com"
                   disabled={loading}
@@ -254,7 +268,9 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className={`block text-sm font-medium mb-2 ${
+                  isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                }`}>
                   <Phone className="w-4 h-4 inline mr-1" />
                   Phone Number
                 </label>
@@ -264,7 +280,11 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
                   value={formData.phone_number}
                   onChange={handleChange}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errors.phone_number ? 'border-red-500' : 'border-gray-300'
+                    errors.phone_number
+                      ? 'border-red-500'
+                      : isDarkMode
+                        ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400'
+                        : 'border-gray-300'
                   }`}
                   placeholder="+1234567890"
                   disabled={loading}
@@ -279,8 +299,12 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
             </div>
 
             {errors.contact && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-sm text-red-600 flex items-center space-x-1">
+              <div className={`${
+                isDarkMode
+                  ? 'bg-red-900/20 border-red-700 text-red-400'
+                  : 'bg-red-50 border-red-200 text-red-600'
+              } border rounded-lg p-3`}>
+                <p className="text-sm flex items-center space-x-1">
                   <AlertCircle className="w-4 h-4" />
                   <span>{errors.contact}</span>
                 </p>
@@ -289,7 +313,9 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
 
             {/* Source Platform */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${
+                isDarkMode ? 'text-gray-200' : 'text-gray-700'
+              }`}>
                 <Globe className="w-4 h-4 inline mr-1" />
                 Source Platform
               </label>
@@ -297,7 +323,11 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
                 name="source_platform"
                 value={formData.source_platform}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  isDarkMode
+                    ? 'border-gray-600 bg-gray-700 text-gray-200'
+                    : 'border-gray-300'
+                }`}
                 disabled={loading}
               >
                 <option value="manual">Manual Entry</option>
@@ -325,7 +355,11 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
                       }
                     }}
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.customSourcePlatform ? 'border-red-500' : 'border-gray-300'
+                      errors.customSourcePlatform
+                        ? 'border-red-500'
+                        : isDarkMode
+                          ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400'
+                          : 'border-gray-300'
                     }`}
                     placeholder="Enter custom source platform"
                     disabled={loading}
@@ -342,14 +376,20 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
 
             {/* Status */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${
+                isDarkMode ? 'text-gray-200' : 'text-gray-700'
+              }`}>
                 Initial Status
               </label>
               <select
                 name="status"
                 value={formData.status}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  isDarkMode
+                    ? 'border-gray-600 bg-gray-700 text-gray-200'
+                    : 'border-gray-300'
+                }`}
                 disabled={loading}
               >
                 <option value="new">New</option>
@@ -365,30 +405,48 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
             {/* Additional Form Fields */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700">
+                <label className={`block text-sm font-medium ${
+                  isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                }`}>
                   Additional Information (Optional)
                 </label>
                 <button
                   type="button"
                   onClick={handleAddFormField}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  className={`text-sm font-medium ${
+                    isDarkMode
+                      ? 'text-blue-400 hover:text-blue-300'
+                      : 'text-blue-600 hover:text-blue-700'
+                  }`}
                   disabled={loading}
                 >
                   + Add Field
                 </button>
               </div>
               {Object.keys(formData.form_data).length > 0 ? (
-                <div className="space-y-2 border border-gray-200 rounded-lg p-3 bg-gray-50">
+                <div className={`space-y-2 border rounded-lg p-3 ${
+                  isDarkMode
+                    ? 'border-gray-600 bg-gray-700'
+                    : 'border-gray-200 bg-gray-50'
+                }`}>
                   {Object.entries(formData.form_data).map(([key, value]) => (
                     <div key={key} className="flex items-center space-x-2">
                       <div className="flex-1">
-                        <div className="text-xs text-gray-500 mb-1 capitalize">{key.replace(/_/g, ' ')}</div>
-                        <div className="text-sm text-gray-900">{value}</div>
+                        <div className={`text-xs mb-1 capitalize ${
+                          isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                        }`}>{key.replace(/_/g, ' ')}</div>
+                        <div className={`text-sm ${
+                          isDarkMode ? 'text-gray-200' : 'text-gray-900'
+                        }`}>{value}</div>
                       </div>
                       <button
                         type="button"
                         onClick={() => handleRemoveFormField(key)}
-                        className="text-red-600 hover:text-red-700 p-1"
+                        className={`p-1 ${
+                          isDarkMode
+                            ? 'text-red-400 hover:text-red-300'
+                            : 'text-red-600 hover:text-red-700'
+                        }`}
                         disabled={loading}
                       >
                         <X className="w-4 h-4" />
@@ -397,7 +455,11 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-gray-500 italic p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div className={`text-sm italic p-3 rounded-lg border ${
+                  isDarkMode
+                    ? 'text-gray-400 bg-gray-700 border-gray-600'
+                    : 'text-gray-500 bg-gray-50 border-gray-200'
+                }`}>
                   No additional fields added. Click "Add Field" to add custom information.
                 </div>
               )}
@@ -405,12 +467,18 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false }) => {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end space-x-3 mt-6 pt-6 border-t border-gray-200">
+          <div className={`flex items-center justify-end space-x-3 mt-6 pt-6 border-t ${
+            isDarkMode ? 'border-gray-600' : 'border-gray-200'
+          }`}>
             <button
               type="button"
               onClick={handleClose}
               disabled={loading}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className={`px-4 py-2 border rounded-lg transition-colors disabled:opacity-50 ${
+                isDarkMode
+                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
             >
               Cancel
             </button>
