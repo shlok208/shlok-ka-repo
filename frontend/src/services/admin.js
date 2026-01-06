@@ -220,8 +220,8 @@ const adminAPI = {
     return response.data;
   },
 
-  async runFaqEmbeddings() {
-    const response = await api.post('/admin/faq-embeddings/run');
+  async runProfileEmbeddings(limit = 200) {
+    const response = await api.post(`/profile/refresh-embeddings?limit=${limit}`);
     return response.data;
   },
 

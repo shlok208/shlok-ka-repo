@@ -45,6 +45,7 @@ class ContentUpdate(BaseModel):
     scheduled_date: Optional[str] = None
     scheduled_time: Optional[str] = None
     status: Optional[str] = None
+    images: Optional[List[str]] = None
 
 # Content status update model
 class ContentStatusUpdate(BaseModel):
@@ -427,6 +428,8 @@ async def update_content(
             update_fields["scheduled_time"] = update_dict["scheduled_time"]
         if "status" in update_dict:
             update_fields["status"] = update_dict["status"]
+        if "images" in update_dict:
+            update_fields["images"] = update_dict["images"]
         
         if not update_fields:
             raise HTTPException(

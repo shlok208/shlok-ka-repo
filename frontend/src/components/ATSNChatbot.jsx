@@ -1178,10 +1178,62 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       return
     }
 
-    // Open image editor modal - this would need to be implemented
-    // For now, just show a placeholder
-    console.log('Edit content:', selectedContent[0])
-    showError('Image editor modal coming soon!')
+    // Find the actual content item from messages
+    let selectedContentItem = null
+    for (const message of messages) {
+      if (message.content_items) {
+        selectedContentItem = message.content_items.find(item => item.content_id === selectedContent[0])
+        if (selectedContentItem) break
+      }
+    }
+
+    if (!selectedContentItem) {
+      showError('Selected content not found')
+      return
+    }
+
+    // Process the content item the same way as for ATSNContentCard
+    const processedContent = {
+      id: selectedContentItem.content_id,
+      title: selectedContentItem.title_display || selectedContentItem.title,
+      content: selectedContentItem.content_text || selectedContentItem.content_preview,
+      hashtags: selectedContentItem.hashtags_display ?
+        selectedContentItem.hashtags_display.split(' ').filter(tag => tag.startsWith('#')).map(tag => tag.substring(1)) :
+        (selectedContentItem.hashtags ?
+          (Array.isArray(selectedContentItem.hashtags) ? selectedContentItem.hashtags : []) :
+          (selectedContentItem.raw_data?.hashtags ?
+            (Array.isArray(selectedContentItem.raw_data.hashtags) ? selectedContentItem.raw_data.hashtags : []) :
+            [])),
+      media_url: selectedContentItem.media_url,
+      images: selectedContentItem.images || [],
+      metadata: selectedContentItem.metadata || {},
+      post_type: selectedContentItem.raw_data?.post_type,
+      content_type: selectedContentItem.content_type,
+      selected_content_type: selectedContentItem.raw_data?.selected_content_type,
+      carousel_images: selectedContentItem.raw_data?.carousel_images || selectedContentItem.raw_data?.images,
+      // Add additional fields for different content types
+      email_subject: selectedContentItem.email_subject,
+      email_body: selectedContentItem.email_body,
+      short_video_script: selectedContentItem.short_video_script,
+      long_video_script: selectedContentItem.long_video_script,
+      message: selectedContentItem.message,
+      platform: selectedContentItem.platform
+    }
+
+    // Check if it's a reel/video and open appropriate modal
+    setSelectedContentForModal(processedContent)
+    if (processedContent.content_type === 'short_video or reel' ||
+        processedContent.content_type === 'reel' ||
+        processedContent.content_type?.toLowerCase().includes('reel') ||
+        processedContent.content_type?.toLowerCase().includes('video') ||
+        selectedContentItem.raw_data?.content_type === 'short_video or reel' ||
+        selectedContentItem.raw_data?.content_type === 'reel' ||
+        selectedContentItem.raw_data?.content_type?.toLowerCase().includes('reel') ||
+        selectedContentItem.raw_data?.content_type?.toLowerCase().includes('video')) {
+      setShowReelModal(true)
+    } else {
+      setShowContentModal(true)
+    }
 
     // Clear selection after action
     setSelectedContent([])
@@ -2688,8 +2740,17 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
       {/* Schedule Modal */}
       {showScheduleModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowScheduleModal(false)
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-lg p-6 max-w-md w-full mx-4"
+          >
             <h3 className="text-xl font-semibold mb-4">Schedule Content</h3>
             <div className="space-y-4">
               <div>
@@ -3125,6 +3186,50 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                         contentType={contentItem.content_type}
                                         intent={message.intent}
                                         onClick={() => handleContentClick(contentItem)}
+                                        onEdit={() => {
+                                          // Process the content item the same way as for modal opening
+                                          const processedContent = {
+                                            id: contentItem.content_id,
+                                            title: contentItem.title_display || contentItem.title,
+                                            content: contentItem.content_text || contentItem.content_preview,
+                                            hashtags: contentItem.hashtags_display ?
+                                              contentItem.hashtags_display.split(' ').filter(tag => tag.startsWith('#')).map(tag => tag.substring(1)) :
+                                              (contentItem.hashtags ?
+                                                (Array.isArray(contentItem.hashtags) ? contentItem.hashtags : []) :
+                                                (contentItem.raw_data?.hashtags ?
+                                                  (Array.isArray(contentItem.raw_data.hashtags) ? contentItem.raw_data.hashtags : []) :
+                                                  [])),
+                                            media_url: contentItem.media_url,
+                                            images: contentItem.images || [],
+                                            metadata: contentItem.metadata || {},
+                                            post_type: contentItem.raw_data?.post_type,
+                                            content_type: contentItem.content_type,
+                                            selected_content_type: contentItem.raw_data?.selected_content_type,
+                                            carousel_images: contentItem.raw_data?.carousel_images || contentItem.raw_data?.images,
+                                            // Add additional fields for different content types
+                                            email_subject: contentItem.email_subject,
+                                            email_body: contentItem.email_body,
+                                            short_video_script: contentItem.short_video_script,
+                                            long_video_script: contentItem.long_video_script,
+                                            message: contentItem.message,
+                                            platform: contentItem.platform
+                                          };
+
+                                          // Check if it's a reel/video and open appropriate modal
+                                          setSelectedContentForModal(processedContent);
+                                          if (processedContent.content_type === 'short_video or reel' ||
+                                              processedContent.content_type === 'reel' ||
+                                              processedContent.content_type?.toLowerCase().includes('reel') ||
+                                              processedContent.content_type?.toLowerCase().includes('video') ||
+                                              contentItem.raw_data?.content_type === 'short_video or reel' ||
+                                              contentItem.raw_data?.content_type === 'reel' ||
+                                              contentItem.raw_data?.content_type?.toLowerCase().includes('reel') ||
+                                              contentItem.raw_data?.content_type?.toLowerCase().includes('video')) {
+                                            setShowReelModal(true);
+                                          } else {
+                                            setShowContentModal(true);
+                                          }
+                                        }}
                                         isDarkMode={isDarkMode}
                                       />
                                     ) : (
@@ -3180,8 +3285,48 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                           setShowContentModal(true);
                                         }}
                                         onEdit={() => {
-                                          // Handle edit action - could navigate to edit page or open modal
-                                          console.log('Edit content:', contentItem.content_id);
+                                          // Process the content item the same way as for modal opening
+                                          const processedContent = {
+                                            id: contentItem.content_id,
+                                            title: contentItem.title_display || contentItem.title,
+                                            content: contentItem.content_text || contentItem.content_preview,
+                                            hashtags: contentItem.hashtags_display ?
+                                              contentItem.hashtags_display.split(' ').filter(tag => tag.startsWith('#')).map(tag => tag.substring(1)) :
+                                              (contentItem.hashtags ?
+                                                (Array.isArray(contentItem.hashtags) ? contentItem.hashtags : []) :
+                                                (contentItem.raw_data?.hashtags ?
+                                                  (Array.isArray(contentItem.raw_data.hashtags) ? contentItem.raw_data.hashtags : []) :
+                                                  [])),
+                                            media_url: contentItem.media_url,
+                                            images: contentItem.images || [],
+                                            metadata: contentItem.metadata || {},
+                                            post_type: contentItem.raw_data?.post_type,
+                                            content_type: contentItem.content_type,
+                                            selected_content_type: contentItem.raw_data?.selected_content_type,
+                                            carousel_images: contentItem.raw_data?.carousel_images || contentItem.raw_data?.images,
+                                            // Add additional fields for different content types
+                                            email_subject: contentItem.email_subject,
+                                            email_body: contentItem.email_body,
+                                            short_video_script: contentItem.short_video_script,
+                                            long_video_script: contentItem.long_video_script,
+                                            message: contentItem.message,
+                                            platform: contentItem.platform
+                                          };
+
+                                          // Check if it's a reel/video and open appropriate modal
+                                          setSelectedContentForModal(processedContent);
+                                          if (processedContent.content_type === 'short_video or reel' ||
+                                              processedContent.content_type === 'reel' ||
+                                              processedContent.content_type?.toLowerCase().includes('reel') ||
+                                              processedContent.content_type?.toLowerCase().includes('video') ||
+                                              contentItem.raw_data?.content_type === 'short_video or reel' ||
+                                              contentItem.raw_data?.content_type === 'reel' ||
+                                              contentItem.raw_data?.content_type?.toLowerCase().includes('reel') ||
+                                              contentItem.raw_data?.content_type?.toLowerCase().includes('video')) {
+                                            setShowReelModal(true);
+                                          } else {
+                                            setShowContentModal(true);
+                                          }
                                         }}
                                       />
                                     )}
@@ -3978,7 +4123,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                   </div>
                 ) : (
                   <div className="relative">
-                    <p className="text-base whitespace-pre-wrap pr-16">{message.text}</p>
+                    <p className="text-base whitespace-pre-wrap pr-16 text-left">{message.text}</p>
                     <div className={`absolute bottom-0 right-0 text-xs ${
                       message.sender === 'user' ? 'text-white' : 'text-gray-400'
                     }`}>
@@ -4005,7 +4150,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
               {/* Thinking text below user messages when loading */}
               {isLoading && message.sender === 'user' && index === messages.length - 1 && (
                 <div className="mt-2 ml-12">
-                  <span className="text-sm text-white italic animate-pulse">
+                  <span className={`text-sm italic animate-pulse ${isDarkMode ? 'text-white' : 'text-gray-600'}`}>
                     {getThinkingMessage()}
                   </span>
                 </div>
@@ -4098,8 +4243,17 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
       {/* Date Picker Modal */}
       {showDatePicker && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleDatePickerCancel()
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl"
+          >
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Date Range</h3>
 
             <div className="space-y-4">
@@ -4153,8 +4307,17 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
       {/* Single Date Picker Modal for Lead Follow-up */}
       {showSingleDatePicker && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleSingleDatePickerCancel()
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl"
+          >
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Follow-up Date</h3>
 
             <div className="space-y-4">
@@ -4194,8 +4357,17 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
       {/* Media Upload Modal */}
       {showMediaUploadModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowMediaUploadModal(false)
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
+          >
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-900">
                 {selectedFilesForUpload.length > 0 ? 'Confirm Upload' : 'Upload Media for Your Post'}
@@ -4358,8 +4530,18 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
       {/* Edit Lead Modal */}
       {showEditLeadModal && editLeadData && (
-        <div className={`fixed inset-0 ${isDarkMode ? 'bg-black bg-opacity-75' : 'bg-black bg-opacity-50'} flex items-center justify-center z-50`}>
-          <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto`}>
+        <div
+          className={`fixed inset-0 ${isDarkMode ? 'bg-black bg-opacity-75' : 'bg-black bg-opacity-50'} flex items-center justify-center z-50`}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowEditLeadModal(false)
+              setEditLeadData(null)
+            }
+          }}
+        >
+          <div
+            className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto`}
+          >
             <div className="flex justify-between items-center mb-6">
               <h3 className={`text-xl font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Edit Lead</h3>
               <button

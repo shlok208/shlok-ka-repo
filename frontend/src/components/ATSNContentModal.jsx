@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { X, Hash, Edit, Check, X as XIcon, Sparkles, RefreshCw, Copy } from 'lucide-react'
 import { Instagram, Facebook, MessageCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -37,7 +37,13 @@ const useStorageListener = (key, callback) => {
   }, [key, callback])
 }
 
-const ATSNContentModal = ({ content, onClose }) => {
+const ATSNContentModal = ({
+  content,
+  onClose,
+  autoOpenImageEditor = false,
+  initialImageEditorUrl = '',
+  onImageEditorOpened
+}) => {
   const [profileData, setProfileData] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editTitleValue, setEditTitleValue] = useState('')
@@ -56,9 +62,14 @@ const ATSNContentModal = ({ content, onClose }) => {
   const [editedImageUrl, setEditedImageUrl] = useState('')
   const [showImagePreview, setShowImagePreview] = useState(false)
   const [selectedImageForEdit, setSelectedImageForEdit] = useState('')
+  const [userImageFile, setUserImageFile] = useState(null)
+  const [uploadingUserImage, setUploadingUserImage] = useState(false)
+  const [imageUploadError, setImageUploadError] = useState('')
+  const [imageSaved, setImageSaved] = useState(false)
   const [showAIResult, setShowAIResult] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(getDarkModePreference)
+  const fileInputRef = useRef(null)
 
   // Listen for dark mode changes from other components
   useStorageListener('darkMode', setIsDarkMode)
@@ -169,7 +180,7 @@ const ATSNContentModal = ({ content, onClose }) => {
     setIsEditing(false)
   }
 
-  const handleImageEdit = (imageUrl) => {
+  const openImageEditSession = useCallback((imageUrl) => {
     setOriginalImageUrl(imageUrl)  // Store the original image URL from content
     setEditingImage(imageUrl)      // Set the current image being edited
     setShowImageEditModal(true)
@@ -177,6 +188,10 @@ const ATSNContentModal = ({ content, onClose }) => {
     setEditedImageUrl('')
     setShowImagePreview(false)
     setSelectedImageForEdit('')
+  }, [])
+
+  const handleImageEdit = (imageUrl) => {
+    openImageEditSession(imageUrl)
   }
 
   const handleImageEditSubmit = async () => {
@@ -276,11 +291,126 @@ const ATSNContentModal = ({ content, onClose }) => {
     setImageEditInstruction('')
   }
 
+  const handleUserImageSelection = (event) => {
+    const file = event.target.files?.[0]
+
+    if (file) {
+      setUserImageFile(file)
+      setImageUploadError('')
+      setImageSaved(false)
+    } else {
+      setUserImageFile(null)
+    }
+  }
+
+  const replaceContentImage = async (imageUrl) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+
+    if (!token) {
+      throw new Error('Authentication required to update content')
+    }
+
+    const response = await fetch(`${API_BASE_URL}/content/created-content/update/${content.id}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ images: [imageUrl] })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to save uploaded image: ${errorText}`)
+    }
+
+    const data = await response.json()
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to update content with uploaded image')
+    }
+
+    content.images = Array.isArray(data.content.images) ? data.content.images : [imageUrl]
+    return data.content
+  }
+
+  const handleUploadUserImage = async (file) => {
+    const uploadFile = file || userImageFile
+    if (!uploadFile) return
+
+    setUploadingUserImage(true)
+    setImageUploadError('')
+    setImageSaved(false)
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (!user) {
+        throw new Error('You must be signed in to upload an image')
+      }
+
+      const safeFileName = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `${user.id}/uploads/${content.id || 'content'}-${Date.now()}-${safeFileName}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('ai-generated-images')
+        .upload(path, uploadFile, {
+          cacheControl: '3600',
+          upsert: true
+        })
+
+      if (uploadError) {
+        throw uploadError
+      }
+
+      const { data: publicUrlData } = supabase.storage.from('ai-generated-images').getPublicUrl(uploadData.path)
+      const imageUrl = publicUrlData?.publicUrl
+
+      if (!imageUrl) {
+        throw new Error('Unable to generate public URL for the uploaded image')
+      }
+
+      await replaceContentImage(imageUrl)
+
+      setOriginalImageUrl(imageUrl)
+      setEditingImage(imageUrl)
+      setSelectedImageForEdit(imageUrl)
+      setShowImagePreview(false)
+      setUserImageFile(null)
+      setImageSaved(true)
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    } catch (error) {
+      console.error('Failed to upload image:', error)
+      setImageUploadError(error?.message || 'Failed to upload image')
+    } finally {
+      setUploadingUserImage(false)
+    }
+  }
+
+  const handleSaveImageClick = () => {
+    if (userImageFile) {
+      handleUploadUserImage()
+    } else if (!uploadingUserImage) {
+      fileInputRef.current?.click()
+    }
+  }
+
   const handleImageClick = (imageUrl, imageType) => {
     if (showImagePreview) {
       setSelectedImageForEdit(imageUrl)
     }
   }
+
+  useEffect(() => {
+    if (autoOpenImageEditor && initialImageEditorUrl) {
+      openImageEditSession(initialImageEditorUrl)
+      onImageEditorOpened?.()
+    }
+  }, [autoOpenImageEditor, initialImageEditorUrl, openImageEditSession, onImageEditorOpened])
 
   const handleAIEdit = (field) => {
     setAiEditType(field)
@@ -414,11 +544,14 @@ const ATSNContentModal = ({ content, onClose }) => {
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm z-30"
-      onClick={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose()
+        }
+      }}
     >
       <div
         className="fixed inset-0 flex items-center justify-center p-4"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className={`relative max-w-6xl w-full rounded-2xl shadow-2xl overflow-hidden ${
           isDarkMode ? 'bg-gray-800' : 'bg-white'
@@ -1042,46 +1175,75 @@ const ATSNContentModal = ({ content, onClose }) => {
                   )}
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex items-center justify-end space-x-3 mt-6 pt-4">
-                  <button
-                    onClick={handleCancelAIEdit}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      isDarkMode
-                        ? 'text-gray-400 bg-gray-700 hover:bg-gray-600'
-                        : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
-                    }`}
-                  >
-                    {showAIResult ? 'Try Again' : 'Cancel'}
-                  </button>
-                  {!showAIResult ? (
+                {/* Action Buttons + Upload */}
+                <div className="flex flex-wrap items-center justify-between gap-3 mt-6 pt-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleUserImageSelection}
+                      className="text-xs text-gray-500 dark:text-gray-300"
+                    />
                     <button
-                      onClick={handleAISaveEdit}
-                      disabled={aiEditing || !aiEditInstruction.trim() || aiEditInstruction.length > 500}
-                      className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg font-medium hover:from-blue-600 hover:to-indigo-600 transition-all duration-200 disabled:opacity-50 flex items-center space-x-2"
+                      onClick={handleUploadUserImage}
+                      disabled={!userImageFile || uploadingUserImage}
+                      className="px-3 py-2 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-pink-500 to-purple-600 disabled:opacity-50"
                     >
-                      {aiEditing ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>AI Editing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4" />
-                          <span>Edit with AI</span>
-                        </>
-                      )}
+                      {uploadingUserImage ? 'Uploading…' : 'Upload & Replace'}
                     </button>
-                  ) : (
+                  </div>
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={handleSaveAIResult}
-                      className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg font-medium hover:from-blue-600 hover:to-indigo-600 transition-all duration-200 flex items-center space-x-2"
+                      onClick={handleCancelAIEdit}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        isDarkMode
+                          ? 'text-gray-400 bg-gray-700 hover:bg-gray-600'
+                          : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+                      }`}
                     >
-                      <Check className="w-4 h-4" />
-                      <span>Save Changes</span>
+                      {showAIResult ? 'Try Again' : 'Cancel'}
                     </button>
-                  )}
+                    {!showAIResult ? (
+                      <button
+                        onClick={handleAISaveEdit}
+                        disabled={aiEditing || !aiEditInstruction.trim() || aiEditInstruction.length > 500}
+                        className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg font-medium hover:from-blue-600 hover:to-indigo-600 transition-all duration-200 disabled:opacity-50 flex items-center space-x-2"
+                      >
+                        {aiEditing ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>AI Editing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            <span>Edit with AI</span>
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleSaveAIResult}
+                        className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg font-medium hover:from-blue-600 hover:to-indigo-600 transition-all duration-200 flex items-center space-x-2"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>Save Changes</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {(userImageFile || imageUploadError) && (
+                  <div className="mt-2 text-xs text-gray-400">
+                    {userImageFile && (
+                      <>
+                        <p>Selected file: {userImageFile.name}</p>
+                        {!imageSaved && <p>Click “Save Image” to upload this file.</p>}
+                      </>
+                    )}
+                    {imageUploadError && <p className="text-red-400">{imageUploadError}</p>}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1308,62 +1470,79 @@ const ATSNContentModal = ({ content, onClose }) => {
                   </div>
                 )}
 
-                {/* Action Buttons */}
-                <div className="flex items-center justify-end space-x-3">
-                  <button
-                    onClick={() => setShowImageEditModal(false)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      isDarkMode
-                        ? 'text-gray-400 bg-gray-700 hover:bg-gray-600'
-                        : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
-                    }`}
-                  >
-                    Cancel
-                  </button>
-
-                  {showImagePreview ? (
-                    <>
-                      <button
-                        onClick={handleContinueEditing}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                          isDarkMode
-                            ? 'text-purple-400 bg-gray-700 hover:bg-gray-600'
-                            : 'text-purple-600 bg-gray-100 hover:bg-gray-200'
-                        }`}
-                      >
-                        Continue Editing
-                      </button>
-                      <button
-                        onClick={handleSaveEditedImage}
-                        className="px-4 py-2 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-blue-600 transition-all duration-200 flex items-center space-x-2"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span>Save Changes</span>
-                      </button>
-                    </>
-                  ) : (
+                {/* Upload + Action Buttons */}
+                <div className="flex flex-wrap items-center justify-between gap-3 mt-6 pt-4">
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={handleImageEditSubmit}
-                      disabled={imageEditing || !imageEditInstruction.trim() || imageEditInstruction.length > 500}
-                      className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-medium hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 flex items-center space-x-2"
+                      onClick={handleSaveImageClick}
+                      disabled={uploadingUserImage}
+                      className="px-3 py-2 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-pink-500 to-purple-600 disabled:opacity-50"
                     >
-                      {imageEditing ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>Leo Editing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <span>Edit with Leo</span>
-                        </>
-                      )}
+                      {uploadingUserImage ? 'Saving…' : imageSaved ? 'Image Saved' : 'Save Image'}
                     </button>
-                  )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleUserImageSelection}
+                      className="hidden"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setShowImageEditModal(false)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        isDarkMode
+                          ? 'text-gray-400 bg-gray-700 hover:bg-gray-600'
+                          : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+                      }`}
+                    >
+                      Cancel
+                    </button>
+                    {showImagePreview ? (
+                      <>
+                        <button
+                          onClick={handleContinueEditing}
+                          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                            isDarkMode
+                              ? 'text-purple-400 bg-gray-700 hover:bg-gray-600'
+                              : 'text-purple-600 bg-gray-100 hover:bg-gray-200'
+                          }`}
+                        >
+                          Continue Editing
+                        </button>
+                        <button
+                          onClick={handleSaveEditedImage}
+                          className="px-4 py-2 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-blue-600 transition-all duration-200 flex items-center space-x-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span>Save Changes</span>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={handleImageEditSubmit}
+                        disabled={imageEditing || !imageEditInstruction.trim() || imageEditInstruction.length > 500}
+                        className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-medium hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 flex items-center space-x-2"
+                      >
+                        {imageEditing ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>Leo Editing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span>Edit with Leo</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

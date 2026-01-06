@@ -4,13 +4,18 @@ Handles profile-related operations including usage tracking
 """
 
 import os
+import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from supabase import create_client, Client
+
+import openai
+from dotenv import load_dotenv
 
 from routers.connections import get_current_user, User
 
 # Configure logging
+load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -24,6 +29,9 @@ if not supabase_url or not supabase_service_key:
     raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
 
 supabase_client: Client = create_client(supabase_url, supabase_service_key)
+
+openai_api_key = os.getenv("OPENAI_API_KEY")
+openai_client = openai.OpenAI(api_key=openai_api_key) if openai_api_key else None
 
 @router.get("/usage-counts")
 async def get_usage_counts(current_user: User = Depends(get_current_user)):
@@ -143,4 +151,79 @@ async def get_usage_stats(current_user: User = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Error getting usage stats for user {current_user.id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching usage stats: {str(e)}")
+
+
+def build_profile_embedding_text(profile: dict) -> str:
+    if not isinstance(profile, dict):
+        return ""
+
+    skip_keys = {"id", "profile_embedding", "created_at", "updated_at"}
+    pieces = []
+    for key, value in profile.items():
+        if key in skip_keys:
+            continue
+        if value is None:
+            continue
+        if isinstance(value, (list, dict)):
+            try:
+                pieces.append(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+            except Exception:
+                pieces.append(str(value))
+        else:
+            pieces.append(str(value))
+
+    return "\n".join(pieces).strip()
+
+
+@router.post("/refresh-embeddings")
+async def refresh_profile_embeddings(
+    limit: int = Query(100, gt=0, le=500)
+):
+    """Generate embeddings for all profiles and store them in profiles.profile_embedding."""
+    if not openai_client:
+        raise HTTPException(status_code=500, detail="OpenAI API key is not configured")
+
+    total_processed = 0
+    errors = []
+    offset = 0
+
+    while True:
+        response = supabase_client.table("profiles").select("*").range(offset, offset + limit - 1).execute()
+        profiles = response.data or []
+
+        if not profiles:
+            break
+
+        for profile in profiles:
+            profile_id = profile.get("id")
+            text = build_profile_embedding_text(profile)
+            if not text:
+                logger.info(f"Skipping profile {profile_id} because there is no textual data to embed")
+                continue
+
+            try:
+                embedding_response = openai_client.embeddings.create(
+                    model="text-embedding-3-small",
+                    input=text
+                )
+
+                vector = embedding_response.data[0].embedding
+                supabase_client.table("profiles").update({
+                    "profile_embedding": vector
+                }).eq("id", profile_id).execute()
+
+                total_processed += 1
+            except Exception as exc:
+                logger.error(f"Failed to embed profile {profile_id}: {exc}", exc_info=True)
+                errors.append({"id": profile_id, "error": str(exc)})
+
+        if len(profiles) < limit:
+            break
+        offset += limit
+
+    return {
+        "success": True,
+        "profiles_processed": total_processed,
+        "errors": errors
+    }
 

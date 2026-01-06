@@ -187,10 +187,19 @@ const ReelModal = ({ content, onClose }) => {
   if (loading) return null // Could show a loading spinner here
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-30 backdrop-blur-sm">
-      <div className={`relative w-full max-w-6xl max-h-[90vh] rounded-xl shadow-2xl overflow-hidden ${
-        isDarkMode ? 'bg-gray-900' : 'bg-white'
-      }`}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-30 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose()
+        }
+      }}
+    >
+      <div
+        className={`relative w-full max-w-6xl max-h-[90vh] rounded-xl shadow-2xl overflow-hidden ${
+          isDarkMode ? 'bg-gray-900' : 'bg-white'
+        }`}
+      >
 
         {/* Header */}
         <div className={`flex items-center justify-between p-6 border-b ${
@@ -280,7 +289,7 @@ const ReelModal = ({ content, onClose }) => {
                 </div>
               </div>
               <div className={`p-4 max-h-[28rem] overflow-y-auto ${
-                isDarkMode ? 'text-white' : 'text-gray-700'
+                isDarkMode ? 'text-white dark-scrollbar' : 'text-gray-700 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400'
               }`}>
                 <div className="prose prose-base max-w-none">
                   <ReactMarkdown
@@ -314,7 +323,9 @@ const ReelModal = ({ content, onClose }) => {
           </div>
 
           {/* Right Column - Title and Content */}
-          <div className="space-y-6 pr-4 max-h-[32rem] overflow-y-auto">
+          <div className={`space-y-6 pr-4 max-h-[32rem] overflow-y-auto ${
+            isDarkMode ? 'dark-scrollbar' : 'scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400'
+          }`}>
             {/* Title */}
             {displayContent.title && (
               <div>
