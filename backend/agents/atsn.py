@@ -1337,6 +1337,7 @@ class AgentState(BaseModel):
     intent_change_detected: bool = False  # Whether an intent change was detected
     previous_intent: Optional[str] = None  # Previous intent before change
     intent_change_type: str = "none"  # Type of intent change: 'none', 'refinement', 'complete_shift'
+    pending_intent_change: Optional[str] = None  # Pending intent change waiting for user confirmation
     # Temporary fields for PII handling
     temp_original_email: Optional[str] = None
     temp_original_phone: Optional[str] = None
@@ -1752,7 +1753,27 @@ def construct_create_content_payload(state: AgentState) -> AgentState:
     # Use user_query which contains the full conversation context
     conversation = state.user_query
 
-    prompt = f"""You are extracting information to create content. Be EXTREMELY STRICT and CONSERVATIVE in your extraction.
+    prompt = f"""You are extracting information to create content AND detecting intent changes with confidence scores.
+
+FIRST: Detect if the user has changed their intent from "{state.intent}".
+
+INTENT CHANGE DETECTION:
+Current Intent: {state.intent}
+CORE INTENTS: greeting, general_talks, create_content, edit_content, delete_content, view_content, publish_content, schedule_content, create_leads, view_leads, edit_leads, delete_leads, follow_up_leads, view_insights, view_analytics
+
+Analyze the user's LATEST message for intent changes. Return:
+- "same_intent" if no change (confidence: 1.0)
+- "intent_changed: [new_intent]" if confident of change (confidence: 0.8-1.0)
+- "possible_change: [new_intent]" if uncertain (confidence: 0.4-0.7)
+
+EXAMPLES:
+- User says "Actually, show me my leads" → intent_changed: view_leads (confidence: 0.95)
+- User says "Instagram platform" as clarification → same_intent (confidence: 1.0)
+- User says "Nevermind, delete that post instead" → intent_changed: delete_content (confidence: 0.9)
+- User says "How are my analytics?" → intent_changed: view_analytics (confidence: 0.85)
+- User says "Schedule this for tomorrow" → intent_changed: schedule_content (confidence: 0.9)
+
+SECOND: If intent change confidence < 0.8, extract payload information using these rules:
 
 CRITICAL PRINCIPLES:
 1. ONLY extract information that is EXPLICITLY and CLEARLY stated
@@ -1820,21 +1841,28 @@ If ANY doubt exists, set the uncertain field(s) to null.
 User conversation:
 {conversation}
 
-Return a JSON object with exactly this structure:
+Return a JSON object with this structure:
 {{
-    "channel": "Social Media" | "Blog" | null,
-    "platform": "Instagram" | "Facebook" | "LinkedIn" | "YouTube" | null,
-    "content_type": "static_post" | "carousel" | "short_video or reel" | "long_video" | "blog" | null,
-    "media": "Generate" | "Upload" | "without media" | null,
-    "content_idea": "string with at least 10 words" | null,
-    "Post_type": "one of the allowed post types" | null,
-    "Image_type": "one of the allowed image types" | null
+    "intent_analysis": {{
+        "change_detected": "same_intent" | "intent_changed: [intent]" | "possible_change: [intent]",
+        "confidence": 0.0-1.0,
+        "reasoning": "brief explanation of decision"
+    }},
+    "payload": {{
+        "channel": "Social Media" | "Blog" | null,
+        "platform": "Instagram" | "Facebook" | "LinkedIn" | "YouTube" | null,
+        "content_type": "static_post" | "carousel" | "short_video or reel" | "long_video" | "blog" | null,
+        "media": "Generate" | "Upload" | "without media" | null,
+        "content_idea": "string with at least 10 words" | null,
+        "Post_type": "one of the allowed post types" | null,
+        "Image_type": "one of the allowed image types" | null
+    }}
 }}
 
 IMPORTANT: Return ONLY the JSON object, no additional text or explanation.
 {JSON_ONLY_INSTRUCTION}"""
 
-    return _extract_payload(state, prompt)
+    return _extract_payload_with_confidence_intent_detection(state, prompt)
 
 
 def construct_edit_content_payload(state: AgentState) -> AgentState:
@@ -2923,6 +2951,109 @@ def _extract_payload(state: AgentState, prompt: str) -> AgentState:
     state.error = "Payload construction failed: Unknown error"
     state.current_step = "end"
     return state
+
+
+def _extract_payload_with_confidence_intent_detection(state: AgentState, prompt: str) -> AgentState:
+    """Extract payload and handle confidence-based intent change detection in one LLM call"""
+    import json
+    import re
+
+    max_retries = 2
+
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(prompt)
+            raw_result = response.text.strip()
+
+            # Extract JSON (same logic as existing _extract_payload)
+            result = raw_result
+            if "```json" in result:
+                result = result.split("```json")[1].split("```")[0].strip()
+            elif "```" in result:
+                code_blocks = re.findall(r'```(?:json)?\s*\n?(.*?)```', result, re.DOTALL)
+                if code_blocks:
+                    result = code_blocks[0].strip()
+
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw_result, re.DOTALL)
+            if json_match and (not result or not result.startswith('{')):
+                result = json_match.group(0).strip()
+
+            if not result.startswith('{') or not result.endswith('}'):
+                if attempt < max_retries - 1:
+                    continue
+                raise ValueError(f"No JSON found in response")
+
+            extracted_data = json.loads(result)
+
+            # Handle intent change detection with confidence
+            intent_analysis = extracted_data.get('intent_analysis', {})
+            change_result = intent_analysis.get('change_detected', 'same_intent')
+            confidence = intent_analysis.get('confidence', 1.0)
+
+            print(f"🎯 Intent analysis: {change_result} (confidence: {confidence})")
+
+            # Only process intent changes with high confidence (>0.8)
+            if change_result.startswith("intent_changed:") and confidence > 0.8:
+                new_intent = change_result.split(":", 1)[1].strip()
+
+                if new_intent in INTENT_MAP:
+                    old_intent = state.intent
+                    state.intent_change_detected = True
+                    state.previous_intent = old_intent
+
+                    # Determine change type
+                    content_intents = ['create_content', 'edit_content', 'delete_content', 'view_content', 'publish_content', 'schedule_content']
+                    lead_intents = ['create_leads', 'view_leads', 'edit_leads', 'delete_leads', 'follow_up_leads']
+                    analytics_intents = ['view_insights', 'view_analytics']
+
+                    old_category = 'content' if old_intent in content_intents else 'leads' if old_intent in lead_intents else 'analytics' if old_intent in analytics_intents else None
+                    new_category = 'content' if new_intent in content_intents else 'leads' if new_intent in lead_intents else 'analytics' if new_intent in analytics_intents else None
+
+                    state.intent_change_type = 'refinement' if old_category == new_category else 'complete_shift'
+                    state.intent = new_intent
+
+                    if state.intent_change_type == 'complete_shift':
+                        state.payload = {}
+                        state.payload_complete = False
+                        state.clarification_question = None
+                        state.clarification_options = None
+                        state.waiting_for_user = False
+                        state.result = get_intent_change_message(old_intent, new_intent)
+                        state.current_step = "payload_construction"
+
+                        print(f"🔄 High-confidence intent change: {old_intent} → {new_intent} ({state.intent_change_type})")
+                        return state  # Return early for complete shifts
+
+            # For possible changes (medium confidence), ask for clarification
+            elif change_result.startswith("possible_change:") and 0.4 <= confidence <= 0.7:
+                possible_intent = change_result.split(":", 1)[1].strip()
+                state.clarification_question = f"I think you might want to {possible_intent.replace('_', ' ')} instead. Should I switch to that?"
+                state.clarification_options = ["Yes, switch to that", "No, continue with current task"]
+                state.pending_intent_change = possible_intent
+                print(f"🤔 Medium-confidence intent change detected, asking for confirmation: {possible_intent}")
+                return state
+
+            # For same_intent or low-confidence changes, proceed with payload extraction
+            if 'payload' in extracted_data:
+                payload_data = extracted_data['payload']
+                if state.payload:
+                    for key, value in payload_data.items():
+                        if value is not None:
+                            state.payload[key] = value
+                else:
+                    state.payload = payload_data
+
+                state.current_step = "payload_completion"
+                print(f"📝 Payload extracted: {state.payload}")
+
+            return state
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                continue
+            # On final failure, preserve current intent but log error
+            print(f"❌ Error in confidence-based intent detection: {e}")
+            return state
 
 
 # ==================== PAYLOAD COMPLETERS ====================
@@ -4852,26 +4983,8 @@ def complete_payload(state: AgentState) -> AgentState:
         state.current_step = "end"
         return state
 
-    # Check for intent changes in the user's latest response before proceeding
-    print(f"🔄 Calling detect_intent_changes in complete_payload for intent: {state.intent}")
-    old_state = state
-    state = detect_intent_changes(state)
-    if state and state.intent_change_detected:
-        print(f"✅ Intent change detected in complete_payload: {state.previous_intent} → {state.intent} ({state.intent_change_type})")
-    elif not state:
-        print(f"❌ detect_intent_changes returned None in complete_payload, restoring old state")
-        state = old_state
-
-    # If a complete intent shift was detected, restart the workflow
-    if state.intent_change_detected and state.intent_change_type == 'complete_shift':
-        print("🔄 Complete intent shift detected during payload completion, restarting workflow")
-        # Reset to initial state and return to classification
-        state.current_step = "intent_classification"
-        state.payload_complete = False
-        state.clarification_question = None
-        state.clarification_options = None
-        state.waiting_for_user = False
-        return state
+    # Intent change detection is now handled within constructor functions
+    # No separate LLM call needed here
     
     # Route to specific completer
     completers = {
@@ -8308,17 +8421,49 @@ class ATSNAgent:
             self.state.waiting_for_user = False
             self.state.current_step = "payload_construction"
 
-            # Check for intent changes in clarification responses
-            if self.state and self.state.intent:
-                print(f"🔄 Calling detect_intent_changes in process_query for intent: {self.state.intent}")
-                old_state = self.state
-                self.state = detect_intent_changes(self.state)
-                if self.state and self.state.intent_change_detected:
-                    print(f"✅ Intent change detected in process_query: {self.state.previous_intent} → {self.state.intent} ({self.state.intent_change_type})")
-                elif not self.state:
-                    print(f"❌ detect_intent_changes returned None, restoring old state")
-                    self.state = old_state
-            
+            # Handle pending intent change confirmations
+            if hasattr(self.state, 'pending_intent_change') and self.state.pending_intent_change:
+                # Check if user confirmed or declined the intent change
+                user_response_lower = user_query.lower().strip()
+                if 'yes' in user_response_lower or 'switch' in user_response_lower:
+                    # User confirmed intent change
+                    old_intent = self.state.intent
+                    new_intent = self.state.pending_intent_change
+
+                    self.state.intent = new_intent
+                    self.state.intent_change_detected = True
+                    self.state.previous_intent = old_intent
+
+                    # Determine change type
+                    content_intents = ['create_content', 'edit_content', 'delete_content', 'view_content', 'publish_content', 'schedule_content']
+                    lead_intents = ['create_leads', 'view_leads', 'edit_leads', 'delete_leads', 'follow_up_leads']
+                    analytics_intents = ['view_insights', 'view_analytics']
+
+                    old_category = 'content' if old_intent in content_intents else 'leads' if old_intent in lead_intents else 'analytics' if old_intent in analytics_intents else None
+                    new_category = 'content' if new_intent in content_intents else 'leads' if new_intent in lead_intents else 'analytics' if new_intent in analytics_intents else None
+
+                    self.state.intent_change_type = 'refinement' if old_category == new_category else 'complete_shift'
+
+                    if self.state.intent_change_type == 'complete_shift':
+                        self.state.payload = {}
+                        self.state.payload_complete = False
+                        self.state.result = get_intent_change_message(old_intent, new_intent)
+                        self.state.current_step = "payload_construction"
+
+                    # Clear pending state
+                    self.state.pending_intent_change = None
+                    self.state.clarification_question = None
+                    self.state.clarification_options = None
+
+                    print(f"✅ User confirmed intent change: {old_intent} → {new_intent}")
+
+                elif 'no' in user_response_lower or 'continue' in user_response_lower or 'stay' in user_response_lower:
+                    # User declined intent change, continue with current intent
+                    self.state.pending_intent_change = None
+                    self.state.clarification_question = None
+                    self.state.clarification_options = None
+                    print(f"❌ User declined intent change, continuing with {self.state.intent}")
+
             # Preserve user_id if provided
             if active_user_id:
                 self.state.user_id = active_user_id
