@@ -133,6 +133,8 @@ function CreatedContentDashboard() {
   const [selectedContent, setSelectedContent] = useState(null)
   const [isContentModalOpen, setIsContentModalOpen] = useState(false)
   const [isReelModalOpen, setIsReelModalOpen] = useState(false)
+  const [autoOpenImageEditor, setAutoOpenImageEditor] = useState(false)
+  const [initialImageEditorUrl, setInitialImageEditorUrl] = useState('')
 
   const contentRef = useRef([])
 
@@ -216,16 +218,65 @@ function CreatedContentDashboard() {
     }
   }, [user, fetchContent])
 
+  const getMediaInfo = (contentItem) => {
+    if (!contentItem) return { mediaUrl: '', isVideo: false }
+
+    let mediaUrl = null
+    let isVideo = false
+    const contentType = contentItem.content_type?.toLowerCase() || ''
+
+    if (contentItem.media_url) {
+      mediaUrl = contentItem.media_url
+      const urlWithoutQuery = contentItem.media_url.split('?')[0].toLowerCase()
+      const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.m4v']
+
+      isVideo = videoExtensions.some(ext => urlWithoutQuery.endsWith(ext)) ||
+                contentItem.media_url.toLowerCase().includes('video') ||
+                contentType.includes('video') ||
+                contentType.includes('reel') ||
+                contentType.includes('short_video')
+    } else if (contentItem.images && Array.isArray(contentItem.images) && contentItem.images.length > 0) {
+      mediaUrl = contentItem.images[0]
+    } else if (contentItem.image_url) {
+      mediaUrl = contentItem.image_url
+    } else if (contentItem.metadata && contentItem.metadata.image_url) {
+      mediaUrl = contentItem.metadata.image_url
+    }
+
+    return { mediaUrl, isVideo }
+  }
+
   const handleEdit = (contentItem) => {
-    // Handle edit functionality - TBD
-    console.log('Edit content:', contentItem)
-    showInfo('Edit functionality coming soon')
+    const { mediaUrl, isVideo } = getMediaInfo(contentItem)
+
+    if (!mediaUrl) {
+      showError('This content does not have an image to edit.')
+      return
+    }
+
+    if (isVideo) {
+      showError('Image editing is only available for image posts.')
+      return
+    }
+
+    setSelectedContent(contentItem)
+    setInitialImageEditorUrl(mediaUrl)
+    setAutoOpenImageEditor(true)
+    setIsContentModalOpen(true)
   }
 
   const handleCopy = (contentItem) => {
     // Handle copy functionality - TBD
     console.log('Copy content:', contentItem)
     showInfo('Copy functionality coming soon')
+  }
+
+  const getThumbnailUrl = (url) => {
+    if (!url) return null
+    if (!url.includes('supabase.co') || !url.includes('/storage/v1/object/public/')) {
+      return url
+    }
+    return `${url}?width=200&height=200&resize=contain&quality=80`
   }
 
   const handlePreview = (contentItem) => {
@@ -246,12 +297,19 @@ function CreatedContentDashboard() {
   const handleCloseModal = () => {
     setIsContentModalOpen(false)
     setSelectedContent(null)
+    setAutoOpenImageEditor(false)
+    setInitialImageEditorUrl('')
   }
 
   const handleCloseReelModal = () => {
     setIsReelModalOpen(false)
     setSelectedContent(null)
   }
+
+  const handleImageEditorOpened = useCallback(() => {
+    setAutoOpenImageEditor(false)
+    setInitialImageEditorUrl('')
+  }, [])
 
   const handleDelete = async (contentItem) => {
     setItemToDelete(contentItem)
@@ -1154,45 +1212,9 @@ function CreatedContentDashboard() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {Array.isArray(filteredContent) && filteredContent.map((contentItem) => {
-                // Extract media URL from various possible fields
-                let mediaUrl = null;
-                let thumbnailUrl = null;
-                let isVideo = false;
-
-                // Helper function to generate thumbnail URL
-                const getThumbnailUrl = (url) => {
-                  if (!url) return null;
-
-                  // For Supabase storage URLs, add transform parameters for thumbnail
-                  if (url.includes('supabase.co') && url.includes('/storage/v1/object/public/')) {
-                    // Add width and height parameters for thumbnail (200x200)
-                    return `${url}?width=200&height=200&resize=contain&quality=80`;
-                  }
-
-                  // For other image URLs, return original (could add more logic here)
-                  return url;
-                };
-
-                if (contentItem.media_url) {
-                  mediaUrl = contentItem.media_url;
-                  thumbnailUrl = getThumbnailUrl(mediaUrl);
-                  // Check if it's a video file
-                  isVideo = mediaUrl.match(/\.(mp4|mov|avi|webm|m4v)$/i) ||
-                           mediaUrl.includes('video') ||
-                           contentItem.content_type?.toLowerCase().includes('video') ||
-                           contentItem.content_type === 'short_video or reel';
-                } else if (contentItem.images && Array.isArray(contentItem.images) && contentItem.images.length > 0) {
-                  mediaUrl = contentItem.images[0];
-                  thumbnailUrl = getThumbnailUrl(mediaUrl);
-                } else if (contentItem.image_url) {
-                  mediaUrl = contentItem.image_url;
-                  thumbnailUrl = getThumbnailUrl(mediaUrl);
-                } else if (contentItem.metadata && contentItem.metadata.image_url) {
-                  mediaUrl = contentItem.metadata.image_url;
-                  thumbnailUrl = getThumbnailUrl(mediaUrl);
-                }
-
-                const hasMedia = mediaUrl && mediaUrl.trim();
+                const { mediaUrl, isVideo } = getMediaInfo(contentItem)
+                const hasMedia = mediaUrl && mediaUrl.trim()
+                const thumbnailUrl = getThumbnailUrl(mediaUrl)
 
                 if (!hasMedia) return null; // Skip items without media
 
@@ -1309,6 +1331,9 @@ function CreatedContentDashboard() {
         <ATSNContentModal
           content={selectedContent}
           onClose={handleCloseModal}
+          autoOpenImageEditor={autoOpenImageEditor}
+          initialImageEditorUrl={initialImageEditorUrl}
+          onImageEditorOpened={handleImageEditorOpened}
         />
       )}
 

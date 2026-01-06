@@ -317,7 +317,7 @@ const AdminDashboard = () => {
   const handleRunFaqEmbeddings = async () => {
     try {
       setRunEmbeddingLoading(true)
-      const result = await adminAPI.runFaqEmbeddings()
+      const result = await adminAPI.runProfileEmbeddings()
       const processed = result?.processed ?? 0
       showSuccess(`FAQ embeddings processed: ${processed}`)
     } catch (error) {
