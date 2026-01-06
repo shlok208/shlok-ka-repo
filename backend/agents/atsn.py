@@ -531,7 +531,7 @@ def parse_instagram_response(response_text: str) -> dict:
     return content_data
 
 
-async def generate_image_enhancer_prompt(generated_post: dict, payload: dict, business_context: dict, parsed_trends: dict, profile_assets: dict = None) -> dict:
+async def generate_image_enhancer_prompt(generated_post: dict, payload: dict, business_context: dict, parsed_trends: dict, profile_assets: dict = None, user_query: str = None) -> dict:
     """Generate an enhanced image prompt using AI based on the generated content"""
 
     import json
@@ -627,8 +627,10 @@ LOGO REQUIREMENTS (MANDATORY - NO EXCEPTIONS):
                     image_prompt_enhancer = image_prompt_enhancer.replace("{business_context.get('brand_voice', 'Professional and friendly')}", business_context.get('brand_voice', 'Professional and friendly'))
                     image_prompt_enhancer = image_prompt_enhancer.replace("{brand_assets_context}", brand_assets_context)
                     image_prompt_enhancer = image_prompt_enhancer.replace("{location_context}", location_context)
-                    image_prompt_enhancer = image_prompt_enhancer.replace("{generated_post.get('title', '')}", generated_post.get('title', ''))
-                    image_prompt_enhancer = image_prompt_enhancer.replace("{generated_post.get('content', '')}", generated_post.get('content', ''))
+                    # Use direct user message instead of extracted content_idea for more authentic image generation
+                    user_message = user_query or payload.get('content_idea', '')
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{generated_post.get('title', '')}", user_message)
+                    image_prompt_enhancer = image_prompt_enhancer.replace("{generated_post.get('content', '')}", user_message)
 
                     # Add logo context if available
                     if logo_context:
@@ -694,6 +696,7 @@ OUTPUT FORMAT (Return ONLY this JSON):
 """
     else:
         # No Image_type specified, use default prompt structure
+        user_message = user_query or payload.get('content_idea', 'Create a professional Instagram image')
         image_prompt_enhancer = f"""
 You are an expert visual prompt engineer for AI image generation, specializing in Instagram content. CURRENT DATE/TIME: {current_date} at {current_time}
 
@@ -711,9 +714,8 @@ Brand Voice: {business_context.get('brand_voice', 'Professional and friendly')}
 
 {logo_context}
 
-INSTAGRAM POST CONTENT:
-Title: {generated_post.get('title', '')}
-Caption: {generated_post.get('content', '')}
+ORIGINAL USER MESSAGE:
+{user_message}
 
 PRIMARY GOAL:
 Create a visually compelling image prompt that:
@@ -773,16 +775,18 @@ OUTPUT FORMAT (Return ONLY this JSON):
                 return enhanced_prompt_data
             else:
                 logger.error(f"Could not parse JSON from image enhancer response: {enhancer_response}")
+                user_message = user_query or payload.get('content_idea', 'Create a professional Instagram image')
                 return {
-                    "image_prompt": f"Create a professional Instagram image for: {generated_post.get('title', '')}",
+                    "image_prompt": f"Create a professional Instagram image for: {user_message}",
                     "visual_style": image_type if image_type else "photorealistic",
                     "aspect_ratio": "1:1",
                     "negative_prompt": "text, logos, watermarks, blurry"
                 }
         else:
             logger.warning("OpenAI client not available for image enhancer")
+            user_message = user_query or payload.get('content_idea', 'Create a professional Instagram image')
             return {
-                "image_prompt": f"Create a professional Instagram image for: {generated_post.get('title', '')}",
+                "image_prompt": f"Create a professional Instagram image for: {user_message}",
                 "visual_style": image_type if image_type else "photorealistic",
                 "aspect_ratio": "1:1",
                 "negative_prompt": "text, logos, watermarks, blurry"
@@ -1678,82 +1682,86 @@ def construct_create_content_payload(state: AgentState) -> AgentState:
     # Use user_query which contains the full conversation context
     conversation = state.user_query
 
-    prompt = f"""You are extracting information to create content. Analyze the user's query and extract relevant fields.
+    prompt = f"""You are extracting information to create content. Be EXTREMELY STRICT and CONSERVATIVE in your extraction.
+
+CRITICAL PRINCIPLES:
+1. ONLY extract information that is EXPLICITLY and CLEARLY stated
+2. NEVER infer, assume, or extrapolate information
+3. If uncertain about any field, set it to null
+4. Quality over quantity - better to ask questions than make wrong assumptions
+
+EXTRACTION RULES:
+
+channel:
+- Set to "Social Media" ONLY if user explicitly mentions social media platforms (Instagram, Facebook, LinkedIn, YouTube)
+- Set to "Blog" ONLY if user explicitly mentions blogging, articles, or writing content for websites
+- Otherwise: null
+
+platform:
+- ONLY extract if user explicitly names exactly one of: "Instagram", "Facebook", "LinkedIn", "YouTube"
+- Case sensitive - must match exactly
+- If multiple platforms mentioned, set to null (ask user to choose)
+- Otherwise: null
+
+content_type:
+- ONLY extract if user explicitly uses these exact phrases:
+  * "static post" → "static_post"
+  * "carousel" → "carousel"
+  * "short video" or "reel" → "short_video or reel"
+  * "long video" → "long_video"
+  * "blog post" or "blog" → "blog"
+- Generic terms like "post", "video", "content" are NOT sufficient
+- Otherwise: null
+
+media:
+- Set to "Generate" ONLY if user explicitly says they want AI-generated images/graphics/visuals
+- Set to "Upload" ONLY if user explicitly says they will provide/upload their own images
+- Set to "without media" ONLY if user explicitly says no images or text-only
+- Otherwise: null
+
+content_idea:
+- Must be the main topic/subject explicitly stated by the user
+- Must be a complete, detailed description (minimum 10 words)
+- Must clearly explain what the content is about
+- Short phrases like "marketing tips" or "our product" are NOT sufficient
+- Count the words - if under 10, set to null
+
+CLASSIFICATION (ONLY when content_idea exists and is sufficiently detailed):
+
+Post_type:
+- Choose from: Educational tips, Quote / motivation, Promotional offer, Product showcase, Carousel infographic, Announcement, Testimonial / review, Before–after, Behind-the-scenes, User-generated content, Brand story, Meme / humor, Facts / did-you-know, Event highlight, Countdown, FAQ post, Comparison, Case study snapshot, Milestone / achievement, Call-to-action post
+- ONLY classify if the content_idea clearly matches one category
+- If unclear which category fits best, set to null
+
+Image_type:
+- Choose from: Minimal & Clean with Bold Typography, Modern Corporate / B2B Professional, Luxury Editorial (Black, White, Gold Accents), Photography-Led Lifestyle Aesthetic, Product-Focused Clean Commercial Style, Flat Illustration with Friendly Characters, Isometric / Explainer Illustration Style, Playful & Youthful (Memphis / Stickers / Emojis), High-Impact Color-Blocking with Loud Type, Retro / Vintage Poster Style, Futuristic Tech / AI-Inspired Dark Mode, Glassmorphism / Neumorphism UI Style, Abstract Shapes & Fluid Gradient Art, Infographic / Data-Driven Educational Layout, Quote Card / Thought-Leadership Typography Post, Meme-Style / Social-Native Engagement Post, Festive / Campaign-Based Creative, Textured Design (Paper, Grain, Handmade Feel), Magazine / Editorial Layout with Strong Hierarchy, Experimental / Artistic Concept-Driven Design
+- ONLY classify if the content_idea suggests a specific visual style
+- If no clear visual style is implied, set to null
+
+VALIDATION CHECKLIST:
+□ Is every field either properly extracted or null?
+□ Does content_idea have at least 10 words?
+□ Is platform an exact match from allowed values?
+□ Is content_type based on explicit user wording?
+□ Are classifications truly supported by the content_idea?
+
+If ANY doubt exists, set the uncertain field(s) to null.
 
 User conversation:
 {conversation}
 
-Extract these fields if mentioned:
-- channel: "Social Media" or "Blog"
-- platform: "Instagram", "Facebook", "LinkedIn", or "Youtube"
-- content_type: "static_post", "carousel", "short_video or reel", "long_video", or "blog"
-- media: "Generate", "Upload", or "without media"
-- content_idea: The main idea/topic for the content (minimum 10 words)
-
-SPECIAL RULE: If user says something generic like "i want to post", "make a post", "create a post", or similar vague post requests, set content_type to null (do not classify it automatically). Only set content_type if they specify the exact type like "static post", "carousel", "short video", etc.
-
-Based on the content_idea and overall context, classify:
-- Post_type: Choose ONE from ["Educational tips", "Quote / motivation", "Promotional offer", "Product showcase", "Carousel infographic", "Announcement", "Testimonial / review", "Before–after", "Behind-the-scenes", "User-generated content", "Brand story", "Meme / humor", "Facts / did-you-know", "Event highlight", "Countdown", "FAQ post", "Comparison", "Case study snapshot", "Milestone / achievement", "Call-to-action post"] or return null
-- Image_type: Choose ONE from ["Minimal & Clean with Bold Typography", "Modern Corporate / B2B Professional", "Luxury Editorial (Black, White, Gold Accents)", "Photography-Led Lifestyle Aesthetic", "Product-Focused Clean Commercial Style", "Flat Illustration with Friendly Characters", "Isometric / Explainer Illustration Style", "Playful & Youthful (Memphis / Stickers / Emojis)", "High-Impact Color-Blocking with Loud Type", "Retro / Vintage Poster Style", "Futuristic Tech / AI-Inspired Dark Mode", "Glassmorphism / Neumorphism UI Style", "Abstract Shapes & Fluid Gradient Art", "Infographic / Data-Driven Educational Layout", "Quote Card / Thought-Leadership Typography Post", "Meme-Style / Social-Native Engagement Post", "Festive / Campaign-Based Creative", "Textured Design (Paper, Grain, Handmade Feel)", "Magazine / Editorial Layout with Strong Hierarchy", "Experimental / Artistic Concept-Driven Design"] or return null
-
-Examples:
-
-Query: "Create an Instagram static post about sustainable fashion trends for 2025"
+Return a JSON object with exactly this structure:
 {{
-    "channel": "Social Media",
-    "platform": "Instagram",
-    "content_type": "static_post",
-    "media": null,
-    "content_idea": "sustainable fashion trends for 2025 including eco-friendly materials and circular economy practices",
-    "Post_type": "Educational tips",
-    "Image_type": "Photography-Led Lifestyle Aesthetic"
+    "channel": "Social Media" | "Blog" | null,
+    "platform": "Instagram" | "Facebook" | "LinkedIn" | "YouTube" | null,
+    "content_type": "static_post" | "carousel" | "short_video or reel" | "long_video" | "blog" | null,
+    "media": "Generate" | "Upload" | "without media" | null,
+    "content_idea": "string with at least 10 words" | null,
+    "Post_type": "one of the allowed post types" | null,
+    "Image_type": "one of the allowed image types" | null
 }}
 
-Query: "Create a carousel post for Facebook"
-{{
-    "channel": "Social Media",
-    "platform": "Facebook",
-    "content_type": "carousel",
-    "media": null,
-    "content_idea": null,
-    "Post_type": null,
-    "Image_type": null
-}}
-
-Query: "I want to post something"
-{{
-    "channel": null,
-    "platform": null,
-    "content_type": null,
-    "media": null,
-    "content_idea": null,
-    "Post_type": null,
-    "Image_type": null
-}}
-
-Query: "I need a LinkedIn short video discussing AI impact on healthcare"
-{{
-    "channel": "Social Media",
-    "platform": "LinkedIn",
-    "content_type": "short_video or reel",
-    "media": null,
-    "content_idea": "artificial intelligence impact on healthcare industry transformation including diagnostics and patient care",
-    "Post_type": "Educational tips",
-    "Image_type": "Modern Corporate / B2B Professional"
-}}
-
-Query: "Write a blog post with images about productivity hacks for remote workers"
-{{
-    "channel": "Blog",
-    "platform": null,
-    "content_type": "blog",
-    "media": "Generate",
-    "content_idea": "productivity hacks for remote workers including time management techniques and workspace optimization strategies",
-    "Post_type": "Educational tips",
-    "Image_type": "Infographic / Data-Driven Educational Layout"
-}}
-
-Extract ONLY explicitly mentioned information. For classification fields, set to null if not applicable. Set fields to null if not mentioned.
+IMPORTANT: Return ONLY the JSON object, no additional text or explanation.
 {JSON_ONLY_INSTRUCTION}"""
 
     return _extract_payload(state, prompt)
@@ -3695,7 +3703,11 @@ def complete_create_content_payload(state: AgentState) -> AgentState:
 
         state.clarification_question = personalized_question
         state.clarification_options = clarification_data.get("options", [])
-        state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
+        # Only add "Please choose one of the options below:" if there are actually options
+        if state.clarification_options and len(state.clarification_options) > 0:
+            state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
+        else:
+            state.result = personalized_question
     else:
         # Backward compatibility for string clarifications
         question_text = clarification_data or f"Please provide: {next_field.replace('_', ' ')}"
@@ -3703,7 +3715,8 @@ def complete_create_content_payload(state: AgentState) -> AgentState:
         question_count_context = f"I will ask you just {remaining_questions} more question{'s' if remaining_questions > 1 else ''} for further understanding."
         state.clarification_question = f"{question_count_context}\n\n{question_text}"
         state.clarification_options = []
-        state.result = f"{state.clarification_question}\n\nPlease choose one of the options below:"
+        # Don't add "Please choose one of the options below:" when there are no options
+        state.result = state.clarification_question
 
     state.waiting_for_user = True
     state.current_step = "waiting_for_clarification"
@@ -5455,7 +5468,7 @@ Include timing estimates for each section."""
                 }
 
                 enhanced_prompt_data = await generate_image_enhancer_prompt(
-                    generated_post, payload, business_context, parsed_trends, profile_assets
+                    generated_post, payload, business_context, parsed_trends, profile_assets, state.user_query
                 )
 
                 # Build final image generation prompt using the enhanced prompt
@@ -7939,7 +7952,44 @@ class ATSNAgent:
             "needs_connection": getattr(self.state, 'needs_connection', None),  # Whether user needs to connect account
             "connection_platform": getattr(self.state, 'connection_platform', None)  # Platform to connect
         }
-        
+
+        # Count completed tasks when payload is complete (similar to conversation saving)
+        if (self.state.payload_complete and
+            active_user_id and
+            (self.state.content_items or self.state.lead_items)):
+
+            # Check if this intent should count as a completed task
+            meaningful_intents = [
+                'create_content', 'edit_content', 'delete_content', 'view_content',
+                'publish_content', 'schedule_content', 'create_leads', 'view_leads',
+                'edit_leads', 'delete_leads', 'follow_up_leads', 'view_insights', 'view_analytics'
+            ]
+
+            if self.state.intent and self.state.intent.lower() in meaningful_intents:
+                try:
+                    # Get current task count
+                    current_tasks = supabase.table('profiles').select('tasks_completed_this_month').eq('id', active_user_id).execute()
+
+                    if current_tasks.data and len(current_tasks.data) > 0:
+                        current_count = current_tasks.data[0]['tasks_completed_this_month'] or 0
+
+                        # Increment task count
+                        supabase.table('profiles').update({
+                            'tasks_completed_this_month': current_count + 1
+                        }).eq('id', active_user_id).execute()
+
+                        logger.info(f"✅ Incremented task count for user {active_user_id}: {current_count} → {current_count + 1}")
+                    else:
+                        # Initialize task count if profile doesn't have the field
+                        supabase.table('profiles').update({
+                            'tasks_completed_this_month': 1
+                        }).eq('id', active_user_id).execute()
+
+                        logger.info(f"✅ Initialized task count for user {active_user_id}: 1")
+
+                except Exception as e:
+                    logger.error(f"❌ Failed to increment task count for user {active_user_id}: {str(e)}")
+
         return response
     
     def reset(self):
