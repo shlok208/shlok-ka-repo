@@ -107,6 +107,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
   const [thinkingPhase, setThinkingPhase] = useState(0) // 0: assigning, 1: contacting, 2: invoking, 3: working
   const [isFirstMessage, setIsFirstMessage] = useState(true) // Track if this is the first message in session
   const [showMediaUploadModal, setShowMediaUploadModal] = useState(false)
+  const [showPublishSuccessModal, setShowPublishSuccessModal] = useState(false)
+  const [publishSuccessData, setPublishSuccessData] = useState(null)
 
   // Conversation caching system
   const [messageCache, setMessageCache] = useState([])
@@ -1239,7 +1241,13 @@ const ATSNChatbot = ({ externalConversations = null }) => {
             continue
           }
 
-          showSuccess(`Successfully published to ${contentToPublish.platform}!`)
+          // Show success modal instead of toast
+          console.log('Showing success modal for platform:', contentToPublish.platform)
+          setPublishSuccessData({
+            platform: contentToPublish.platform,
+            postUrl: null // Will be set by individual platform functions
+          })
+          setShowPublishSuccessModal(true)
 
         } catch (error) {
           console.error('Error posting content:', error)
@@ -1260,6 +1268,45 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     // This would need to check user's connected platforms
     // For now, return true as placeholder - you might want to implement this properly
     return true
+  }
+
+  // Update content status in database
+  const updateContentStatus = async (contentId, status) => {
+    try {
+      const token = await getAuthToken()
+      if (!token) return
+
+      // Try created_content table first
+      let response = await fetch(`${API_BASE_URL}/content/created-content/update/${contentId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: status, published_at: status === 'published' ? new Date().toISOString() : null })
+      })
+
+      // If created_content update fails, try content_posts table
+      if (!response.ok) {
+        console.log('Created content update failed, trying content_posts table')
+        response = await fetch(`${API_BASE_URL}/content/update/${contentId}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status: status, published_at: status === 'published' ? new Date().toISOString() : null })
+        })
+      }
+
+      if (!response.ok) {
+        console.error('Failed to update content status in both tables')
+      } else {
+        console.log('Content status updated successfully')
+      }
+    } catch (error) {
+      console.error('Error updating content status:', error)
+    }
   }
 
   const handleScheduleSelected = () => {
@@ -2266,8 +2313,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       const result = await response.json()
       console.log('Facebook post result:', result)
 
-      // Show beautiful notification with post URL if available
-      showPostNotification('Facebook', result.post_url || result.url)
+      // Update the content status in database
+      await updateContentStatus(content.id, 'published')
 
       // Update the content status in messages
       const publishedAt = new Date().toISOString()
@@ -2283,6 +2330,12 @@ const ATSNChatbot = ({ externalConversations = null }) => {
           }
         }
         return message
+      }))
+
+      // Update success data with post URL
+      setPublishSuccessData(prev => ({
+        ...prev,
+        postUrl: result.post_url || result.url
       }))
 
     } catch (error) {
@@ -2342,8 +2395,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       const result = await response.json()
       console.log('Instagram post result:', result)
 
-      // Show beautiful notification with post URL if available
-      showPostNotification('Instagram', result.post_url || result.url)
+      // Update the content status in database
+      await updateContentStatus(content.id, 'published')
 
       // Update the content status in messages
       const publishedAt = new Date().toISOString()
@@ -2359,6 +2412,12 @@ const ATSNChatbot = ({ externalConversations = null }) => {
           }
         }
         return message
+      }))
+
+      // Update success data with post URL
+      setPublishSuccessData(prev => ({
+        ...prev,
+        postUrl: result.post_url || result.url
       }))
 
     } catch (error) {
@@ -2405,8 +2464,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       const result = await response.json()
       console.log('LinkedIn post result:', result)
 
-      // Show beautiful notification with post URL if available
-      showPostNotification('LinkedIn', result.post_url || result.url)
+      // Update the content status in database
+      await updateContentStatus(content.id, 'published')
 
       // Update the content status in messages
       const publishedAt = new Date().toISOString()
@@ -2422,6 +2481,12 @@ const ATSNChatbot = ({ externalConversations = null }) => {
           }
         }
         return message
+      }))
+
+      // Update success data with post URL
+      setPublishSuccessData(prev => ({
+        ...prev,
+        postUrl: result.post_url || result.url
       }))
 
     } catch (error) {
@@ -2468,8 +2533,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       const result = await response.json()
       console.log('YouTube post result:', result)
 
-      // Show beautiful notification with post URL if available
-      showPostNotification('YouTube', result.post_url || result.url)
+      // Update the content status in database
+      await updateContentStatus(content.id, 'published')
 
       // Update the content status in messages
       const publishedAt = new Date().toISOString()
@@ -2485,6 +2550,12 @@ const ATSNChatbot = ({ externalConversations = null }) => {
           }
         }
         return message
+      }))
+
+      // Update success data with post URL
+      setPublishSuccessData(prev => ({
+        ...prev,
+        postUrl: result.post_url || result.url
       }))
 
     } catch (error) {
@@ -4454,6 +4525,63 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Publish Success Modal */}
+      {showPublishSuccessModal && publishSuccessData && (
+        <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowPublishSuccessModal(false)} />
+          <div className={`relative max-w-md w-full rounded-2xl shadow-2xl overflow-hidden ${
+            isDarkMode ? 'bg-gray-800' : 'bg-white'
+          }`}>
+            <div className="p-6">
+              <div className="text-center mb-4">
+                <div className={`text-4xl mb-2 ${isDarkMode ? 'text-green-400' : 'text-green-500'}`}>🎉</div>
+                <h3 className={`text-lg font-semibold mb-2 ${
+                  isDarkMode ? 'text-white' : 'text-gray-900'
+                }`}>
+                  Content Published Successfully!
+                </h3>
+              </div>
+
+              <div className={`p-4 rounded-lg mb-4 ${
+                isDarkMode ? 'bg-gray-700' : 'bg-blue-50'
+              }`}>
+                <div className={`absolute left-0 top-4 transform -translate-x-2 w-0 h-0 ${
+                  isDarkMode
+                    ? 'border-t-8 border-t-gray-700 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                    : 'border-t-8 border-t-blue-50 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                }`} />
+
+                <p className={`text-sm leading-relaxed ${
+                  isDarkMode ? 'text-gray-200' : 'text-gray-800'
+                }`}>
+                  <span className="font-normal text-pink-500">Emily here!</span> 🎉<br />
+                  Your content has been successfully published to {publishSuccessData.platform}!
+                  {publishSuccessData.postUrl && (
+                    <a href={publishSuccessData.postUrl} target="_blank" rel="noopener noreferrer"
+                       className="text-blue-500 hover:underline ml-1">
+                      View post →
+                    </a>
+                  )}
+                </p>
+              </div>
+
+              <div className="mt-4 flex justify-end">
+          <button
+            onClick={() => {
+              console.log('Closing publish success modal')
+              setShowPublishSuccessModal(false)
+              setPublishSuccessData(null)
+            }}
+                  className="px-6 py-2 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg font-medium hover:from-pink-600 hover:to-purple-600 transition-all duration-200 transform hover:scale-105"
+                >
+                  Awesome! ✨
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

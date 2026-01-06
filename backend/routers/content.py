@@ -378,17 +378,40 @@ async def update_content(
 ):
     """Update content by ID"""
     try:
+        logger.info(f"Update content request: content_id={content_id}, user_id={current_user.id}, update_data={update_data.dict(exclude_unset=True)}")
         # Convert Pydantic model to dict, excluding None values
         update_dict = update_data.dict(exclude_unset=True, exclude_none=True)
-        
+
         # First verify the content belongs to the user
-        content_response = supabase_admin.table("content_posts").select("*, content_campaigns!inner(*)").eq("id", content_id).eq("content_campaigns.user_id", current_user.id).execute()
-        
+        # Check if content exists and get its campaign_id
+        content_response = supabase_admin.table("content_posts").select("id, campaign_id, metadata").eq("id", content_id).execute()
+
         if not content_response.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Content not found or access denied"
+                detail="Content not found"
             )
+
+        content_data = content_response.data[0]
+        campaign_id = content_data.get("campaign_id")
+
+        # If content has a campaign, verify the campaign belongs to the user
+        if campaign_id:
+            campaign_response = supabase_admin.table("content_campaigns").select("id").eq("id", campaign_id).eq("user_id", current_user.id).execute()
+            if not campaign_response.data:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied"
+                )
+        else:
+            # If no campaign, check if content was created by this user via metadata
+            # This handles legacy content that doesn't have campaigns
+            metadata = content_data.get("metadata", {})
+            if metadata.get("user_id") != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied"
+                )
         
         # Build update dict with only provided fields
         update_fields = {}
@@ -437,6 +460,74 @@ async def update_content(
             }
         }
         
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update content: {str(e)}"
+        )
+
+@router.put("/created-content/update/{content_id}")
+async def update_created_content(
+    content_id: str,
+    update_data: ContentUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Update created content by ID"""
+    try:
+        # Convert Pydantic model to dict, excluding None values
+        update_dict = update_data.dict(exclude_unset=True, exclude_none=True)
+
+        # Verify the content belongs to the user
+        content_response = supabase_admin.table("created_content").select("id").eq("id", content_id).eq("user_id", current_user.id).execute()
+
+        if not content_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Content not found or access denied"
+            )
+
+        # Build update dict with only provided fields
+        update_fields = {}
+        if "title" in update_dict:
+            update_fields["title"] = update_dict["title"]
+        if "content" in update_dict:
+            update_fields["content"] = update_dict["content"]
+        if "hashtags" in update_dict:
+            update_fields["hashtags"] = update_dict["hashtags"]
+        if "scheduled_date" in update_dict:
+            update_fields["scheduled_date"] = update_dict["scheduled_date"]
+        if "scheduled_time" in update_dict:
+            update_fields["scheduled_time"] = update_dict["scheduled_time"]
+        if "status" in update_dict:
+            update_fields["status"] = update_dict["status"]
+
+        # Add updated_at timestamp
+        update_fields["updated_at"] = datetime.now().isoformat()
+
+        update_response = supabase_admin.table("created_content").update(update_fields).eq("id", content_id).execute()
+
+        if not update_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update content"
+            )
+
+        updated_content = update_response.data[0]
+
+        return {
+            "success": True,
+            "message": "Content updated successfully",
+            "content": {
+                "id": updated_content["id"],
+                "title": updated_content["title"],
+                "content": updated_content["content"],
+                "hashtags": updated_content["hashtags"],
+                "updated_at": updated_content["updated_at"]
+            }
+        }
+
     except HTTPException:
         raise
     except Exception as e:

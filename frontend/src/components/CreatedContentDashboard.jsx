@@ -439,7 +439,7 @@ function CreatedContentDashboard() {
       } else if (platform === 'youtube') {
         postEndpoint = '/connections/youtube/post'
       } else {
-        showError(`${contentItem.platform} posting not yet implemented`)
+        showError(`${itemToPublish.platform} posting not yet implemented`)
         return
       }
 
@@ -467,7 +467,7 @@ function CreatedContentDashboard() {
           status: 'published',
           published_at: new Date().toISOString()
         })
-        .eq('id', contentItem.id)
+        .eq('id', itemToPublish.id)
         .eq('user_id', user.id)
 
       if (updateError) {
