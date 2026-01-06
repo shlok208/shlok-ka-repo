@@ -6,7 +6,8 @@ const DualRangeSlider = ({
   minValue, 
   maxValue, 
   onChange,
-  className = ''
+  className = '',
+  isDarkMode = false
 }) => {
   const [localMin, setLocalMin] = useState(minValue !== undefined ? minValue : null)
   const [localMax, setLocalMax] = useState(maxValue !== undefined ? maxValue : null)
@@ -173,7 +174,9 @@ const DualRangeSlider = ({
     <div className={`w-full ${className}`}>
       <div className="flex items-start justify-between mb-4 gap-4">
         <div className="flex-1 flex flex-col">
-          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+          <label className={`block text-xs sm:text-sm font-medium mb-1 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
             Minimum Age
           </label>
           <input
@@ -184,14 +187,22 @@ const DualRangeSlider = ({
             onChange={(e) => handleInputChange('min', e.target.value)}
             onBlur={() => handleInputBlur('min')}
             placeholder={`Min: ${min}`}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-pink-500 focus:border-transparent h-[38px]"
+            className={`w-full px-3 py-2 text-sm border rounded-md focus:ring-2 focus:ring-pink-500 focus:border-transparent h-[38px] ${
+              isDarkMode
+                ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400'
+                : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+            }`}
           />
         </div>
         <div className="flex flex-col justify-center" style={{ marginTop: '22px', height: '38px' }}>
-          <div className="flex items-center justify-center text-gray-400 text-xl font-medium">-</div>
+          <div className={`flex items-center justify-center text-xl font-medium ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-400'
+          }`}>-</div>
         </div>
         <div className="flex-1 flex flex-col">
-          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+          <label className={`block text-xs sm:text-sm font-medium mb-1 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
             Maximum Age
           </label>
           <input
@@ -201,12 +212,18 @@ const DualRangeSlider = ({
             onChange={(e) => handleInputChange('max', e.target.value)}
             onBlur={() => handleInputBlur('max')}
             placeholder={`Max: ${max}+`}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-pink-500 focus:border-transparent h-[38px]"
+            className={`w-full px-3 py-2 text-sm border rounded-md focus:ring-2 focus:ring-pink-500 focus:border-transparent h-[38px] ${
+              isDarkMode
+                ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400'
+                : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+            }`}
           />
         </div>
       </div>
 
-      <div className="relative h-2 bg-gray-200 rounded-full" ref={sliderRef}>
+      <div className={`relative h-2 rounded-full ${
+        isDarkMode ? 'bg-gray-600' : 'bg-gray-200'
+      }`} ref={sliderRef}>
         <div
           className="absolute h-2 bg-pink-500 rounded-full"
           style={{
@@ -227,9 +244,13 @@ const DualRangeSlider = ({
           onMouseDown={() => handleMouseDown('max')}
         />
       </div>
-      <div className="flex justify-between text-xs text-gray-500 mt-1">
+      <div className={`flex justify-between text-xs mt-1 ${
+        isDarkMode ? 'text-gray-400' : 'text-gray-500'
+      }`}>
         <span>{min}</span>
-        <span className="font-medium text-gray-700 whitespace-nowrap">
+        <span className={`font-medium whitespace-nowrap ${
+          isDarkMode ? 'text-gray-200' : 'text-gray-700'
+        }`}>
           {localMin !== null && localMax !== null 
             ? `${localMin} - ${localMax >= max ? `${max}+` : localMax}` 
             : 'Select range'}

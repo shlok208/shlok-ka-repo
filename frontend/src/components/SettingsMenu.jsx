@@ -945,12 +945,14 @@ const SettingsMenu = ({ isOpen, onClose, isDarkMode = false }) => {
 
       {/* Edit Profile Modal */}
       <EditProfileModal
+        key={isDarkMode ? 'dark' : 'light'}
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         onSuccess={() => {
           setIsEditModalOpen(false)
           fetchProfile()
         }}
+        isDarkMode={isDarkMode}
       />
     </>
   )

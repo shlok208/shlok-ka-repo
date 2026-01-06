@@ -7,19 +7,27 @@ import MultiMediaUpload from './MultiMediaUpload'
 import InfoTooltip from './InfoTooltip'
 import DualRangeSlider from './DualRangeSlider'
 
-const CreatorOnboardingForm = forwardRef(({ 
-  initialData = null, 
-  isEditMode = false, 
-  onClose = null, 
+const CreatorOnboardingForm = forwardRef(({
+  initialData = null,
+  isEditMode = false,
+  onClose = null,
   onSuccess = null,
   showHeader = true,
   showProgress = true,
   onStepChange = null,
   onFormChange = null,
-  onStepComplete = null
+  onStepComplete = null,
+  isDarkMode = false
 }, ref) => {
   const [currentStep, setCurrentStep] = useState(0)
   const [completedSteps, setCompletedSteps] = useState(new Set())
+  const [forceUpdate, setForceUpdate] = useState(0)
+
+  // Force re-render when dark mode changes
+  useEffect(() => {
+    setForceUpdate(prev => prev + 1)
+  }, [isDarkMode])
+
   const [formData, setFormData] = useState({
     // Step 1: Creator Basics
     creator_name: '',
@@ -911,22 +919,26 @@ const CreatorOnboardingForm = forwardRef(({
         return (
           <div className="space-y-2.5 sm:space-y-3 md:space-y-4 lg:space-y-6">
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Creator/Brand Name *</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Creator/Brand Name *</label>
               <input
                 type="text"
                 value={formData.creator_name}
                 onChange={(e) => handleInputChange('creator_name', e.target.value)}
-                className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                 placeholder="Enter your creator or brand name"
               />
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Creator Type *</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Creator Type *</label>
               <select
                 value={formData.creator_type}
                 onChange={(e) => handleInputChange('creator_type', e.target.value)}
-                className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
               >
                 <option value="">Select creator type</option>
                 {creatorTypes.map(type => (
@@ -939,7 +951,9 @@ const CreatorOnboardingForm = forwardRef(({
                     type="text"
                     value={otherInputs.creatorTypeOther}
                     onChange={(e) => handleOtherInputChange('creatorTypeOther', e.target.value)}
-                    className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                    className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                     placeholder="Please specify your creator type"
                   />
                 </div>
@@ -947,7 +961,7 @@ const CreatorOnboardingForm = forwardRef(({
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>
                 Primary Niche *
                 <InfoTooltip 
                   content="Describe your niche in 1–2 lines - the topic you create content around. Examples: tech reviews, beauty tips, fitness routines, travel content, comedy skits, finance education."
@@ -958,7 +972,9 @@ const CreatorOnboardingForm = forwardRef(({
                 value={formData.primary_niche}
                 onChange={(e) => handleInputChange('primary_niche', e.target.value)}
                 rows={3}
-                className="w-full px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 lg:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                className={`w-full px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 lg:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                 placeholder="Describe your primary niche..."
               />
             </div>
@@ -969,7 +985,7 @@ const CreatorOnboardingForm = forwardRef(({
         return (
           <div className="space-y-2.5 sm:space-y-3 md:space-y-4 lg:space-y-6">
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>
                 Upload Profile Photo / Brand Logo (Optional)
               </label>
               <LogoUpload
@@ -985,11 +1001,13 @@ const CreatorOnboardingForm = forwardRef(({
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Brand Tone *</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Brand Tone *</label>
               <select
                 value={formData.brand_tone || ''}
                 onChange={(e) => handleInputChange('brand_tone', e.target.value)}
-                className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
               >
                 <option value="">Select brand tone</option>
                 {brandTones.map(tone => (
@@ -1001,16 +1019,18 @@ const CreatorOnboardingForm = forwardRef(({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700">Primary Color (Optional)</label>
+                  <label className={`block text-xs sm:text-sm font-medium ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Primary Color (Optional)</label>
                   {extractedColors && extractedColors.length > 0 && (
                     <div className="flex items-center space-x-1.5">
-                      <span className="text-xs text-gray-500">Suggested:</span>
+                      <span className={`text-xs ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-500'}`}>Suggested:</span>
                       {extractedColors.slice(0, 4).map((color, index) => (
                         <button
                           key={index}
                           type="button"
                           onClick={() => handleColorSuggestionClick(color, 'primary')}
-                          className="w-5 h-5 sm:w-6 sm:h-6 rounded border-2 border-gray-300 hover:border-pink-500 hover:scale-110 transition-all cursor-pointer shadow-sm"
+                          className={`w-5 h-5 sm:w-6 sm:h-6 rounded border-2 hover:border-pink-500 hover:scale-110 transition-all cursor-pointer shadow-sm ${
+                            Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'
+                          }`}
                           style={{ backgroundColor: color }}
                           title={color}
                         />
@@ -1023,29 +1043,31 @@ const CreatorOnboardingForm = forwardRef(({
                     type="color"
                     value={formData.primary_color || '#000000'}
                     onChange={(e) => handleInputChange('primary_color', e.target.value)}
-                    className="w-12 sm:w-16 h-8 sm:h-10 border border-gray-300 rounded-md cursor-pointer"
+                    className="w-12 sm:w-16 h-8 sm:h-10 rounded-md cursor-pointer ${Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'}"
                   />
                   <input
                     type="text"
                     value={formData.primary_color || ''}
                     onChange={(e) => handleInputChange('primary_color', e.target.value)}
-                    className="flex-1 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                    className="flex-1 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base ${Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'} rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                     placeholder="#000000"
                   />
                 </div>
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700">Secondary Color (Optional)</label>
+                  <label className={`block text-xs sm:text-sm font-medium ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Secondary Color (Optional)</label>
                   {extractedColors && extractedColors.length > 0 && (
                     <div className="flex items-center space-x-1.5">
-                      <span className="text-xs text-gray-500">Suggested:</span>
+                      <span className={`text-xs ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-500'}`}>Suggested:</span>
                       {extractedColors.slice(0, 4).map((color, index) => (
                         <button
                           key={index}
                           type="button"
                           onClick={() => handleColorSuggestionClick(color, 'secondary')}
-                          className="w-5 h-5 sm:w-6 sm:h-6 rounded border-2 border-gray-300 hover:border-pink-500 hover:scale-110 transition-all cursor-pointer shadow-sm"
+                          className={`w-5 h-5 sm:w-6 sm:h-6 rounded border-2 hover:border-pink-500 hover:scale-110 transition-all cursor-pointer shadow-sm ${
+                            Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'
+                          }`}
                           style={{ backgroundColor: color }}
                           title={color}
                         />
@@ -1058,13 +1080,13 @@ const CreatorOnboardingForm = forwardRef(({
                     type="color"
                     value={formData.secondary_color || '#000000'}
                     onChange={(e) => handleInputChange('secondary_color', e.target.value)}
-                    className="w-12 sm:w-16 h-8 sm:h-10 border border-gray-300 rounded-md cursor-pointer"
+                    className="w-12 sm:w-16 h-8 sm:h-10 rounded-md cursor-pointer ${Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'}"
                   />
                   <input
                     type="text"
                     value={formData.secondary_color || ''}
                     onChange={(e) => handleInputChange('secondary_color', e.target.value)}
-                    className="flex-1 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                    className="flex-1 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base ${Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'} rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                     placeholder="#000000"
                   />
                 </div>
@@ -1073,44 +1095,52 @@ const CreatorOnboardingForm = forwardRef(({
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">City</label>
+                <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>City</label>
                 <input
                   type="text"
                   value={formData.location_city}
                   onChange={(e) => handleInputChange('location_city', e.target.value)}
-                  className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                  className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                   placeholder="City"
                 />
               </div>
               <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">State</label>
+                <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>State</label>
                 <input
                   type="text"
                   value={formData.location_state}
                   onChange={(e) => handleInputChange('location_state', e.target.value)}
-                  className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                  className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                   placeholder="State"
                 />
               </div>
               <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Country</label>
+                <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Country</label>
                 <input
                   type="text"
                   value={formData.location_country}
                   onChange={(e) => handleInputChange('location_country', e.target.value)}
-                  className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                  className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                   placeholder="Country"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Phone Number (Optional)</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Phone Number (Optional)</label>
               <input
                 type="tel"
                 value={formData.phone_number}
                 onChange={(e) => handleInputChange('phone_number', e.target.value)}
-                className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                 placeholder="Enter phone number"
               />
             </div>
@@ -1121,7 +1151,7 @@ const CreatorOnboardingForm = forwardRef(({
         return (
           <div className="space-y-2.5 sm:space-y-3 md:space-y-4 lg:space-y-6">
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>
                 Creator Bio / Description *
                 <InfoTooltip 
                   content="Write a detailed intro about who you are, what kind of content you create, and what makes your style unique."
@@ -1132,13 +1162,15 @@ const CreatorOnboardingForm = forwardRef(({
                 value={formData.creator_bio}
                 onChange={(e) => handleInputChange('creator_bio', e.target.value)}
                 rows={4}
-                className="w-full px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 lg:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                className={`w-full px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 lg:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                 placeholder="Tell us about yourself and your content..."
               />
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>
                 What makes you unique? *
                 <InfoTooltip 
                   content="Describe your Unique Value Proposition"
@@ -1149,13 +1181,15 @@ const CreatorOnboardingForm = forwardRef(({
                 value={formData.unique_value_proposition}
                 onChange={(e) => handleInputChange('unique_value_proposition', e.target.value)}
                 rows={3}
-                className="w-full px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 lg:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                className={`w-full px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 lg:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                 placeholder="What makes you unique?"
               />
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Target Audience - Age Group *</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Target Audience - Age Group <span className={Boolean(isDarkMode) ? 'text-red-400' : 'text-red-600'}>*</span></label>
               <DualRangeSlider
                 min={16}
                 max={90}
@@ -1165,11 +1199,12 @@ const CreatorOnboardingForm = forwardRef(({
                   handleInputChange('target_audience_age_min', min !== null ? Number(min) : null)
                   handleInputChange('target_audience_age_max', max !== null ? Number(max) : null)
                 }}
+                isDarkMode={Boolean(isDarkMode)}
               />
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Target Audience - Gender *</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Target Audience - Gender *</label>
               <div className="flex flex-col space-y-2">
                 {['all', 'men', 'women'].map((gender) => (
                   <label key={gender} className="flex items-center space-x-2 cursor-pointer">
@@ -1179,16 +1214,16 @@ const CreatorOnboardingForm = forwardRef(({
                       value={gender}
                       checked={formData.target_audience_gender === gender}
                       onChange={(e) => handleInputChange('target_audience_gender', e.target.value)}
-                      className="text-pink-600 focus:ring-pink-500"
+                      className={`custom-radio focus:ring-pink-500`}
                     />
-                    <span className="text-sm text-gray-700 capitalize">{gender === 'all' ? 'All' : gender === 'men' ? 'Men' : 'Women'}</span>
+                    <span className="text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'} capitalize">{gender === 'all' ? 'All' : gender === 'men' ? 'Men' : 'Women'}</span>
                   </label>
                 ))}
               </div>
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Audience Lifestyle and Interests</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Audience Lifestyle and Interests</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {audienceLifestyleInterests.map(interest => (
                   <label key={interest} className="flex items-center space-x-1.5 sm:space-x-2">
@@ -1196,9 +1231,11 @@ const CreatorOnboardingForm = forwardRef(({
                       type="checkbox"
                       checked={formData.audience_lifestyle_interests && formData.audience_lifestyle_interests.includes(interest)}
                       onChange={(e) => handleArrayChange('audience_lifestyle_interests', interest, e.target.checked)}
-                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500 flex-shrink-0"
+                      className={`rounded custom-checkbox focus:ring-pink-500 flex-shrink-0 ${
+                        Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'
+                      }`}
                     />
-                    <span className="text-xs sm:text-sm text-gray-700 break-words">{interest}</span>
+                    <span className="text-xs sm:text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'} break-words">{interest}</span>
                   </label>
                 ))}
               </div>
@@ -1208,7 +1245,9 @@ const CreatorOnboardingForm = forwardRef(({
                     type="text"
                     value={otherInputs.audienceLifestyleOther}
                     onChange={(e) => handleOtherInputChange('audienceLifestyleOther', e.target.value)}
-                    className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                    className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                     placeholder="Please specify"
                   />
                 </div>
@@ -1216,7 +1255,7 @@ const CreatorOnboardingForm = forwardRef(({
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Audience Behavior</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Audience Behavior</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {audienceBehavior.map(behavior => (
                   <label key={behavior} className="flex items-center space-x-1.5 sm:space-x-2">
@@ -1224,9 +1263,11 @@ const CreatorOnboardingForm = forwardRef(({
                       type="checkbox"
                       checked={formData.audience_behavior && formData.audience_behavior.includes(behavior)}
                       onChange={(e) => handleArrayChange('audience_behavior', behavior, e.target.checked)}
-                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500 flex-shrink-0"
+                      className={`rounded custom-checkbox focus:ring-pink-500 flex-shrink-0 ${
+                        Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'
+                      }`}
                     />
-                    <span className="text-xs sm:text-sm text-gray-700 break-words">{behavior}</span>
+                    <span className="text-xs sm:text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'} break-words">{behavior}</span>
                   </label>
                 ))}
               </div>
@@ -1236,7 +1277,9 @@ const CreatorOnboardingForm = forwardRef(({
                     type="text"
                     value={otherInputs.audienceBehaviorOther}
                     onChange={(e) => handleOtherInputChange('audienceBehaviorOther', e.target.value)}
-                    className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                    className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                     placeholder="Please specify"
                   />
                 </div>
@@ -1249,7 +1292,7 @@ const CreatorOnboardingForm = forwardRef(({
         return (
           <div className="space-y-2.5 sm:space-y-3 md:space-y-4 lg:space-y-6">
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Which platforms do you actively use?</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Which platforms do you actively use?</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {activePlatforms.map(platform => (
                   <label key={platform} className="flex items-center space-x-1.5 sm:space-x-2">
@@ -1257,9 +1300,11 @@ const CreatorOnboardingForm = forwardRef(({
                       type="checkbox"
                       checked={formData.active_platforms && formData.active_platforms.includes(platform)}
                       onChange={(e) => handleArrayChange('active_platforms', platform, e.target.checked)}
-                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500 flex-shrink-0"
+                      className={`rounded custom-checkbox focus:ring-pink-500 flex-shrink-0 ${
+                        Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'
+                      }`}
                     />
-                    <span className="text-xs sm:text-sm text-gray-700 break-words">{platform}</span>
+                    <span className="text-xs sm:text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'} break-words">{platform}</span>
                   </label>
                 ))}
               </div>
@@ -1269,7 +1314,9 @@ const CreatorOnboardingForm = forwardRef(({
                     type="text"
                     value={otherInputs.activePlatformOther}
                     onChange={(e) => handleOtherInputChange('activePlatformOther', e.target.value)}
-                    className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                    className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                     placeholder="Please specify"
                   />
                 </div>
@@ -1277,11 +1324,13 @@ const CreatorOnboardingForm = forwardRef(({
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Current Online Presence Status</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Current Online Presence Status</label>
               <select
                 value={formData.current_online_presence_status}
                 onChange={(e) => handleInputChange('current_online_presence_status', e.target.value)}
-                className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
               >
                 <option value="">Select status</option>
                 {currentPresenceStatus.map(status => (
@@ -1296,7 +1345,7 @@ const CreatorOnboardingForm = forwardRef(({
         return (
           <div className="space-y-2.5 sm:space-y-3 md:space-y-4 lg:space-y-6">
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Your primary goals as a creator (Select all that apply) *</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Your primary goals as a creator (Select all that apply) *</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {primaryGoals.map(goal => (
                   <label key={goal} className="flex items-center space-x-2">
@@ -1304,16 +1353,18 @@ const CreatorOnboardingForm = forwardRef(({
                       type="checkbox"
                       checked={formData.primary_goals && formData.primary_goals.includes(goal)}
                       onChange={(e) => handleArrayChange('primary_goals', goal, e.target.checked)}
-                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                      className={`rounded custom-checkbox focus:ring-pink-500 ${
+                        Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'
+                      }`}
                     />
-                    <span className="text-sm text-gray-700">{goal}</span>
+                    <span className={`text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>{goal}</span>
                   </label>
                 ))}
               </div>
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Preferred Content Types (Select all that apply) *</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Preferred Content Types (Select all that apply) *</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {preferredContentTypes.map(type => (
                   <label key={type} className="flex items-center space-x-2">
@@ -1321,16 +1372,18 @@ const CreatorOnboardingForm = forwardRef(({
                       type="checkbox"
                       checked={formData.preferred_content_types && formData.preferred_content_types.includes(type)}
                       onChange={(e) => handleArrayChange('preferred_content_types', type, e.target.checked)}
-                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                      className={`rounded custom-checkbox focus:ring-pink-500 ${
+                        Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'
+                      }`}
                     />
-                    <span className="text-xs sm:text-sm text-gray-700 break-words">{type}</span>
+                    <span className="text-xs sm:text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'} break-words">{type}</span>
                   </label>
                 ))}
               </div>
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Content Themes (Select multiple) *</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Content Themes (Select multiple) *</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {contentThemes.map(theme => (
                   <label key={theme} className="flex items-center space-x-2">
@@ -1338,9 +1391,11 @@ const CreatorOnboardingForm = forwardRef(({
                       type="checkbox"
                       checked={formData.content_themes && formData.content_themes.includes(theme)}
                       onChange={(e) => handleArrayChange('content_themes', theme, e.target.checked)}
-                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                      className={`rounded custom-checkbox focus:ring-pink-500 ${
+                        Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'
+                      }`}
                     />
-                    <span className="text-sm text-gray-700">{theme}</span>
+                    <span className={`text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>{theme}</span>
                   </label>
                 ))}
               </div>
@@ -1350,7 +1405,9 @@ const CreatorOnboardingForm = forwardRef(({
                     type="text"
                     value={otherInputs.contentThemeOther}
                     onChange={(e) => handleOtherInputChange('contentThemeOther', e.target.value)}
-                    className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                    className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                     placeholder="Please specify"
                   />
                 </div>
@@ -1359,7 +1416,7 @@ const CreatorOnboardingForm = forwardRef(({
 
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Best Time to Post (Select all that apply)</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Best Time to Post (Select all that apply)</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {postingTimes.map(time => (
                   <label key={time} className="flex items-center space-x-2">
@@ -1367,9 +1424,11 @@ const CreatorOnboardingForm = forwardRef(({
                       type="checkbox"
                       checked={formData.best_time_to_post && formData.best_time_to_post.includes(time)}
                       onChange={(e) => handleArrayChange('best_time_to_post', time, e.target.checked)}
-                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                      className={`rounded custom-checkbox focus:ring-pink-500 ${
+                        Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'
+                      }`}
                     />
-                    <span className="text-sm text-gray-700">{time}</span>
+                    <span className={`text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>{time}</span>
                   </label>
                 ))}
               </div>
@@ -1379,7 +1438,9 @@ const CreatorOnboardingForm = forwardRef(({
                     type="text"
                     value={otherInputs.postingTimeOther}
                     onChange={(e) => handleOtherInputChange('postingTimeOther', e.target.value)}
-                    className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                    className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                     placeholder="Please specify"
                   />
                 </div>
@@ -1392,7 +1453,7 @@ const CreatorOnboardingForm = forwardRef(({
         return (
           <div className="space-y-2.5 sm:space-y-3 md:space-y-4 lg:space-y-6">
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>
                 Upload examples of your best-performing content (Optional)
               </label>
               <MultiMediaUpload
@@ -1408,29 +1469,33 @@ const CreatorOnboardingForm = forwardRef(({
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Hashtags that work well</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Hashtags that work well</label>
               <textarea
                 value={formData.hashtags_that_work_well}
                 onChange={(e) => handleInputChange('hashtags_that_work_well', e.target.value)}
                 rows={3}
-                className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                 placeholder="List hashtags that have performed well..."
               />
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Competitors (optional)</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Competitors (optional)</label>
               <textarea
                 value={formData.competitors}
                 onChange={(e) => handleInputChange('competitors', e.target.value)}
                 rows={3}
-                className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                 placeholder="List your main competitors..."
               />
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Biggest challenges you face as a creator</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Biggest challenges you face as a creator</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {biggestChallenges.map(challenge => (
                   <label key={challenge} className="flex items-center space-x-2">
@@ -1438,9 +1503,11 @@ const CreatorOnboardingForm = forwardRef(({
                       type="checkbox"
                       checked={formData.biggest_challenges && formData.biggest_challenges.includes(challenge)}
                       onChange={(e) => handleArrayChange('biggest_challenges', challenge, e.target.checked)}
-                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                      className={`rounded custom-checkbox focus:ring-pink-500 ${
+                        Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'
+                      }`}
                     />
-                    <span className="text-sm text-gray-700">{challenge}</span>
+                    <span className={`text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>{challenge}</span>
                   </label>
                 ))}
               </div>
@@ -1452,7 +1519,7 @@ const CreatorOnboardingForm = forwardRef(({
         return (
           <div className="space-y-2.5 sm:space-y-3 md:space-y-4 lg:space-y-6">
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">Current monetization sources</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Current monetization sources</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {monetizationSources.map(source => (
                   <label key={source} className="flex items-center space-x-2">
@@ -1460,20 +1527,24 @@ const CreatorOnboardingForm = forwardRef(({
                       type="checkbox"
                       checked={formData.monetization_sources && formData.monetization_sources.includes(source)}
                       onChange={(e) => handleArrayChange('monetization_sources', source, e.target.checked)}
-                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                      className={`rounded custom-checkbox focus:ring-pink-500 ${
+                        Boolean(isDarkMode) ? 'border-gray-600' : 'border-gray-300'
+                      }`}
                     />
-                    <span className="text-sm text-gray-700">{source}</span>
+                    <span className={`text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>{source}</span>
                   </label>
                 ))}
               </div>
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">What level of automation do you want? *</label>
+              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>What level of automation do you want? *</label>
               <select
                 value={formData.automation_level}
                 onChange={(e) => handleInputChange('automation_level', e.target.value)}
-                className="w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border border-gray-300 rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                  Boolean(isDarkMode) ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
                 required
               >
                 <option value="">Select automation level</option>
@@ -1490,19 +1561,23 @@ const CreatorOnboardingForm = forwardRef(({
       case 7: // Review & Submit
         return (
           <div className="space-y-2.5 sm:space-y-3 md:space-y-4 lg:space-y-6">
-            <p className="text-gray-600">Please review all your information before submitting your profile.</p>
+            <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Please review all your information before submitting your profile.</p>
             
-            <div className="bg-gray-50 p-6 rounded-lg">
-              <h4 className="text-lg font-medium text-gray-800 mb-4">Profile Summary</h4>
-              <div className="space-y-2 text-sm">
-                <div><span className="font-medium">Creator Name:</span> {formData.creator_name || 'Not provided'}</div>
-                <div><span className="font-medium">Creator Type:</span> {formData.creator_type || 'Not provided'}</div>
-                <div><span className="font-medium">Primary Niche:</span> {formData.primary_niche || 'Not provided'}</div>
-                <div><span className="font-medium">Brand Tone:</span> {formData.brand_tone || 'Not provided'}</div>
-                <div><span className="font-medium">Active Platforms:</span> {formData.active_platforms?.join(', ') || 'Not provided'}</div>
-                <div><span className="font-medium">Primary Goals:</span> {formData.primary_goals?.join(', ') || 'Not provided'}</div>
-                <div><span className="font-medium">Content Types:</span> {formData.preferred_content_types?.join(', ') || 'Not provided'}</div>
-                <div><span className="font-medium">Automation Level:</span> {formData.automation_level || 'Not provided'}</div>
+            <div className={`p-6 rounded-lg ${
+              Boolean(isDarkMode) ? 'bg-gray-800' : 'bg-gray-50'
+            }`}>
+              <h4 className={`text-lg font-medium mb-4 ${
+                Boolean(isDarkMode) ? 'text-gray-200' : 'text-gray-800'
+              }`}>Profile Summary</h4>
+              <div className={`space-y-2 text-sm ${Boolean(isDarkMode) ? 'text-gray-200' : 'text-gray-700'}`}>
+                <div><span className={`font-medium ${Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-900'}`}>Creator Name:</span> <span className={Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}>{formData.creator_name || 'Not provided'}</span></div>
+                <div><span className={`font-medium ${Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-900'}`}>Creator Type:</span> <span className={Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}>{formData.creator_type || 'Not provided'}</span></div>
+                <div><span className={`font-medium ${Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-900'}`}>Primary Niche:</span> <span className={Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}>{formData.primary_niche || 'Not provided'}</span></div>
+                <div><span className={`font-medium ${Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-900'}`}>Brand Tone:</span> <span className={Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}>{formData.brand_tone || 'Not provided'}</span></div>
+                <div><span className={`font-medium ${Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-900'}`}>Active Platforms:</span> <span className={Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}>{formData.active_platforms?.join(', ') || 'Not provided'}</span></div>
+                <div><span className={`font-medium ${Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-900'}`}>Primary Goals:</span> <span className={Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}>{formData.primary_goals?.join(', ') || 'Not provided'}</span></div>
+                <div><span className={`font-medium ${Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-900'}`}>Content Types:</span> <span className={Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}>{formData.preferred_content_types?.join(', ') || 'Not provided'}</span></div>
+                <div><span className={`font-medium ${Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-900'}`}>Automation Level:</span> <span className={Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}>{formData.automation_level || 'Not provided'}</span></div>
               </div>
             </div>
           </div>
@@ -1511,32 +1586,41 @@ const CreatorOnboardingForm = forwardRef(({
       default:
         return (
           <div className="text-center py-8">
-            <p className="text-gray-600">Step {currentStep + 1} - {steps[currentStep]}</p>
-            <p className="text-sm text-gray-500 mt-2">This step is being implemented. Please check back soon!</p>
+            <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Step {currentStep + 1} - {steps[currentStep]}</p>
+            <p className={`text-sm mt-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-500'}`}>This step is being implemented. Please check back soon!</p>
           </div>
         )
     }
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-8">
+    <div
+      className={`rounded-xl shadow-lg p-8 ${
+        Boolean(isDarkMode) ? 'bg-gray-800' : 'bg-white'
+      }`}
+      style={{
+        '--checkbox-accent-color': isDarkMode ? '#21c45d' : '#db2778'
+      }}
+    >
       {/* Header */}
       {showHeader && (
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-semibold text-gray-800">
+            <h2 className={`text-2xl font-semibold ${
+              Boolean(isDarkMode) ? 'text-gray-200' : 'text-gray-800'
+            }`}>
               {isEditMode ? 'Edit Creator Profile' : 'Complete Your Creator Profile'}
             </h2>
-            <p className="text-gray-600">
+            <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
               {isEditMode ? 'Update your creator information' : 'Let\'s get to know you better'}
             </p>
           </div>
           {onClose && (
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
             >
-              <X className="w-5 h-5 text-gray-500" />
+              <X className={`w-5 h-5 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-500'}`} />
             </button>
           )}
         </div>
@@ -1546,14 +1630,16 @@ const CreatorOnboardingForm = forwardRef(({
       {showProgress && (
         <div className="mb-8">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-gray-700">
+            <span className={`text-sm font-medium ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>
               Step {currentStep + 1} of {steps.length}
             </span>
-            <span className="text-sm text-gray-500">
+            <span className={`text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-500'}`}>
               {Math.round(((currentStep + 1) / steps.length) * 100)}% Complete
             </span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className={`w-full rounded-full h-2 ${
+            Boolean(isDarkMode) ? 'bg-gray-700' : 'bg-gray-200'
+          }`}>
             <div 
               className="bg-gradient-to-r from-pink-500 to-purple-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
@@ -1572,8 +1658,8 @@ const CreatorOnboardingForm = forwardRef(({
                         : isStepCompleted(index)
                         ? 'bg-green-500 text-white'
                         : isStepAccessible(index)
-                        ? 'bg-gray-300 text-gray-600 hover:bg-gray-400 cursor-pointer'
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        ? `${Boolean(isDarkMode) ? 'bg-gray-600 text-gray-300 hover:bg-gray-500' : 'bg-gray-300 text-gray-600 hover:bg-gray-400'} cursor-pointer`
+                        : `${Boolean(isDarkMode) ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-400'} cursor-not-allowed`
                     }`}
                     title={step}
                     onClick={() => {
@@ -1598,7 +1684,7 @@ const CreatorOnboardingForm = forwardRef(({
                       ? 'text-green-600'
                       : isStepAccessible(index)
                       ? 'text-gray-600'
-                      : 'text-gray-400'
+                      : `${Boolean(isDarkMode) ? 'text-gray-400' : 'text-gray-400'}`
                   }`}>
                     {step.split(' ')[0]}
                   </span>
@@ -1610,11 +1696,15 @@ const CreatorOnboardingForm = forwardRef(({
       )}
 
       {/* Step Content */}
-      <div className="mb-6">
-        <h3 className="text-xl font-semibold text-gray-800 mb-2">
+      <div className={`mb-6 p-4 rounded-lg ${
+        Boolean(isDarkMode) ? 'bg-gray-700/50' : 'bg-gray-50'
+      }`}>
+        <h3 className={`text-xl font-semibold mb-2 ${
+          Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-800'
+        }`}>
           {steps[currentStep]}
         </h3>
-        <p className="text-gray-600">
+        <p className={`${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}`}>
           {currentStep === 0 && "Tell us about your creator basics"}
           {currentStep === 1 && "How should we represent your brand?"}
           {currentStep === 2 && "Who is your audience?"}
@@ -1627,22 +1717,36 @@ const CreatorOnboardingForm = forwardRef(({
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-6">
+        <div className={`px-4 py-3 rounded-lg mb-6 ${
+          Boolean(isDarkMode)
+            ? 'bg-red-900/20 border border-red-700 text-red-300'
+            : 'bg-red-50 border border-red-200 text-red-600'
+        }`}>
           {error}
         </div>
       )}
 
-      <div className="mb-8 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
+      <div className={`mb-8 ${
+        Boolean(isDarkMode) ? 'dark-scrollbar' : ''
+      }`}>
         {renderStep()}
       </div>
 
       {/* Navigation */}
-      <div className="flex justify-between items-center pt-3 sm:pt-4 md:pt-6 mt-4 sm:mt-6 md:mt-8 border-t border-gray-200 bg-white sticky bottom-0">
+      <div className={`flex justify-between items-center pt-3 sm:pt-4 md:pt-6 mt-4 sm:mt-6 md:mt-8 border-t sticky bottom-0 ${
+        isDarkMode
+          ? 'border-gray-600 bg-gray-800'
+          : 'border-gray-200 bg-white'
+      }`}>
         <div className="flex items-center space-x-2 sm:space-x-3 md:space-x-4">
           <button
             onClick={prevStep}
             disabled={currentStep === 0}
-            className="flex items-center px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 md:py-3 bg-gray-500 text-white rounded-md sm:rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600 transition-colors text-xs sm:text-sm md:text-base"
+            className={`flex items-center px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 md:py-3 rounded-md sm:rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm md:text-base ${
+              isDarkMode
+                ? 'bg-gray-600 text-gray-100 hover:bg-gray-500'
+                : 'bg-gray-500 text-white hover:bg-gray-600'
+            }`}
           >
             <ArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 mr-1 sm:mr-1.5 md:mr-2" />
             <span className="hidden sm:inline">Previous</span>
@@ -1650,7 +1754,7 @@ const CreatorOnboardingForm = forwardRef(({
           </button>
           
           {!isEditMode && (
-            <div className="flex items-center text-[10px] sm:text-xs md:text-sm text-gray-500">
+            <div className={`flex items-center text-[10px] sm:text-xs md:text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-500'}`}>
               <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full mr-1 sm:mr-1.5 md:mr-2 animate-pulse"></div>
               <span className="hidden sm:inline">Auto-saved</span>
               <span className="sm:hidden">Saved</span>
@@ -1660,21 +1764,23 @@ const CreatorOnboardingForm = forwardRef(({
 
         <div className="flex items-center space-x-2 sm:space-x-3 md:space-x-4">
           {!isEditMode && (
-            <div className="text-xs sm:text-sm text-gray-600">
+            <div className={`text-xs sm:text-sm ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}`}>
               {isStepCompleted(currentStep) ? (
-                <span className="flex items-center text-green-600">
+                <span className={`flex items-center ${Boolean(isDarkMode) ? 'text-green-400' : 'text-green-600'}`}>
                   <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 mr-0.5 sm:mr-1" />
                   <span className="hidden sm:inline">Step Complete</span>
                   <span className="sm:hidden">✓</span>
                 </span>
               ) : (
-                <span className="text-amber-600 hidden sm:inline">Step Incomplete</span>
+                <span className={`hidden sm:inline ${
+                  Boolean(isDarkMode) ? 'text-amber-400' : 'text-amber-600'
+                }`}>Step Incomplete</span>
               )}
             </div>
           )}
 
           {isEditMode && saveSuccess && (
-            <div className="text-xs sm:text-sm text-green-600 flex items-center">
+            <div className={`text-xs sm:text-sm flex items-center ${Boolean(isDarkMode) ? 'text-green-400' : 'text-green-600'}`}>
               <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 mr-0.5 sm:mr-1" />
               <span className="hidden sm:inline">Changes Saved Successfully!</span>
               <span className="sm:hidden">Saved!</span>

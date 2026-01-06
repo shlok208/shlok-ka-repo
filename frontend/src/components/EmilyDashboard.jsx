@@ -26,7 +26,7 @@ const useStorageListener = (key, callback) => {
     // Also listen for custom events for same-tab updates
     const handleCustomChange = (e) => {
       if (e.detail.key === key) {
-        callback(e.detail.value === 'true')
+        callback(e.detail.newValue === 'true')
       }
     }
 
@@ -478,10 +478,12 @@ function EmilyDashboard() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className={`min-h-screen flex items-center justify-center ${
+        isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
+      }`}>
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Not Authenticated</h1>
-          <p className="text-gray-600">Please log in to access the dashboard.</p>
+          <p className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>Please log in to access the dashboard.</p>
         </div>
       </div>
     )
@@ -489,8 +491,8 @@ function EmilyDashboard() {
 
 
   return (
-    <div className={`h-screen overflow-hidden md:overflow-auto ${
-      isDarkMode ? 'bg-gray-900' : 'bg-white'
+    <div className={`h-screen overflow-hidden md:overflow-auto custom-scrollbar ${
+      isDarkMode ? 'bg-gray-900 dark-mode' : 'bg-white light-mode'
     }`}>
       {/* Mobile Navigation */}
       <MobileNavigation 
@@ -710,7 +712,9 @@ function EmilyDashboard() {
             <div className="w-full h-full flex gap-2">
                 {/* Main Chat Area */}
               <div className="flex-1 h-full">
-                <div className="h-full relative pt-0.5 px-24 overflow-x-auto">
+                <div className={`h-full relative pt-0.5 px-8 overflow-x-auto custom-scrollbar ${
+                  isDarkMode ? 'dark-mode' : 'light-mode'
+                }`}>
                   <ATSNChatbot
                     key="atsn-chatbot-fresh"
                     externalConversations={selectedConversation?.messages}
@@ -723,7 +727,7 @@ function EmilyDashboard() {
                 className={`hidden md:flex transition-all duration-300 ease-in-out overflow-hidden h-full ${
                   isDarkMode
                     ? 'bg-gray-900'
-                    : 'bg-white'
+                    : isDarkMode ? 'bg-gray-800' : 'bg-white'
                 } ${
                   isPanelOpen ? 'w-48 xl:w-64' : 'w-0'
                 }`}
@@ -791,7 +795,9 @@ function EmilyDashboard() {
 
       {/* Mobile Chat History Panel - Full Screen */}
       {showMobileChatHistory && (
-        <div className="md:hidden fixed inset-0 z-50 bg-white">
+        <div className={`md:hidden fixed inset-0 z-50 ${
+          isDarkMode ? 'bg-gray-900' : 'bg-white'
+        }`}>
           <div className="flex flex-col h-full">
             {/* Header */}
             <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gray-50 flex-shrink-0">

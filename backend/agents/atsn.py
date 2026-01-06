@@ -1544,24 +1544,28 @@ def classify_intent(state: AgentState) -> AgentState:
     
 Available intents:
 1. greeting - User is greeting (hi, hello, good morning, etc.)
-2. create_content - Creating new content (posts, videos, emails, messages)
-3. edit_content - Editing existing content
-4. delete_content - Deleting content
-5. view_content - Viewing/listing content
-6. publish_content - Publishing content to platforms
-7. schedule_content - Scheduling content for future publishing
-8. create_leads - Creating new leads
-9. view_leads - Viewing/listing leads
-10. edit_leads - Editing existing leads
-11. delete_leads - Deleting leads
-12. follow_up_leads - Following up with leads
-13. view_insights - Viewing insights and metrics
-14. view_analytics - Viewing analytics data
-15. general_talks - General conversation not related to the above tasks
+2. create_content - Creating new content (posts, videos, emails, messages) - SINGLE post
+3. generate_weekly_content - Generating weekly/monthly content calendar or bulk content (multiple posts, content strategy, weekly planning)
+4. edit_content - Editing existing content
+5. delete_content - Deleting content
+6. view_content - Viewing/listing content
+7. publish_content - Publishing content to platforms
+8. schedule_content - Scheduling content for future publishing
+9. create_leads - Creating new leads
+10. view_leads - Viewing/listing leads
+11. edit_leads - Editing existing leads
+12. delete_leads - Deleting leads
+13. follow_up_leads - Following up with leads
+14. view_insights - Viewing insights and metrics
+15. view_analytics - Viewing analytics data
+16. general_talks - General conversation not related to the above tasks
+
+IMPORTANT: If user asks for "weekly content", "content calendar", "bulk content", "generate multiple posts", "content strategy", "weekly planning", or similar bulk/weekly generation requests, return "generate_weekly_content".
+For single post creation, return "create_content".
 
 User query: {state.user_query}
 
-Return ONLY the intent name (e.g., "create_content", "greeting", "general_talks", etc.) without any explanation.
+Return ONLY the intent name (e.g., "create_content", "generate_weekly_content", "greeting", "general_talks", etc.) without any explanation.
 If the query doesn't match any specific task, return "general_talks"."""
 
     try:
@@ -2185,24 +2189,35 @@ Extract these fields if mentioned:
 - schedule_date: Date to publish (format: YYYY-MM-DD or relative like "tomorrow", "next Monday")
 - schedule_time: Time to publish (format: HH:MM or "morning", "afternoon", "evening")
 
+CRITICAL DATE PARSING RULES:
+- Parse ALL date mentions into YYYY-MM-DD format without errors
+- "today" → current date in YYYY-MM-DD format
+- "tomorrow" → tomorrow's date in YYYY-MM-DD format
+- "next Monday", "next Tuesday", etc. → calculate next occurrence
+- Specific dates like "27 december" → "YYYY-12-27" (use current year)
+- If no date mentioned, set schedule_date to null (will use default)
+
 Examples:
 
 Query: "Schedule my Instagram post for tomorrow at 9 AM"
 {{
-    "channel": "Social Media",
-    "platform": "Instagram",
     "content_id": null,
     "schedule_date": "tomorrow",
     "schedule_time": "09:00"
 }}
 
-Query: "Post to LinkedIn next Monday at 2 PM"
+Query: "Schedule content CONTENT_123 for next Monday at 2 PM"
 {{
-    "channel": "Social Media",
-    "platform": "LinkedIn",
-    "content_id": null,
+    "content_id": "CONTENT_123",
     "schedule_date": "next Monday",
     "schedule_time": "14:00"
+}}
+
+Query: "Schedule a post"
+{{
+    "content_id": null,
+    "schedule_date": null,
+    "schedule_time": null
 }}
 
 Extract ONLY explicitly mentioned information. Set fields to null if not mentioned.
@@ -2509,6 +2524,7 @@ User conversation:
 {sanitized_conversation}
 
 Extract these fields if mentioned:
+- lead_id: UUID of the lead to delete (if mentioned directly)
 - lead_name: Name of lead to delete
 - lead_phone: Phone of lead to delete
 - lead_email: Email of lead to delete
@@ -2518,6 +2534,7 @@ Examples:
 
 Query: "Delete the lead John Doe"
 {{
+    "lead_id": null,
     "lead_name": "John Doe",
     "lead_phone": null,
     "lead_email": null,
@@ -2526,14 +2543,25 @@ Query: "Delete the lead John Doe"
 
 Query: "Remove lead with email atsn@gmail.com"
 {{
+    "lead_id": null,
     "lead_name": null,
     "lead_phone": null,
     "lead_email": "spam@example.com",
     "lead_status": null
 }}
 
+Query: "Delete lead with ID: 123e4567-e89b-12d3-a456-426614174000"
+{{
+    "lead_id": "123e4567-e89b-12d3-a456-426614174000",
+    "lead_name": null,
+    "lead_phone": null,
+    "lead_email": null,
+    "lead_status": null
+}}
+
 Query: "Delete all lost leads"
 {{
+    "lead_id": null,
     "lead_name": null,
     "lead_phone": null,
     "lead_email": null,
@@ -3100,38 +3128,22 @@ FIELD_CLARIFICATIONS = {
         },
     },
     "schedule_content": {
-        "channel": {
-            "question": "Let's schedule some content! Which channel are we working with?",
-            "options": [
-                {"label": "Social Media", "value": "Social Media", "description": "Posts and updates"},
-                {"label": "Blog", "value": "Blog", "description": "Articles and long-form content"},
-                {"label": "Email", "value": "Email", "description": "Newsletters and campaigns"},
-                {"label": "Messages", "value": "Messages", "description": "Direct messaging content"}
-            ]
-        },
-        "platform": {
-            "question": "Great! Which platform should we schedule for?",
-            "options": [
-                {"label": "Instagram", "value": "Instagram", "description": "Visual posts"},
-                {"label": "Facebook", "value": "Facebook", "description": "Community content"},
-                {"label": "LinkedIn", "value": "LinkedIn", "description": "Professional posts"},
-                {"label": "YouTube", "value": "YouTube", "description": "Video content"},
-                {"label": "Gmail", "value": "Gmail", "description": "Email campaigns"},
-                {"label": "WhatsApp", "value": "WhatsApp", "description": "Messages"}
-            ]
-        },
-        "content_id": {
-            "question": "Almost there! Which specific content would you like to schedule?",
-            "options": []
-        },
         "schedule_date": {
-            "question": "Perfect! When would you like this to go live? You can say things like 'Tomorrow at 3pm', 'December 25, 2025', or 'Next Monday morning'. What's your preferred date and time?",
-            "options": []
+            "question": "When would you like this to be posted? You can say things like 'Tomorrow', 'Next Monday', or a specific date.",
+            "options": [
+                {"label": "Tomorrow", "value": "tomorrow"},
+                {"label": "Next Monday", "value": "next monday"},
+                {"label": "Next week", "value": "next week"}
+            ]
         },
         "schedule_time": {
-            "question": "Awesome! What time should it be posted? (e.g., '9:00 AM', '2:30 PM', etc.)",
-            "options": []
-        },
+            "question": "What time would you like this posted?",
+            "options": [
+                {"label": "Morning (9 AM)", "value": "morning"},
+                {"label": "Afternoon (2 PM)", "value": "afternoon"},
+                {"label": "Evening (6 PM)", "value": "evening"}
+            ]
+        }
     },
     "create_leads": {
         "lead_name": {
@@ -4274,47 +4286,30 @@ def complete_publish_content_payload(state: AgentState) -> AgentState:
 
 
 def complete_schedule_content_payload(state: AgentState) -> AgentState:
-    """Complete schedule_content payload"""
-    required_fields = ["channel", "platform", "schedule_date", "schedule_time"]
-    clarifications = FIELD_CLARIFICATIONS.get("schedule_content", {})
-    
-    missing_fields = [
-        f for f in required_fields 
-        if f not in state.payload or state.payload.get(f) is None or not state.payload.get(f)
-    ]
-    
-    if not missing_fields:
+    """Complete schedule_content payload - simplified flow"""
+
+    # If content_id is provided directly, we might need schedule details
+    if state.payload.get('content_id') and state.payload['content_id'].strip():
+        # Check if we have schedule details, if not provide defaults or ask
+        if not state.payload.get('schedule_date'):
+            # Set default to tomorrow
+            from datetime import datetime, timedelta
+            tomorrow = datetime.now() + timedelta(days=1)
+            state.payload['schedule_date'] = tomorrow.strftime('%Y-%m-%d')
+
+        if not state.payload.get('schedule_time'):
+            # Set default to morning
+            state.payload['schedule_time'] = '09:00'
+
         state.payload_complete = True
         state.current_step = "action_execution"
-        print(" Schedule content payload complete")
+        print(f" Schedule content payload complete - direct content selection with defaults")
         return state
-    
-    next_field = missing_fields[0]
-    clarification_data = clarifications.get(next_field, {})
 
-    if isinstance(clarification_data, dict):
-        base_question = clarification_data.get("question", f"Please provide: {next_field.replace('_', ' ')}")
-
-        # Generate personalized question using LLM
-        logger.info(f"Calling LLM for clarification question. Base: '{base_question}', User context length: {len(state.user_query or '')}")
-        personalized_question = generate_clarifying_question(
-            base_question=base_question,
-            user_context=state.user_query,
-            user_input=state.user_query.split('\n')[-1] if state.user_query else ""
-        )
-        logger.info(f"LLM returned: '{personalized_question}'")
-
-        state.clarification_question = personalized_question
-        state.clarification_options = clarification_data.get("options", [])
-    else:
-        # Backward compatibility for string clarifications
-        state.clarification_question = clarification_data or f"Please provide: {next_field.replace('_', ' ')}"
-        state.clarification_options = []
-
-    state.waiting_for_user = True
-    state.current_step = "waiting_for_clarification"
-    print(f"? Clarification needed for schedule_content: {state.clarification_question}")
-
+    # For draft selection, no additional fields needed - just show drafts
+    state.payload_complete = True
+    state.current_step = "action_execution"
+    print(" Schedule content payload complete - draft selection mode")
     return state
 
 
@@ -4641,21 +4636,21 @@ def complete_edit_leads_payload(state: AgentState) -> AgentState:
 
 def complete_delete_leads_payload(state: AgentState) -> AgentState:
     """Complete delete_leads payload"""
-    required_fields = ["lead_name"]
-    clarifications = FIELD_CLARIFICATIONS.get("delete_leads", {})
-    
-    missing_fields = [
-        f for f in required_fields 
-        if f not in state.payload or state.payload.get(f) is None or not state.payload.get(f)
-    ]
-    
-    if not missing_fields:
+    # Accept either lead_id OR lead_name as sufficient identifier
+    has_lead_id = state.payload.get('lead_id') and state.payload['lead_id'].strip()
+    has_lead_name = state.payload.get('lead_name') and state.payload['lead_name'].strip()
+
+    if has_lead_id or has_lead_name:
         state.payload_complete = True
         state.current_step = "action_execution"
         print(" Delete leads payload complete")
         return state
-    
-    next_field = missing_fields[0]
+
+    # If neither ID nor name is provided, we need clarification
+    clarifications = FIELD_CLARIFICATIONS.get("delete_leads", {})
+
+    # Ask for lead_name as the primary identifier (same as before)
+    next_field = "lead_name"
     clarification_data = clarifications.get(next_field, {})
 
     if isinstance(clarification_data, dict):
@@ -4948,6 +4943,8 @@ async def execute_action(state: AgentState) -> AgentState:
         state = handle_general_talks(state)
     elif intent == "create_content":
         state = await handle_create_content(state)
+    elif intent == "generate_weekly_content":
+        state = await handle_generate_weekly_content(state)
     elif intent == "edit_content":
         state = handle_edit_content(state)
     elif intent == "delete_content":
@@ -6945,6 +6942,67 @@ def _parse_date_range_format(date_range: str) -> Optional[Dict[str, str]]:
     return None
 
 
+def _parse_schedule_datetime(schedule_date: str, schedule_time: str) -> tuple[str, str]:
+    """Parse natural language schedule date and time into database format (YYYY-MM-DD, HH:MM)"""
+    from datetime import datetime, timedelta
+
+    current_date = datetime.now()
+
+    # Parse schedule_date
+    if schedule_date.startswith('tomorrow'):
+        parsed_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
+    elif schedule_date.startswith('next '):
+        # Handle "next monday", "next tuesday", etc.
+        weekday_name = schedule_date.replace('next ', '').lower()
+        weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        if weekday_name in weekdays:
+            target_weekday = weekdays.index(weekday_name)
+            current_weekday = current_date.weekday()
+            days_ahead = (target_weekday - current_weekday) % 7
+            if days_ahead == 0:  # Same weekday, get next week
+                days_ahead = 7
+            parsed_date = (current_date + timedelta(days=days_ahead)).strftime('%Y-%m-%d')
+        else:
+            parsed_date = schedule_date  # Assume it's already in YYYY-MM-DD format
+    elif len(schedule_date) == 10 and schedule_date.count('-') == 2:
+        # Already in YYYY-MM-DD format
+        parsed_date = schedule_date
+    else:
+        # Try to parse other formats or default to tomorrow
+        try:
+            # Handle formats like "Jan 15" -> "2025-01-15" or "2026-01-15"
+            if len(schedule_date.split()) == 2:
+                month_name, day = schedule_date.split()
+                month_names = ['jan', 'feb', 'mar', 'apr', 'may', 'jun',
+                             'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+                month_num = month_names.index(month_name.lower()) + 1
+                year = current_date.year if current_date.month <= month_num else current_date.year + 1
+                parsed_date = f"{year:04d}-{month_num:02d}-{int(day):02d}"
+            else:
+                parsed_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
+        except:
+            parsed_date = (current_date + timedelta(days=1)).strftime('%Y-%m-%d')
+
+    # Parse schedule_time
+    if schedule_time.lower() in ['morning', '9am', '9 am']:
+        parsed_time = '09:00'
+    elif schedule_time.lower() in ['afternoon', '2pm', '2 pm']:
+        parsed_time = '14:00'
+    elif schedule_time.lower() in ['evening', '6pm', '6 pm']:
+        parsed_time = '18:00'
+    elif ':' in schedule_time:
+        # Already in HH:MM format
+        parsed_time = schedule_time
+    elif len(schedule_time) == 4 and schedule_time.isdigit():
+        # Handle formats like "0900" -> "09:00"
+        parsed_time = f"{schedule_time[:2]}:{schedule_time[2:]}"
+    else:
+        # Default to morning
+        parsed_time = '09:00'
+
+    return parsed_date, parsed_time
+
+
 def _generate_mock_view_content(payload: Dict[str, Any]) -> str:
     """Generate mock content list for testing without database"""
     
@@ -7304,18 +7362,245 @@ def handle_publish_content_search(state: AgentState) -> AgentState:
 
 
 def handle_schedule_content(state: AgentState) -> AgentState:
-    """Schedule content"""
+    """Handle content scheduling - direct schedule or show drafts for selection"""
     payload = state.payload
-    
-    state.result = f"""📅 Content scheduled
 
-Platform: {payload.get('platform')}
-Content ID: {payload.get('content_id')}
-Scheduled for: {payload.get('schedule_date')} at {payload.get('schedule_time')}
+    # If content_id is provided directly, schedule that specific content
+    if payload.get('content_id') and payload['content_id'].strip():
+        return handle_schedule_specific_content(state)
 
-Status: Scheduled successfully"""
-    
+    # Otherwise, show recent draft posts for selection
+    return handle_schedule_draft_selection(state)
+
+
+def handle_schedule_specific_content(state: AgentState) -> AgentState:
+    """Schedule a specific piece of content by ID"""
+    payload = state.payload
+
+    content_id = payload['content_id'].strip()
+    schedule_date = payload.get('schedule_date')
+    schedule_time = payload.get('schedule_time')
+
+    if not supabase:
+        state.error = "Database connection not configured. Please contact support."
+        state.result = generate_personalized_message(
+            base_message="Unable to schedule content: Database not available.",
+            user_context=state.user_query,
+            message_type="error"
+        )
+        logger.error("Supabase not configured - cannot schedule content")
+        return state
+
+    # Ensure user_id is present for security
+    if not state.user_id:
+        state.error = "User ID is required to schedule content"
+        state.result = generate_personalized_message(
+            base_message="Unable to schedule content: User authentication required.",
+            user_context=state.user_query,
+            message_type="error"
+        )
+        logger.error("User ID missing in handle_schedule_specific_content")
+        return state
+
+    if not schedule_date or not schedule_time:
+        state.error = "Schedule date and time are required"
+        state.result = generate_personalized_message(
+            base_message="❌ Both schedule date and time are required. Please provide when you want this post scheduled.",
+            user_context=state.user_query,
+            message_type="error"
+        )
+        return state
+
+    try:
+        # Parse and validate the schedule date and time
+        parsed_date, parsed_time = _parse_schedule_datetime(schedule_date, schedule_time)
+
+        # First, check if content exists
+        response = supabase.table('created_content').select('*').eq('id', content_id).eq('user_id', state.user_id).execute()
+
+        if not response.data or len(response.data) == 0:
+            state.error = f"Content with ID '{content_id}' not found"
+            state.result = generate_personalized_message(
+                base_message=f"❌ Content with ID '{content_id}' not found. Please check the content ID and try again.",
+                user_context=state.user_query,
+                message_type="error"
+            )
+            return state
+
+        content = response.data[0]
+
+        # Check if content is already scheduled or published
+        if content.get('status') == 'published':
+            state.result = generate_personalized_message(
+                base_message=f"⚠️ Content '{content_id}' is already published. Cannot schedule published content.",
+                user_context=state.user_query,
+                message_type="warning"
+            )
+            return state
+
+        if content.get('status') == 'scheduled':
+            state.result = generate_personalized_message(
+                base_message=f"⚠️ Content '{content_id}' is already scheduled. Use edit functionality to change the schedule.",
+                user_context=state.user_query,
+                message_type="warning"
+            )
+            return state
+
+        # Update content with scheduling information
+        schedule_response = supabase.table('created_content').update({
+            'status': 'scheduled',
+            'scheduled_date': parsed_date,
+            'scheduled_time': parsed_time,
+            'scheduled_at': f"{parsed_date} {parsed_time}:00"  # Combined datetime for easier querying
+        }).eq('id', content_id).eq('user_id', state.user_id).execute()
+
+        if schedule_response.data:
+            # Create a more user-friendly date/time description
+            from datetime import datetime
+            try:
+                # Try to parse the date for a more natural description
+                date_obj = datetime.strptime(parsed_date, '%Y-%m-%d')
+                today = datetime.now()
+                tomorrow = today.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+                scheduled_date_obj = date_obj.replace(hour=0, minute=0, second=0, microsecond=0)
+
+                if scheduled_date_obj.date() == today.date():
+                    date_desc = "today"
+                elif scheduled_date_obj.date() == tomorrow.date():
+                    date_desc = "tomorrow"
+                else:
+                    date_desc = date_obj.strftime('%B %d, %Y')
+            except:
+                date_desc = parsed_date
+
+            # Convert time to more natural format
+            try:
+                time_obj = datetime.strptime(parsed_time, '%H:%M')
+                if parsed_time == '09:00':
+                    time_desc = 'morning'
+                elif parsed_time == '14:00':
+                    time_desc = 'afternoon'
+                elif parsed_time == '18:00':
+                    time_desc = 'evening'
+                else:
+                    time_desc = time_obj.strftime('%I:%M %p').lstrip('0')
+            except:
+                time_desc = parsed_time
+
+            platform_name = payload.get('platform') or content.get('platform', 'your platform')
+
+            base_success_message = f"""Woohoo! 🎉 Your {platform_name} post is all set to go for {date_desc} {time_desc}!
+
+It's officially scheduled and will pop up automatically when the time is right. You got this! ✨"""
+
+            state.result = generate_personalized_message(
+                base_message=base_success_message,
+                user_context=state.user_query,
+                message_type="success"
+            )
+        else:
+            state.error = "Failed to update content schedule"
+            state.result = generate_personalized_message(
+                base_message="❌ Failed to schedule content. Please try again.",
+                user_context=state.user_query,
+                message_type="error"
+            )
+
+    except Exception as e:
+        logger.error(f"Error scheduling content: {str(e)}")
+        state.error = f"Failed to schedule content: {str(e)}"
+        state.result = generate_personalized_message(
+            base_message=f"❌ Error scheduling content: {str(e)}. Please try again.",
+            user_context=state.user_query,
+            message_type="error"
+        )
+
     return state
+
+
+def handle_schedule_draft_selection(state: AgentState) -> AgentState:
+    """Show recent draft posts and let user choose which to schedule"""
+    payload = state.payload
+
+    if not supabase:
+        state.error = "Database connection not configured. Please contact support."
+        state.result = generate_personalized_message(
+            base_message="Unable to access your saved drafts: Database not available.",
+            user_context=state.user_query,
+            message_type="error"
+        )
+        return state
+
+    if not state.user_id:
+        state.error = "User ID is required to view draft content"
+        state.result = generate_personalized_message(
+            base_message="Unable to access your saved drafts: User authentication required.",
+            user_context=state.user_query,
+            message_type="error"
+        )
+        return state
+
+    try:
+        # Get recent draft posts (generated but not scheduled/published)
+        query = supabase.table('created_content').select('*').eq('user_id', state.user_id).eq('status', 'generated').order('created_at', desc=True).limit(10)
+
+        result = query.execute()
+        draft_posts = result.data if result.data else []
+
+        if not draft_posts:
+            state.result = generate_personalized_message(
+                base_message="You don't have any posts in saved drafts for scheduling. Please create some content first.",
+                user_context=state.user_query,
+                message_type="info"
+            )
+            return state
+
+        # Format draft posts for selection
+        draft_list = []
+        for idx, post in enumerate(draft_posts, 1):
+            # Get title - try multiple fields
+            title = post.get('title', '').strip()
+            if not title:
+                # Generate a preview from content
+                content_text = post.get('content', '').strip()
+                if content_text:
+                    title = content_text[:50] + ('...' if len(content_text) > 50 else '')
+                else:
+                    title = f"Draft {post.get('id', '')[:8]}"
+
+            platform_display = post.get('platform', 'Unknown').title()
+            content_type_display = post.get('content_type', 'post').replace('_', ' ').title()
+            created_date = post.get('created_at', '')
+            date_display = ''
+            if created_date:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
+                    date_display = dt.strftime('%b %d')
+                except:
+                    date_display = created_date[:10]
+
+            draft_list.append(f"{idx}. {title} - {platform_display} ({content_type_display}) - {date_display}")
+
+        # Ask user to select which draft to schedule
+        state.result = f"Here are your saved drafts for scheduling:\n\n" + "\n".join(draft_list) + "\n\nWhich post would you like to schedule? Reply with the number (1-{len(draft_posts)}) or the content ID."
+
+        # Store draft options for next interaction and set waiting state
+        state.temp_content_options = draft_posts
+        state.waiting_for_user = True
+        state.current_step = "content_selection"
+
+        return state
+
+    except Exception as e:
+        logger.error(f"Error fetching draft posts for scheduling: {str(e)}")
+        state.error = f"Failed to fetch draft posts: {str(e)}"
+        state.result = generate_personalized_message(
+            base_message="Unable to access your saved drafts at the moment. Please try again later.",
+            user_context=state.user_query,
+            message_type="error"
+        )
+        return state
 
 
 # ==================== LEAD HANDLERS ====================
@@ -7586,26 +7871,90 @@ Updates applied:
 
 
 def handle_delete_leads(state: AgentState) -> AgentState:
-    """Delete lead"""
+    """Delete lead with database removal"""
     payload = state.payload
+
+    # Check if payload is complete before proceeding
+    if not state.payload_complete:
+        state.result = "Lead deletion payload is not complete. Please provide lead identification first."
+        return state
 
     # Set agent name to Chase
     payload['agent_name'] = 'chase'
-    
-    # Get original contact info for display
-    display_email = getattr(state, 'temp_delete_emails', [None])[0] or payload.get('lead_email')
-    display_phone = getattr(state, 'temp_delete_phones', [None])[0] or payload.get('lead_phone')
 
-    state.result = f"""⚠️ Lead deletion prepared
+    # Ensure we have user_id
+    if not state.user_id:
+        state.result = "User authentication required."
+        return state
 
-Lead to delete:
-- Name: {payload.get('lead_name')}
-- Email: {display_email}
-- Phone: {display_phone}
+    # Get lead identification - prefer ID, fallback to name/email/phone search
+    lead_id = payload.get('lead_id')
+    lead_name = payload.get('lead_name')
+    lead_email = payload.get('lead_email')
+    lead_phone = payload.get('lead_phone')
 
-Status: Awaiting confirmation"""
-    
-    return state
+    if not lead_id and not lead_name and not lead_email and not lead_phone:
+        state.result = "No lead identification provided. Please specify lead ID, name, email, or phone."
+        return state
+
+    try:
+        # Build query to find the lead
+        query = supabase.table("leads").select("*").eq("user_id", state.user_id)
+
+        if lead_id:
+            # Direct ID lookup
+            query = query.eq("id", lead_id)
+        else:
+            # Search by name, email, phone
+            if lead_name:
+                query = query.ilike("name", f"%{lead_name}%")
+            if lead_email:
+                query = query.ilike("email", f"%{lead_email}%")
+            if lead_phone:
+                query = query.ilike("phone_number", f"%{lead_phone}%")
+
+        # Execute the query to find leads
+        result = query.execute()
+
+        if not result.data or len(result.data) == 0:
+            state.result = f"No lead found matching the specified criteria."
+            return state
+
+        if len(result.data) > 1:
+            # Multiple matches - show all and ask for clarification
+            lead_list = "\n".join([f"- {lead['name']} ({lead['email'] or 'no email'})" for lead in result.data[:5]])
+            state.result = f"Multiple leads found. Please be more specific:\n{lead_list}"
+            return state
+
+        # Single lead found - proceed with deletion
+        lead_to_delete = result.data[0]
+        lead_id_to_delete = lead_to_delete["id"]
+
+        # Perform the actual deletion
+        delete_result = supabase.table("leads").delete().eq("id", lead_id_to_delete).eq("user_id", state.user_id).execute()
+
+        if delete_result.data:
+            # Set success intent for frontend
+            state.intent = "lead_deleted"
+
+            # Success message
+            base_message = f"Successfully deleted lead '{lead_to_delete['name']}'"
+
+            state.result = generate_personalized_message(
+                base_message=base_message,
+                user_context=state.user_query,
+                message_type="success"
+            )
+
+            return state
+        else:
+            state.result = "Failed to delete lead from database."
+            return state
+
+    except Exception as e:
+        logger.error(f"Error deleting lead: {e}")
+        state.result = f"Error deleting lead: {str(e)}"
+        return state
 
 
 def handle_follow_up_leads(state: AgentState) -> AgentState:
@@ -7915,6 +8264,33 @@ class ATSNAgent:
         elif media_urls and len(media_urls) > 0:
             self.state.payload['media_file'] = media_urls[0]  # Use first URL
             logger.info(f"Media URLs set in payload: {media_urls}")
+
+        # Handle content selection from temp_content_options (for scheduling)
+        if (hasattr(self.state, 'temp_content_options') and
+            self.state.temp_content_options and
+            user_query.strip()):
+
+            # Check if user response is a number
+            try:
+                selection_idx = int(user_query.strip()) - 1  # Convert to 0-based index
+                if 0 <= selection_idx < len(self.state.temp_content_options):
+                    selected_content = self.state.temp_content_options[selection_idx]
+                    content_id = selected_content.get('id')
+
+                    # Set the content_id in payload
+                    self.state.payload['content_id'] = content_id
+                    logger.info(f"User selected content {selection_idx + 1}: {content_id}")
+
+                    # Clear temp options since selection is made
+                    self.state.temp_content_options = None
+
+            except ValueError:
+                # Not a number, check if it's a direct content ID
+                if user_query.strip().startswith('CONTENT_') or len(user_query.strip()) > 20:
+                    # Looks like a content ID
+                    self.state.payload['content_id'] = user_query.strip()
+                    logger.info(f"User provided direct content ID: {user_query.strip()}")
+                    self.state.temp_content_options = None
 
         # Run the graph
         result = await self.graph.ainvoke(self.state)

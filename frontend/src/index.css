@@ -74,3 +74,54 @@
   scrollbar-color: #4b5563 transparent;
 }
 
+/* Dark Scrollbar for Edit Profile Modal and Forms */
+.dark-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dark-scrollbar::-webkit-scrollbar-track {
+  background: #374151;
+  border-radius: 4px;
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb {
+  background: #6b7280;
+  border-radius: 4px;
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Firefox */
+.dark-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #6b7280 #374151;
+}
+
+/* Custom Checkbox and Radio Button Styles */
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  accent-color: var(--checkbox-accent-color, #db2778);
+  background-color: var(--checkbox-accent-color, #db2778);
+}
+
+/* Additional styling for better appearance */
+input[type="checkbox"] {
+  accent-color: var(--checkbox-accent-color, #db2778);
+}
+
+input[type="radio"] {
+  accent-color: var(--checkbox-accent-color, #db2778);
+}
+
+/* Custom Badge Colors - Using #21c45d */
+.custom-badge-bg {
+  background-color: rgba(33, 196, 93, 0.2);
+}
+
+.custom-badge-text {
+  color: #21c45d;
+}
+
