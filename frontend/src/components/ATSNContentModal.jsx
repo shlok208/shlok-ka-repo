@@ -100,25 +100,60 @@ const ATSNContentModal = ({ content, onClose }) => {
     setIsEditing(true)
   }
 
-  const handleSave = () => {
-    // Here you could add API call to save the edited content
-    console.log('Saving title:', editTitleValue)
-    console.log('Saving content:', editContentValue)
-    console.log('Saving hashtags:', editHashtagsValue)
+  const handleSave = async () => {
+    try {
+      // Get authentication token
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
 
-    // Handle different content types
-    if (content.content_type === 'short_video or reel' && editContentValue) {
-      // For short video scripts, save to short_video_script field
-      content.short_video_script = editContentValue
-    } else {
-      // For regular content, save to content field
-      content.content = editContentValue
+      if (!token) {
+        console.error('No auth token available')
+        return
+      }
+
+      // Prepare update data
+      const updateData = {
+        title: editTitleValue,
+        content: editContentValue,
+        hashtags: editHashtagsValue ? editHashtagsValue.split(' ').filter(tag => tag.trim()) : []
+      }
+
+      // Handle different content types
+      if (content.content_type === 'short_video or reel' && editContentValue) {
+        // For short video scripts, you might need to handle this differently
+        // depending on your backend schema
+        updateData.short_video_script = editContentValue
+      }
+
+      // Make API call to update created content
+      const response = await fetch(`${API_BASE_URL}/content/created-content/update/${content.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updateData)
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log('Content updated successfully:', result)
+
+        // Update local content object with saved data
+        content.title = editTitleValue
+        content.content = editContentValue
+        content.hashtags = updateData.hashtags
+
+        // Close edit mode
+        setIsEditing(false)
+      } else {
+        console.error('Failed to update content:', response.statusText)
+        // You might want to show an error message to the user
+      }
+    } catch (error) {
+      console.error('Error saving content:', error)
+      // You might want to show an error message to the user
     }
-
-    setIsEditing(false)
-    // Update the content object (this is just local for now)
-    content.title = editTitleValue
-    content.hashtags = editHashtagsValue ? editHashtagsValue.split(' ').filter(tag => tag.trim()) : []
   }
 
   const handleCancelEdit = () => {
@@ -1053,7 +1088,7 @@ const ATSNContentModal = ({ content, onClose }) => {
             className="fixed inset-0 flex items-center justify-center p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className={`relative max-w-2xl w-full rounded-2xl shadow-2xl overflow-hidden ${
+            <div className={`relative max-w-2xl w-full h-[80vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col ${
               isDarkMode ? 'bg-gray-800' : 'bg-white'
             }`}>
               {/* Header */}
@@ -1099,7 +1134,7 @@ const ATSNContentModal = ({ content, onClose }) => {
               </div>
 
               {/* Body */}
-              <div className="p-6">
+              <div className="p-6 overflow-y-auto flex-1">
                 {/* Image Preview */}
                 <div className="mb-6">
                   {showImagePreview ? (
@@ -1119,7 +1154,7 @@ const ATSNContentModal = ({ content, onClose }) => {
                           <img
                             src={editingImage}
                             alt="Image to edit"
-                            className={`max-w-full max-h-48 object-contain rounded-lg border-2 ${
+                            className={`max-w-full max-h-80 object-contain rounded-lg border-2 ${
                               selectedImageForEdit === editingImage && showImagePreview
                                 ? 'border-blue-500 cursor-pointer'
                                 : showImagePreview
@@ -1146,7 +1181,7 @@ const ATSNContentModal = ({ content, onClose }) => {
                           <img
                             src={editedImageUrl}
                             alt="Edited image"
-                            className={`max-w-full max-h-48 object-contain rounded-lg border-2 ${
+                            className={`max-w-full max-h-80 object-contain rounded-lg border-2 ${
                               selectedImageForEdit === editedImageUrl
                                 ? 'border-blue-500 cursor-pointer'
                                 : 'border-green-500 cursor-pointer hover:border-blue-400'
@@ -1186,7 +1221,7 @@ const ATSNContentModal = ({ content, onClose }) => {
                           <img
                             src={editingImage}
                             alt="Image to edit"
-                            className="max-w-full max-h-48 object-contain rounded-lg border-2 border-blue-500"
+                            className="max-w-full max-h-80 object-contain rounded-lg border-2 border-blue-500"
                           />
                         </div>
                       </div>
@@ -1198,7 +1233,7 @@ const ATSNContentModal = ({ content, onClose }) => {
                         }`}>
                           Result Preview:
                         </h4>
-                        <div className="flex justify-center items-center h-48 bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/20 dark:to-gray-800 rounded-lg border border-blue-200 dark:border-blue-700 border-dashed">
+                        <div className="flex justify-center items-center h-80 bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/20 dark:to-gray-800 rounded-lg border border-blue-200 dark:border-blue-700 border-dashed">
                           <div className="text-center">
                             <div className="w-16 h-16 mx-auto mb-3 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
                               <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
