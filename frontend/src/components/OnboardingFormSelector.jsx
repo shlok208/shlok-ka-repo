@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Briefcase, User, Sparkles, TrendingUp, CheckCircle2 } from 'lucide-react'
 import { onboardingAPI } from '../services/onboarding'
 
@@ -6,6 +6,36 @@ const OnboardingFormSelector = ({ onSelect }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [hoveredCard, setHoveredCard] = useState(null)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    // Check localStorage for saved preference, default to dark mode
+    const saved = localStorage.getItem('darkMode')
+    return saved !== null ? saved === 'true' : true // Default to true (dark mode)
+  })
+
+  // Listen for dark mode changes
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'darkMode') {
+        setIsDarkMode(e.newValue === 'true')
+      }
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+
+    // Also check for changes within the same tab
+    const checkDarkMode = () => {
+      const saved = localStorage.getItem('darkMode')
+      setIsDarkMode(saved !== null ? saved === 'true' : true)
+    }
+
+    // Check periodically for changes
+    const interval = setInterval(checkDarkMode, 1000)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      clearInterval(interval)
+    }
+  }, [])
 
   const handleSelect = async (formType) => {
     if (loading) return // Prevent multiple clicks
@@ -47,40 +77,41 @@ const OnboardingFormSelector = ({ onSelect }) => {
   }
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in" 
+    <div
+      className={`fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in ${
+        isDarkMode ? 'bg-black/70' : 'bg-black/60'
+      }`}
       style={{ pointerEvents: 'auto' }}
     >
-      <div 
-        className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full overflow-hidden transform animate-slide-up"
+      <div
+        className={`rounded-3xl shadow-2xl max-w-4xl w-full overflow-hidden transform animate-slide-up ${
+          isDarkMode ? 'bg-gray-800' : 'bg-white'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with gradient */}
         <div className="bg-gradient-to-r from-pink-500 via-pink-600 to-purple-600 px-6 sm:px-8 py-6 sm:py-8">
           <div className="text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-white/20 backdrop-blur-sm rounded-2xl mb-4">
-              <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+            <div className="inline-flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 bg-white/20 backdrop-blur-sm rounded-full mb-4">
+              <img
+                src="/logo_.png"
+                alt="ATSN Logo"
+                className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
+              />
             </div>
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2">
-              Choose Your Onboarding Form
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-normal text-white mb-2">
+              What best describes you ?
             </h2>
-            <p className="text-white/90 text-sm sm:text-base mb-2">
-              Select the form that best describes you to get started
-            </p>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/20 backdrop-blur-sm rounded-full">
-              <CheckCircle2 className="w-4 h-4 text-white" />
-              <p className="text-white text-xs sm:text-sm font-medium">
-                Selection is required to continue
-              </p>
-            </div>
           </div>
         </div>
 
         {/* Content */}
         <div className="p-6 sm:p-8">
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg transition-all duration-300">
-              <p className="text-red-700 text-sm font-medium">{error}</p>
+            <div className={`mb-6 p-4 border-l-4 border-red-500 rounded-lg transition-all duration-300 ${
+              isDarkMode ? 'bg-red-900/20 text-red-300' : 'bg-red-50 text-red-700'
+            }`}>
+              <p className="text-sm font-medium">{error}</p>
             </div>
           )}
 
@@ -91,7 +122,11 @@ const OnboardingFormSelector = ({ onSelect }) => {
               onMouseEnter={() => setHoveredCard('business')}
               onMouseLeave={() => setHoveredCard(null)}
               disabled={loading}
-              className="group relative p-6 sm:p-8 border-2 border-gray-200 rounded-2xl hover:border-pink-500 hover:shadow-2xl hover:shadow-pink-500/20 transition-all duration-300 text-left disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-br from-white to-pink-50/30 hover:from-pink-50 hover:to-pink-100/50 overflow-hidden"
+              className={`group relative p-6 sm:p-8 border-2 rounded-2xl hover:shadow-2xl transition-all duration-300 text-left disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden ${
+                isDarkMode
+                  ? 'border-gray-600 bg-gradient-to-br from-gray-700 to-gray-600/30 hover:border-pink-500 hover:shadow-pink-500/20 hover:from-gray-600 hover:to-gray-500/50 text-gray-100'
+                  : 'border-gray-200 bg-gradient-to-br from-white to-pink-50/30 hover:border-pink-500 hover:shadow-pink-500/20 hover:from-pink-50 hover:to-pink-100/50'
+              }`}
             >
               {/* Decorative gradient overlay on hover */}
               <div className={`absolute inset-0 bg-gradient-to-br from-pink-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${hoveredCard === 'business' ? 'opacity-100' : ''}`}></div>
@@ -102,18 +137,26 @@ const OnboardingFormSelector = ({ onSelect }) => {
                     <Briefcase className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
                   </div>
                   <div className="flex-1 pt-1">
-                    <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2 group-hover:text-pink-600 transition-colors">
-                      Business Form
+                    <h3 className={`text-xl sm:text-2xl font-bold mb-2 transition-colors ${
+                      isDarkMode ? 'text-gray-100 group-hover:text-pink-400' : 'text-gray-900 group-hover:text-pink-600'
+                    }`}>
+                      Business
                     </h3>
-                    <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
+                    <p className={`text-sm sm:text-base leading-relaxed ${
+                      isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                    }`}>
                       For businesses, brands, and companies looking to grow their online presence
                     </p>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2 mt-5 pt-5 border-t border-gray-200 group-hover:border-pink-200 transition-colors">
+                <div className={`flex items-center gap-2 mt-5 pt-5 border-t transition-colors ${
+                  isDarkMode
+                    ? 'border-gray-600 group-hover:border-pink-400 text-gray-400 group-hover:text-gray-300'
+                    : 'border-gray-200 group-hover:border-pink-200 text-gray-500 group-hover:text-gray-700'
+                }`}>
                   <TrendingUp className="w-4 h-4 text-pink-500" />
-                  <p className="text-xs sm:text-sm text-gray-500 group-hover:text-gray-700 transition-colors">
+                  <p className="text-xs sm:text-sm">
                     Perfect for: E-commerce, SaaS, Services, Retail, and more
                   </p>
                 </div>
@@ -129,7 +172,11 @@ const OnboardingFormSelector = ({ onSelect }) => {
               onMouseEnter={() => setHoveredCard('creator')}
               onMouseLeave={() => setHoveredCard(null)}
               disabled={loading}
-              className="group relative p-6 sm:p-8 border-2 border-gray-200 rounded-2xl hover:border-purple-500 hover:shadow-2xl hover:shadow-purple-500/20 transition-all duration-300 text-left disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-br from-white to-purple-50/30 hover:from-purple-50 hover:to-purple-100/50 overflow-hidden"
+              className={`group relative p-6 sm:p-8 border-2 rounded-2xl hover:shadow-2xl transition-all duration-300 text-left disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden ${
+                isDarkMode
+                  ? 'border-gray-600 bg-gradient-to-br from-gray-700 to-gray-600/30 hover:border-purple-500 hover:shadow-purple-500/20 hover:from-gray-600 hover:to-gray-500/50 text-gray-100'
+                  : 'border-gray-200 bg-gradient-to-br from-white to-purple-50/30 hover:border-purple-500 hover:shadow-purple-500/20 hover:from-purple-50 hover:to-purple-100/50'
+              }`}
             >
               {/* Decorative gradient overlay on hover */}
               <div className={`absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${hoveredCard === 'creator' ? 'opacity-100' : ''}`}></div>
@@ -140,18 +187,26 @@ const OnboardingFormSelector = ({ onSelect }) => {
                     <User className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
                   </div>
                   <div className="flex-1 pt-1">
-                    <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">
-                      Creator Form
+                    <h3 className={`text-xl sm:text-2xl font-bold mb-2 transition-colors ${
+                      isDarkMode ? 'text-gray-100 group-hover:text-purple-400' : 'text-gray-900 group-hover:text-purple-600'
+                    }`}>
+                      Creator
                     </h3>
-                    <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
+                    <p className={`text-sm sm:text-base leading-relaxed ${
+                      isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                    }`}>
                       For content creators, influencers, and personal brands building their audience
                     </p>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2 mt-5 pt-5 border-t border-gray-200 group-hover:border-purple-200 transition-colors">
+                <div className={`flex items-center gap-2 mt-5 pt-5 border-t transition-colors ${
+                  isDarkMode
+                    ? 'border-gray-600 group-hover:border-purple-400 text-gray-400 group-hover:text-gray-300'
+                    : 'border-gray-200 group-hover:border-purple-200 text-gray-500 group-hover:text-gray-700'
+                }`}>
                   <Sparkles className="w-4 h-4 text-purple-500" />
-                  <p className="text-xs sm:text-sm text-gray-500 group-hover:text-gray-700 transition-colors">
+                  <p className="text-xs sm:text-sm">
                     Perfect for: Influencers, YouTubers, Bloggers, Artists, and more
                   </p>
                 </div>
@@ -166,7 +221,9 @@ const OnboardingFormSelector = ({ onSelect }) => {
             <div className="text-center py-4 transition-opacity duration-300">
               <div className="inline-flex items-center gap-3">
                 <div className="animate-spin rounded-full h-6 w-6 border-2 border-pink-500 border-t-transparent"></div>
-                <p className="text-sm sm:text-base text-gray-600 font-medium">Saving your selection...</p>
+                <p className={`text-sm sm:text-base font-medium ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                }`}>Saving your selection...</p>
               </div>
             </div>
           )}

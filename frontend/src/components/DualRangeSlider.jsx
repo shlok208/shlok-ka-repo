@@ -174,9 +174,7 @@ const DualRangeSlider = ({
     <div className={`w-full ${className}`}>
       <div className="flex items-start justify-between mb-4 gap-4">
         <div className="flex-1 flex flex-col">
-          <label className={`block text-xs sm:text-sm font-medium mb-1 ${
-            isDarkMode ? 'text-gray-300' : 'text-gray-700'
-          }`}>
+          <label className="block text-xs sm:text-sm font-medium mb-1 text-gray-200">
             Minimum Age
           </label>
           <input
@@ -200,9 +198,7 @@ const DualRangeSlider = ({
           }`}>-</div>
         </div>
         <div className="flex-1 flex flex-col">
-          <label className={`block text-xs sm:text-sm font-medium mb-1 ${
-            isDarkMode ? 'text-gray-300' : 'text-gray-700'
-          }`}>
+          <label className="block text-xs sm:text-sm font-medium mb-1 text-gray-200">
             Maximum Age
           </label>
           <input

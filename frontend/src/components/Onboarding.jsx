@@ -375,19 +375,19 @@ const Onboarding = () => {
     localStorage.setItem('onboarding_form_selected', 'true')
     sessionStorage.setItem('selected_onboarding_type', formType)
     sessionStorage.setItem('onboarding_form_selected', 'true')
-    
-    // Clear old form data if switching between forms
-    if (formType === 'creator') {
-      // Clear business form data
-      localStorage.removeItem('onboarding_form_data')
-      localStorage.removeItem('onboarding_current_step')
-      localStorage.removeItem('onboarding_completed_steps')
-    } else if (formType === 'business') {
-      // Clear creator form data
-      localStorage.removeItem('creator_onboarding_form_data')
-      localStorage.removeItem('creator_onboarding_current_step')
-      localStorage.removeItem('creator_onboarding_completed_steps')
-    }
+  }
+
+  const handleChangeSelection = () => {
+    // Clear the onboarding selection to allow re-selection
+    localStorage.removeItem('selected_onboarding_type')
+    localStorage.removeItem('onboarding_form_selected')
+    sessionStorage.removeItem('selected_onboarding_type')
+    sessionStorage.removeItem('onboarding_form_selected')
+    // Reset form state
+    setSelectedFormType(null)
+    setOnboardingFormSelected(false)
+    // Navigate back to onboarding selector
+    navigate('/onboarding')
   }
 
   // Redirect to login if not authenticated
@@ -467,31 +467,32 @@ const Onboarding = () => {
   }, [selectedFormType]) // Only run when business form is selected
 
   // Auto-determine current step based on data after form data loads - ONLY for business form
-  useEffect(() => {
-    // Only run for business form
-    if (selectedFormType !== 'business') return
-    
-    // Don't auto-redirect if user manually navigated to step 0
-    if (userNavigatedToStep0) return
-    
-    if (formData.business_name || formData.business_type?.length > 0) {
-      const highestStepWithData = getHighestStepWithData()
-      const nextStep = highestStepWithData + 1
-      
-      console.log('Auto-determining step based on data:', {
-        highestStepWithData,
-        nextStep,
-        currentStep
-      })
-      
-      // Only auto-redirect if we're on step 0 and have data (initial load)
-      if (currentStep === 0 && highestStepWithData >= 0) {
-        const targetStep = Math.min(nextStep, steps.length - 1)
-        console.log('Moving to step based on data:', targetStep)
-        setCurrentStep(targetStep)
-      }
-    }
-  }, [formData, currentStep, steps.length, userNavigatedToStep0, selectedFormType])
+  // Auto-advancement disabled - users must manually click Next to proceed
+  // useEffect(() => {
+  //   // Only run for business form
+  //   if (selectedFormType !== 'business') return
+  //
+  //   // Don't auto-redirect if user manually navigated to step 0
+  //   if (userNavigatedToStep0) return
+  //
+  //   if (formData.business_name || formData.business_type?.length > 0) {
+  //     const highestStepWithData = getHighestStepWithData()
+  //     const nextStep = highestStepWithData + 1
+  //
+  //     console.log('Auto-determining step based on data:', {
+  //       highestStepWithData,
+  //       nextStep,
+  //       currentStep
+  //     })
+  //
+  //     // Only auto-redirect if we're on step 0 and have data (initial load)
+  //     if (currentStep === 0 && highestStepWithData >= 0) {
+  //       const targetStep = Math.min(nextStep, steps.length - 1)
+  //       console.log('Moving to step based on data:', targetStep)
+  //       setCurrentStep(targetStep)
+  //     }
+  //   }
+  // }, [formData, currentStep, steps.length, userNavigatedToStep0, selectedFormType])
 
   // Save form data to localStorage whenever it changes
   useEffect(() => {
@@ -999,7 +1000,7 @@ const Onboarding = () => {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Business Name *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Business Name *</label>
               <input
                 type="text"
                 value={formData.business_name}
@@ -1010,7 +1011,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Business Type *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Business Type *</label>
               <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
                 {businessTypes.map(type => (
                   <label key={type} className="flex items-center space-x-2">
@@ -1020,7 +1021,7 @@ const Onboarding = () => {
                       onChange={(e) => handleArrayChange('business_type', type, e.target.checked)}
                       className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                     />
-                    <span className="text-xs xs:text-sm text-gray-700 break-words">{type}</span>
+                    <span className="text-xs xs:text-sm text-gray-200 break-words">{type}</span>
                   </label>
                 ))}
               </div>
@@ -1038,7 +1039,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Industry *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Industry *</label>
               <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
                 {industries.map(industry => (
                   <label key={industry} className="flex items-center space-x-2">
@@ -1048,7 +1049,7 @@ const Onboarding = () => {
                       onChange={(e) => handleArrayChange('industry', industry, e.target.checked)}
                       className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                     />
-                    <span className="text-sm text-gray-700">{industry}</span>
+                    <span className="text-sm text-gray-200">{industry}</span>
                   </label>
                 ))}
               </div>
@@ -1071,7 +1072,7 @@ const Onboarding = () => {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-200 mb-2">
                 Business Description *
                 <InfoTooltip 
                   content="Describe your business in detail - what you offer, who your customers are, and how your products or services work. This helps Emily understand your brand and create tailored marketing content."
@@ -1087,33 +1088,60 @@ const Onboarding = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Business Logo (Optional)
-                <InfoTooltip 
-                  content="Uploading your company logo is optional, but it helps the AI create branded visuals and maintain a consistent look across campaigns, making your marketing more professional and recognizable."
-                  className="ml-2"
+            {/* Business Logo and Gender in 2-column layout */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Business Logo */}
+              <div>
+                <label className="block text-sm font-medium text-gray-200 mb-2">
+                  Business Logo (Optional)
+                  <InfoTooltip
+                    content="Uploading your company logo is optional, but it helps the AI create branded visuals and maintain a consistent look across campaigns, making your marketing more professional and recognizable."
+                    className="ml-2"
+                  />
+                </label>
+                <LogoUpload
+                  value={formData.logo_url}
+                  onUploadSuccess={handleLogoUpload}
+                  onError={handleLogoError}
+                  onColorsExtracted={handleColorsExtracted}
+                  className="max-w-md"
                 />
-              </label>
-              <LogoUpload
-                value={formData.logo_url}
-                onUploadSuccess={handleLogoUpload}
-                onError={handleLogoError}
-                onColorsExtracted={handleColorsExtracted}
-                className="max-w-md"
-              />
-              {logoError && (
-                <div className="text-red-600 text-sm mt-2">{logoError}</div>
-              )}
+                {logoError && (
+                  <div className="text-red-600 text-sm mt-2">{logoError}</div>
+                )}
+              </div>
+
+              {/* Gender Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-200 mb-2">
+                  Target Audience Gender <span className="text-black">*</span>
+                </label>
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex flex-col space-y-2">
+                    {['all', 'men', 'women'].map((gender) => (
+                      <label key={gender} className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="target_audience_gender"
+                          value={gender}
+                          checked={formData.target_audience_gender === gender}
+                          onChange={(e) => handleInputChange('target_audience_gender', e.target.value)}
+                          className="text-pink-600 focus:ring-pink-500"
+                        />
+                        <span className="text-sm text-gray-200 capitalize">{gender === 'all' ? 'All' : gender === 'men' ? 'Men' : 'Women'}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
 
-
              <div>
-               <label className="block text-sm font-medium text-gray-700 mb-2">Target Audience *</label>
+               <label className="block text-sm font-medium text-gray-200 mb-2">Target Audience Age *</label>
                <div className="space-y-4">
                  {/* Age Range Card */}
                  <div className="border border-gray-200 rounded-lg p-4">
-                   <label className="block text-sm font-medium text-gray-700 mb-4">
+                   <label className="block text-sm font-medium text-gray-200 mb-4">
                      Age Range <span className="text-black">*</span>
                    </label>
                    <DualRangeSlider
@@ -1128,42 +1156,23 @@ const Onboarding = () => {
                    />
                  </div>
 
-                 {/* Gender Selection */}
-                 <div className="border border-gray-200 rounded-lg p-4">
-                   <label className="block text-sm font-medium text-gray-700 mb-4">
-                     Gender <span className="text-black">*</span>
-                   </label>
-                   <div className="flex flex-col space-y-2">
-                     {['all', 'men', 'women'].map((gender) => (
-                       <label key={gender} className="flex items-center space-x-2 cursor-pointer">
-                         <input
-                           type="radio"
-                           name="target_audience_gender"
-                           value={gender}
-                           checked={formData.target_audience_gender === gender}
-                           onChange={(e) => handleInputChange('target_audience_gender', e.target.value)}
-                           className="text-pink-600 focus:ring-pink-500"
-                         />
-                         <span className="text-sm text-gray-700 capitalize">{gender === 'all' ? 'All' : gender === 'men' ? 'Men' : 'Women'}</span>
-                       </label>
-                     ))}
-                   </div>
-                 </div>
 
-                 {/* Life Stage / Roles Card */}
-                 <div className="border border-gray-200 rounded-lg">
+                 {/* Target Audience Cards in 2-column layout */}
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   {/* Life Stage / Roles Card */}
+                   <div className="border border-gray-200 rounded-lg">
                    <button
                      type="button"
                      onClick={() => toggleCard('lifeStages')}
-                     className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors relative"
+                     className="w-full px-4 py-3 flex items-center justify-between transition-colors relative hover:bg-gray-700" 
                    >
-                     <span className="text-sm font-medium text-gray-700">Life Stage / Roles <span className="text-gray-500 text-xs">(Optional)</span></span>
+                     <span className="text-sm font-medium text-gray-200">Life Stage / Roles <span className="text-gray-200 text-xs">(Optional)</span></span>
                      <div className="flex items-center space-x-2">
                        <span className="w-6 h-6 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-xs font-medium">
                          {getSelectedCount('target_audience_life_stages')}
                        </span>
                        <svg 
-                         className={`w-4 h-4 text-gray-400 transition-transform ${expandedCards.lifeStages ? 'rotate-180' : ''}`}
+                         className={`w-4 h-4 text-gray-200 transition-transform ${expandedCards.lifeStages ? 'rotate-180' : ''}`}
                          fill="none" 
                          stroke="currentColor" 
                          viewBox="0 0 24 24"
@@ -1183,7 +1192,7 @@ const Onboarding = () => {
                                onChange={(e) => handleArrayChange('target_audience_life_stages', stage, e.target.checked)}
                                className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                              />
-                             <span className="text-xs xs:text-sm text-gray-700 break-words">{stage}</span>
+                             <span className="text-xs xs:text-sm text-gray-200 break-words">{stage}</span>
                            </label>
                          ))}
                        </div>
@@ -1200,22 +1209,22 @@ const Onboarding = () => {
                        )}
                      </div>
                    )}
-                 </div>
+                   </div>
 
-                 {/* Professional / Business Type Card */}
-                 <div className="border border-gray-200 rounded-lg">
+                   {/* Professional / Business Type Card */}
+                   <div className="border border-gray-200 rounded-lg">
                    <button
                      type="button"
                      onClick={() => toggleCard('professionalTypes')}
-                     className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors relative"
+                     className="w-full px-4 py-3 flex items-center justify-between transition-colors relative hover:bg-gray-700"
                    >
-                     <span className="text-sm font-medium text-gray-700">Professional / Business Type <span className="text-gray-500 text-xs">(Optional)</span></span>
+                     <span className="text-sm font-medium text-gray-200">Professional / Business Type <span className="text-gray-200 text-xs">(Optional)</span></span>
                      <div className="flex items-center space-x-2">
                        <span className="w-6 h-6 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-xs font-medium">
                          {getSelectedCount('target_audience_professional_types')}
                        </span>
                        <svg 
-                         className={`w-4 h-4 text-gray-400 transition-transform ${expandedCards.professionalTypes ? 'rotate-180' : ''}`}
+                         className={`w-4 h-4 text-gray-200 transition-transform ${expandedCards.professionalTypes ? 'rotate-180' : ''}`}
                          fill="none" 
                          stroke="currentColor" 
                          viewBox="0 0 24 24"
@@ -1235,7 +1244,7 @@ const Onboarding = () => {
                                onChange={(e) => handleArrayChange('target_audience_professional_types', type, e.target.checked)}
                                className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                              />
-                             <span className="text-xs xs:text-sm text-gray-700 break-words">{type}</span>
+                             <span className="text-xs xs:text-sm text-gray-200 break-words">{type}</span>
                            </label>
                          ))}
                        </div>
@@ -1252,22 +1261,22 @@ const Onboarding = () => {
                        )}
                      </div>
                    )}
-                 </div>
+                   </div>
 
-                 {/* Lifestyle & Interests Card */}
-                 <div className="border border-gray-200 rounded-lg">
+                   {/* Lifestyle & Interests Card */}
+                   <div className="border border-gray-200 rounded-lg">
                    <button
                      type="button"
                      onClick={() => toggleCard('lifestyleInterests')}
-                     className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors relative"
+                     className="w-full px-4 py-3 flex items-center justify-between transition-colors relative hover:bg-gray-700"
                    >
-                     <span className="text-sm font-medium text-gray-700">Lifestyle & Interests <span className="text-gray-500 text-xs">(Optional)</span></span>
+                     <span className="text-sm font-medium text-gray-200">Lifestyle & Interests <span className="text-gray-200 text-xs">(Optional)</span></span>
                      <div className="flex items-center space-x-2">
                        <span className="w-6 h-6 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-xs font-medium">
                          {getSelectedCount('target_audience_lifestyle_interests')}
                        </span>
                        <svg 
-                         className={`w-4 h-4 text-gray-400 transition-transform ${expandedCards.lifestyleInterests ? 'rotate-180' : ''}`}
+                         className={`w-4 h-4 text-gray-200 transition-transform ${expandedCards.lifestyleInterests ? 'rotate-180' : ''}`}
                          fill="none" 
                          stroke="currentColor" 
                          viewBox="0 0 24 24"
@@ -1287,7 +1296,7 @@ const Onboarding = () => {
                                onChange={(e) => handleArrayChange('target_audience_lifestyle_interests', interest, e.target.checked)}
                                className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                              />
-                             <span className="text-xs xs:text-sm text-gray-700 break-words">{interest}</span>
+                             <span className="text-xs xs:text-sm text-gray-200 break-words">{interest}</span>
                            </label>
                          ))}
                        </div>
@@ -1304,22 +1313,22 @@ const Onboarding = () => {
                        )}
                      </div>
                    )}
-                 </div>
+                   </div>
 
-                 {/* Buyer Behavior Card */}
-                 <div className="border border-gray-200 rounded-lg">
+                   {/* Buyer Behavior Card */}
+                   <div className="border border-gray-200 rounded-lg">
                    <button
                      type="button"
                      onClick={() => toggleCard('buyerBehavior')}
-                     className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors relative"
+                     className="w-full px-4 py-3 flex items-center justify-between transition-colors relative hover:bg-gray-700"
                    >
-                     <span className="text-sm font-medium text-gray-700">Buyer Behavior <span className="text-gray-500 text-xs">(Optional)</span></span>
+                     <span className="text-sm font-medium text-gray-200">Buyer Behavior <span className="text-gray-200 text-xs">(Optional)</span></span>
                      <div className="flex items-center space-x-2">
                        <span className="w-6 h-6 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-xs font-medium">
                          {getSelectedCount('target_audience_buyer_behavior')}
                        </span>
                        <svg 
-                         className={`w-4 h-4 text-gray-400 transition-transform ${expandedCards.buyerBehavior ? 'rotate-180' : ''}`}
+                         className={`w-4 h-4 text-gray-200 transition-transform ${expandedCards.buyerBehavior ? 'rotate-180' : ''}`}
                          fill="none" 
                          stroke="currentColor" 
                          viewBox="0 0 24 24"
@@ -1339,7 +1348,7 @@ const Onboarding = () => {
                                onChange={(e) => handleArrayChange('target_audience_buyer_behavior', behavior, e.target.checked)}
                                className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                              />
-                             <span className="text-xs xs:text-sm text-gray-700 break-words">{behavior}</span>
+                             <span className="text-xs xs:text-sm text-gray-200 break-words">{behavior}</span>
                            </label>
                          ))}
                        </div>
@@ -1356,13 +1365,14 @@ const Onboarding = () => {
                        )}
                      </div>
                    )}
+                   </div>
                  </div>
 
                </div>
              </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-200 mb-2">
                 Unique Value Proposition *
                 <InfoTooltip 
                   content="Highlight your business's main strength or advantage that sets you apart. This helps the AI emphasize your key value in marketing content."
@@ -1385,7 +1395,7 @@ const Onboarding = () => {
           <div className="space-y-6">
             <div className="grid grid-cols-1 xs:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Brand Voice *</label>
+                <label className="block text-sm font-medium text-gray-200 mb-2">Brand Voice *</label>
                 <select
                   value={formData.brand_voice}
                   onChange={(e) => handleInputChange('brand_voice', e.target.value)}
@@ -1398,7 +1408,7 @@ const Onboarding = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Brand Tone *</label>
+                <label className="block text-sm font-medium text-gray-200 mb-2">Brand Tone *</label>
                 <select
                   value={formData.brand_tone}
                   onChange={(e) => handleInputChange('brand_tone', e.target.value)}
@@ -1414,15 +1424,15 @@ const Onboarding = () => {
 
             {/* Brand Colors Section */}
             <div className="border-t border-gray-200 pt-6 mt-6">
-              <h4 className="text-sm font-semibold text-gray-800 mb-4">Brand Colors</h4>
+              <h4 className="text-sm font-semibold text-gray-200 mb-4">Brand Colors</h4>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">Primary Color</label>
+                    <label className="block text-sm font-medium text-gray-200">Primary Color</label>
                     {extractedColors && extractedColors.length > 0 && (
                       <div className="flex items-center space-x-1.5">
-                        <span className="text-xs text-gray-500">Suggested:</span>
+                        <span className="text-xs text-gray-200">Suggested:</span>
                         {extractedColors.slice(0, 4).map((color, index) => (
                           <button
                             key={index}
@@ -1456,10 +1466,10 @@ const Onboarding = () => {
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">Secondary Color</label>
+                    <label className="block text-sm font-medium text-gray-200">Secondary Color</label>
                     {extractedColors && extractedColors.length > 0 && (
                       <div className="flex items-center space-x-1.5">
-                        <span className="text-xs text-gray-500">Suggested:</span>
+                        <span className="text-xs text-gray-200">Suggested:</span>
                         {extractedColors.slice(0, 4).map((color, index) => (
                           <button
                             key={index}
@@ -1494,7 +1504,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Phone Number *</label>
               <input
                 type="tel"
                 value={formData.phone_number}
@@ -1505,7 +1515,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Street Address *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Street Address *</label>
               <input
                 type="text"
                 value={formData.street_address}
@@ -1517,7 +1527,7 @@ const Onboarding = () => {
 
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">City *</label>
+                <label className="block text-sm font-medium text-gray-200 mb-2">City *</label>
                 <input
                   type="text"
                   value={formData.city}
@@ -1527,7 +1537,7 @@ const Onboarding = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
+                <label className="block text-sm font-medium text-gray-200 mb-2">State *</label>
                 <input
                   type="text"
                   value={formData.state}
@@ -1537,7 +1547,7 @@ const Onboarding = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Country *</label>
+                <label className="block text-sm font-medium text-gray-200 mb-2">Country *</label>
                 <input
                   type="text"
                   value={formData.country}
@@ -1549,7 +1559,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Timezone *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Timezone *</label>
               <select
                 value={formData.timezone}
                 onChange={(e) => handleInputChange('timezone', e.target.value)}
@@ -1568,7 +1578,7 @@ const Onboarding = () => {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Current Presence</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Current Presence</label>
               <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
                 {currentPresenceOptions.map(option => (
                   <label key={option} className="flex items-center space-x-2">
@@ -1578,7 +1588,7 @@ const Onboarding = () => {
                       onChange={(e) => handleArrayChange('current_presence', option, e.target.checked)}
                       className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                     />
-                    <span className="text-xs xs:text-sm text-gray-700 break-words">{option}</span>
+                    <span className="text-xs xs:text-sm text-gray-200 break-words">{option}</span>
                   </label>
                 ))}
               </div>
@@ -1601,12 +1611,14 @@ const Onboarding = () => {
               formData.current_presence.includes('Instagram') ||
               formData.current_presence.includes('LinkedIn (Personal)') ||
               formData.current_presence.includes('YouTube')) && (
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                <h4 className="text-sm font-medium text-gray-700 mb-4">Platform Details</h4>
+              <div className={`mt-6 p-4 rounded-lg ${
+bg-gray-800
+              }`}>
+                <h4 className="text-sm font-medium text-gray-200 mb-4">Platform Details</h4>
                 <div className="space-y-4">
                   {formData.current_presence.includes('Website') && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Website URL *</label>
+                      <label className="block text-sm font-medium text-gray-200 mb-1">Website URL *</label>
                       <input
                         type="url"
                         value={formData.website_url || ''}
@@ -1626,13 +1638,13 @@ const Onboarding = () => {
                         placeholder="https://your-website.com"
                         required
                       />
-                      <p className="text-xs text-gray-500 mt-1">Must start with https://</p>
+                      <p className="text-xs text-gray-200 mt-1">Must start with https://</p>
                     </div>
                   )}
                   
                   {formData.current_presence.includes('Facebook Page') && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Facebook Page Link</label>
+                      <label className="block text-sm font-medium text-gray-200 mb-1">Facebook Page Link</label>
                       <input
                         type="url"
                         value={formData.facebook_page_name || ''}
@@ -1645,7 +1657,7 @@ const Onboarding = () => {
                   
                   {formData.current_presence.includes('Instagram') && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Instagram Profile Link</label>
+                      <label className="block text-sm font-medium text-gray-200 mb-1">Instagram Profile Link</label>
                       <input
                         type="url"
                         value={formData.instagram_profile_link || ''}
@@ -1658,7 +1670,7 @@ const Onboarding = () => {
                   
                   {formData.current_presence.includes('LinkedIn (Personal)') && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">LinkedIn Company Page Link</label>
+                      <label className="block text-sm font-medium text-gray-200 mb-1">LinkedIn Company Page Link</label>
                       <input
                         type="url"
                         value={formData.linkedin_company_link || ''}
@@ -1671,7 +1683,7 @@ const Onboarding = () => {
                   
                   {formData.current_presence.includes('X (formerly Twitter)') && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">X (Twitter) Profile Link</label>
+                      <label className="block text-sm font-medium text-gray-200 mb-1">X (Twitter) Profile Link</label>
                       <input
                         type="url"
                         value={formData.x_twitter_profile || ''}
@@ -1684,7 +1696,7 @@ const Onboarding = () => {
                   
                   {formData.current_presence.includes('YouTube') && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">YouTube Channel Link</label>
+                      <label className="block text-sm font-medium text-gray-200 mb-1">YouTube Channel Link</label>
                       <input
                         type="url"
                         value={formData.youtube_channel_link || ''}
@@ -1700,7 +1712,7 @@ const Onboarding = () => {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Focus Areas</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Focus Areas</label>
               <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
                 {focusAreas.map(area => (
                   <label key={area} className="flex items-center space-x-2">
@@ -1710,7 +1722,7 @@ const Onboarding = () => {
                       onChange={(e) => handleArrayChange('focus_areas', area, e.target.checked)}
                       className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                     />
-                    <span className="text-sm text-gray-700">{area}</span>
+                    <span className="text-sm text-gray-200">{area}</span>
                   </label>
                 ))}
               </div>
@@ -1722,7 +1734,7 @@ const Onboarding = () => {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Digital Marketing Platforms *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Digital Marketing Platforms *</label>
               <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-3 gap-2">
                 {socialPlatforms.map(platform => (
                   <label key={platform} className="flex items-center space-x-2">
@@ -1732,7 +1744,7 @@ const Onboarding = () => {
                       onChange={(e) => handleArrayChange('social_media_platforms', platform, e.target.checked)}
                       className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                     />
-                    <span className="text-sm text-gray-700">{platform}</span>
+                    <span className="text-sm text-gray-200">{platform}</span>
                   </label>
                 ))}
               </div>
@@ -1750,7 +1762,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Primary Goals *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Primary Goals *</label>
               <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
                 {goals.map(goal => (
                   <label key={goal} className="flex items-center space-x-2">
@@ -1760,7 +1772,7 @@ const Onboarding = () => {
                       onChange={(e) => handleArrayChange('primary_goals', goal, e.target.checked)}
                       className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                     />
-                    <span className="text-sm text-gray-700">{goal}</span>
+                    <span className="text-sm text-gray-200">{goal}</span>
                   </label>
                 ))}
               </div>
@@ -1778,7 +1790,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Key Metrics to Track *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Key Metrics to Track *</label>
               <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
                 {metrics.map(metric => (
                   <label key={metric} className="flex items-center space-x-2">
@@ -1788,7 +1800,7 @@ const Onboarding = () => {
                       onChange={(e) => handleArrayChange('key_metrics_to_track', metric, e.target.checked)}
                       className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                     />
-                    <span className="text-sm text-gray-700">{metric}</span>
+                    <span className="text-sm text-gray-200">{metric}</span>
                   </label>
                 ))}
               </div>
@@ -1812,7 +1824,7 @@ const Onboarding = () => {
           <div className="space-y-6">
             <div className="grid grid-cols-1 xs:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-200 mb-2">
                   Monthly Marketing Budget *
                   <InfoTooltip 
                     content="Enter the approximate amount you plan to spend on marketing each month. This helps Emily create campaigns that fit your budget."
@@ -1833,7 +1845,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Preferred Content Types *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Preferred Content Types *</label>
               <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
                 {contentTypes.map(type => (
                   <label key={type} className="flex items-center space-x-2">
@@ -1843,7 +1855,7 @@ const Onboarding = () => {
                       onChange={(e) => handleArrayChange('preferred_content_types', type, e.target.checked)}
                       className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                     />
-                    <span className="text-xs xs:text-sm text-gray-700 break-words">{type}</span>
+                    <span className="text-xs xs:text-sm text-gray-200 break-words">{type}</span>
                   </label>
                 ))}
               </div>
@@ -1861,7 +1873,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Content Themes *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Content Themes *</label>
               <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
                 {contentThemes.map(theme => (
                   <label key={theme} className="flex items-center space-x-2">
@@ -1871,7 +1883,7 @@ const Onboarding = () => {
                       onChange={(e) => handleArrayChange('content_themes', theme, e.target.checked)}
                       className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                     />
-                    <span className="text-sm text-gray-700">{theme}</span>
+                    <span className="text-sm text-gray-200">{theme}</span>
                   </label>
                 ))}
               </div>
@@ -1894,7 +1906,7 @@ const Onboarding = () => {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Market Position *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Market Position *</label>
               <select
                 value={formData.market_position}
                 onChange={(e) => handleInputChange('market_position', e.target.value)}
@@ -1910,7 +1922,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-200 mb-2">
                 Products/Services *
                 <InfoTooltip 
                   content="Provide a detailed description of one product or service you want to promote with this AI. Include features, benefits, and target customers so the AI can craft accurate content."
@@ -1927,7 +1939,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Main Competitors</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Main Competitors</label>
               <input
                 type="text"
                 value={formData.main_competitors}
@@ -1943,7 +1955,7 @@ const Onboarding = () => {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Important Launch Date</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Important Launch Date</label>
               <div className="relative">
                 <input
                   type="date"
@@ -1952,7 +1964,7 @@ const Onboarding = () => {
                   className="w-full px-4 py-3 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                 />
                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                 </div>
@@ -1960,7 +1972,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-200 mb-2">
                 Planned Promotions/Campaigns *
                 <InfoTooltip 
                   content="Share any upcoming promotions or campaigns you're planning. This helps Emily align content and strategy with your marketing goals."
@@ -1977,7 +1989,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Top Performing Content Types *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Top Performing Content Types *</label>
               <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
                 {contentTypes.map(type => (
                   <label key={type} className="flex items-center space-x-2">
@@ -1987,7 +1999,7 @@ const Onboarding = () => {
                       onChange={(e) => handleArrayChange('top_performing_content_types', type, e.target.checked)}
                       className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                     />
-                    <span className="text-xs xs:text-sm text-gray-700 break-words">{type}</span>
+                    <span className="text-xs xs:text-sm text-gray-200 break-words">{type}</span>
                   </label>
                 ))}
               </div>
@@ -2005,7 +2017,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Best Time to Post *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Best Time to Post *</label>
               <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
                 {postingTimes.map(time => (
                   <label key={time} className="flex items-center space-x-2">
@@ -2015,7 +2027,7 @@ const Onboarding = () => {
                       onChange={(e) => handleArrayChange('best_time_to_post', time, e.target.checked)}
                       className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                     />
-                    <span className="text-sm text-gray-700">{time}</span>
+                    <span className="text-sm text-gray-200">{time}</span>
                   </label>
                 ))}
               </div>
@@ -2038,7 +2050,7 @@ const Onboarding = () => {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-200 mb-2">
                 Most Successful Campaigns
                 <InfoTooltip 
                   content="Mention past campaigns that performed well. This helps the AI understand what works best for your audience and replicate success."
@@ -2055,7 +2067,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-200 mb-2">
                 Upload Post Media That Worked Well (Optional - Max 4)
                 <InfoTooltip 
                   content="Upload up to 4 post media files from past campaigns that performed well. This helps Emily understand what visual content resonates with your audience."
@@ -2075,7 +2087,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Hashtags That Work Well *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Hashtags That Work Well *</label>
               <input
                 type="text"
                 value={formData.hashtags_that_work_well}
@@ -2086,7 +2098,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-200 mb-2">
                 Customer Pain Points *
                 <InfoTooltip 
                   content="Describe the common problems or challenges your customers face. This helps Emily create content that addresses their needs effectively."
@@ -2103,7 +2115,7 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-200 mb-2">
                 Typical Customer Journey *
                 <InfoTooltip 
                   content="Explain how a customer usually discovers, considers, and buys your product or service. This helps the AI tailor content to each stage of the buying process."
@@ -2125,7 +2137,7 @@ const Onboarding = () => {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Automation Level *</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Automation Level *</label>
               <select
                 value={formData.automation_level}
                 onChange={(e) => handleInputChange('automation_level', e.target.value)}
@@ -2141,23 +2153,23 @@ const Onboarding = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Platform-Specific Tone (Optional)</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Platform-Specific Tone (Optional)</label>
               <div className="overflow-x-auto">
                 <table className="min-w-full border border-gray-200 rounded-lg">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-800">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Platform</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tone Settings</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Platform</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Tone Settings</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {['Instagram', 'Facebook', 'LinkedIn (Personal)', 'YouTube'].map(platform => (
                       <tr key={platform}>
-                        <td className="px-4 py-2 text-sm text-gray-700">{platform}</td>
+                        <td className="px-4 py-2 text-sm text-gray-200">{platform}</td>
                         <td className="px-4 py-2">
                           <div className="flex flex-wrap gap-4">
                             {['Fun', 'Professional', 'Casual', 'Humorous', 'Bold', 'Neutral'].map(tone => (
-                              <label key={tone} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
+                              <label key={tone} className="flex items-center space-x-2 cursor-pointer px-2 py-1 rounded hover:bg-gray-700">
                                 <input
                                   type="checkbox"
                                   value={tone}
@@ -2176,7 +2188,7 @@ const Onboarding = () => {
                                   }}
                                   className="text-pink-600 focus:ring-pink-500 rounded"
                                 />
-                                <span className="text-sm text-gray-700">{tone}</span>
+                                <span className="text-sm text-gray-200">{tone}</span>
                               </label>
                             ))}
                           </div>
@@ -2193,8 +2205,10 @@ const Onboarding = () => {
       case 10:
         return (
           <div className="space-y-6">
-            <div className="bg-gray-50 p-6 rounded-lg">
-              <h4 className="font-semibold text-gray-800 mb-4">Review Your Information</h4>
+            <div className={`p-6 rounded-lg ${
+bg-gray-800
+            }`}>
+              <h4 className="font-semibold text-gray-200 mb-4">Review Your Information</h4>
               <div className="space-y-2 text-sm">
                 <p><strong>Business Name:</strong> {formData.business_name}</p>
                 <p><strong>Business Type:</strong> {formData.business_type.join(', ')}</p>
@@ -2226,7 +2240,7 @@ const Onboarding = () => {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-gray-200">Loading...</p>
         </div>
       </div>
     )
@@ -2255,6 +2269,7 @@ const Onboarding = () => {
               onSuccess={() => {
                 setShowCompletion(true)
               }}
+              onChangeSelection={handleChangeSelection}
             />
           </div>
         </div>
@@ -2272,24 +2287,46 @@ const Onboarding = () => {
 
   // Show business form (existing Onboarding.jsx logic)
   return (
-    <div className="min-h-screen bg-[#F6F6F6] flex flex-col">
+    <div className="min-h-screen flex flex-col bg-gray-900">
         {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      <div className="shadow-sm border-b bg-gray-800 border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             {/* Logo and Brand */}
             <div className="flex items-center space-x-2 sm:space-x-4">
-              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-gradient-to-r from-pink-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                <span className="text-white font-bold text-sm sm:text-xl">E</span>
+              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg overflow-hidden">
+                <img
+                  src="/logo_.png"
+                  alt="ATSN AI Logo"
+                  className="w-6 h-6 sm:w-10 sm:h-10 object-contain"
+                />
               </div>
               <div>
-                <h1 className="text-lg sm:text-2xl font-bold text-gray-900">Emily</h1>
-                <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">AI Marketing Assistant</p>
+                <h1 className="text-lg sm:text-2xl font-normal text-gray-100">Welcome to atsn ai</h1>
+                <p className="text-sm sm:text-base text-gray-300 mt-1">
+                  {steps[currentStep]} - {currentStep === 0 && "Tell us about your business basics"}
+                  {currentStep === 1 && "Help us understand what you do"}
+                  {currentStep === 2 && "How should we represent your brand?"}
+                  {currentStep === 3 && "What are your social media goals?"}
+                  {currentStep === 4 && "What's your content strategy?"}
+                  {currentStep === 5 && "How do you fit in the market?"}
+                  {currentStep === 6 && "What campaigns are you planning?"}
+                  {currentStep === 7 && "What's worked well for you?"}
+                  {currentStep === 8 && "How automated should your marketing be?"}
+                  {currentStep === 9 && "Review everything before we start"}
+                </p>
               </div>
             </div>
 
             {/* Header Buttons */}
             <div className="flex items-center space-x-2 sm:space-x-3">
+              <button
+                onClick={handleChangeSelection}
+                className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-4 py-2 text-gray-200 hover:text-gray-200 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="text-xs sm:text-sm font-medium hidden sm:inline">Change Selection</span>
+              </button>
               <button
                 onClick={logout}
                 className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-4 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
@@ -2306,56 +2343,25 @@ const Onboarding = () => {
       <div className="flex-1 flex items-center justify-center py-4 sm:py-8">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 w-full">
           {/* Welcome Section */}
-        <div className="text-center mb-6 sm:mb-8">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
-            <span className="text-2xl sm:text-3xl font-bold text-white">E</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">Welcome to Emily!</h1>
-          <p className="text-sm sm:text-base text-gray-600 px-4 sm:px-0">Let's get to know your business so I can provide personalized marketing assistance.</p>
-        </div>
 
         {/* Progress Bar */}
         <div className="mb-4 sm:mb-6 lg:mb-8">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <div className="flex items-center space-x-2 xs:space-x-3 sm:space-x-4">
-              <span className="text-xs xs:text-sm font-medium text-gray-700">
+              <span className="text-xs xs:text-sm font-medium text-gray-200">
                 Step {currentStep + 1} of {steps.length}
               </span>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-gray-200">
                 {Math.round(((currentStep + 1) / steps.length) * 100)}% Complete
               </span>
             </div>
             {/* Auto-saved Indicator */}
-            <div className="flex items-center text-xs text-gray-600">
+            <div className="flex items-center text-xs text-gray-200">
               <div className="w-2 h-2 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full mr-1 xs:mr-2 animate-pulse"></div>
               <span className="font-medium">Auto-saved</span>
             </div>
           </div>
           
-          {/* Step Navigation Dots */}
-          <div className="flex justify-start xs:justify-center space-x-0.5 xs:space-x-1 sm:space-x-2 mb-4 overflow-x-auto pb-2 px-1 xs:px-2">
-            {steps.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => goToStep(index)}
-                disabled={!isStepAccessible(index)}
-                className={`w-6 h-6 xs:w-7 xs:h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all duration-200 flex-shrink-0 ${
-                  index === currentStep
-                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-lg'
-                    : isStepAccessible(index)
-                    ? 'bg-gray-200 text-gray-600 hover:bg-gray-300 cursor-pointer'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                }`}
-                title={`Step ${index + 1}: ${steps[index]}`}
-              >
-                {hasStepData(index) ? (
-                  <Check className="w-2.5 h-2.5 xs:w-3 xs:h-3 sm:w-4 sm:h-4" />
-                ) : (
-                  index + 1
-                )}
-              </button>
-            ))}
-          </div>
           
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div 
@@ -2366,24 +2372,7 @@ const Onboarding = () => {
         </div>
 
         {/* Step Content */}
-        <div className="bg-white rounded-xl shadow-lg p-3 xs:p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 lg:mb-8">
-          <div className="mb-4 sm:mb-6">
-            <h2 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-2">
-              {steps[currentStep]}
-            </h2>
-            <p className="text-sm sm:text-base text-gray-600">
-              {currentStep === 0 && "Tell us about your business basics"}
-              {currentStep === 1 && "Help us understand what you do"}
-              {currentStep === 2 && "How should we represent your brand?"}
-              {currentStep === 3 && "What are your social media goals?"}
-              {currentStep === 4 && "What's your content strategy?"}
-              {currentStep === 5 && "How do you fit in the market?"}
-              {currentStep === 6 && "What campaigns are you planning?"}
-              {currentStep === 7 && "What's worked well for you?"}
-              {currentStep === 8 && "How automated should your marketing be?"}
-              {currentStep === 9 && "Review everything before we start"}
-            </p>
-          </div>
+        <div className="rounded-xl shadow-lg p-3 xs:p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 lg:mb-8 bg-gray-800">
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-600 px-3 sm:px-4 py-2 sm:py-3 rounded-lg mb-4 sm:mb-6">

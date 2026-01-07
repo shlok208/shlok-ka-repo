@@ -1,15 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { onboardingAPI } from '../services/onboarding'
 import OnboardingForm from './OnboardingForm'
 import CreatorOnboardingForm from './CreatorOnboardingForm'
 import { X, ChevronDown, Navigation, Save, RotateCcw, CheckCircle } from 'lucide-react'
 
 const EditProfileModal = ({ isOpen, onClose, onSuccess, isDarkMode = false }) => {
+  const navigate = useNavigate()
   const [profileData, setProfileData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [showStepNavigation, setShowStepNavigation] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
+
+  const handleChangeSelection = () => {
+    // Clear the onboarding selection to allow re-selection
+    localStorage.removeItem('selected_onboarding_type')
+    localStorage.removeItem('onboarding_form_selected')
+    sessionStorage.removeItem('selected_onboarding_type')
+    sessionStorage.removeItem('onboarding_form_selected')
+    // Navigate back to onboarding selector
+    navigate('/onboarding')
+  }
   const [showSaveIndicator, setShowSaveIndicator] = useState(false)
   const [completedSteps, setCompletedSteps] = useState(new Set())
   const onboardingFormRef = useRef(null)
@@ -158,8 +170,21 @@ const EditProfileModal = ({ isOpen, onClose, onSuccess, isDarkMode = false }) =>
             </div>
           </div>
 
-          {/* Right section - Step Navigation and Close button */}
+          {/* Right section - Step Navigation, Change Selection and Close button */}
           <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 pr-2.5 sm:pr-3 md:pr-4 lg:pr-6 pl-0 pt-2.5 sm:pt-3 md:pt-4 lg:pt-6 pb-2.5 sm:pb-3 md:pb-4 lg:pb-6">
+            {/* Change Selection Button */}
+            <button
+              onClick={handleChangeSelection}
+              className={`px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition-colors flex-shrink-0 ${
+                isDarkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
+              }`}
+              title="Change your selection"
+            >
+              Change Selection
+            </button>
+
             {/* Step Navigation */}
             <div className="relative step-navigation">
               <button

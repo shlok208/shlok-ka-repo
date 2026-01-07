@@ -12,6 +12,7 @@ const CreatorOnboardingForm = forwardRef(({
   isEditMode = false,
   onClose = null,
   onSuccess = null,
+  onChangeSelection = null,
   showHeader = true,
   showProgress = true,
   onStepChange = null,
@@ -1605,24 +1606,47 @@ const CreatorOnboardingForm = forwardRef(({
       {/* Header */}
       {showHeader && (
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className={`text-2xl font-semibold ${
-              Boolean(isDarkMode) ? 'text-gray-200' : 'text-gray-800'
-            }`}>
-              {isEditMode ? 'Edit Creator Profile' : 'Complete Your Creator Profile'}
-            </h2>
-            <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-              {isEditMode ? 'Update your creator information' : 'Let\'s get to know you better'}
-            </p>
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0">
+              <img
+                src="/logo_.png"
+                alt="ATSN AI Logo"
+                className="w-6 h-6 object-contain"
+              />
+            </div>
+            <div>
+              <h2 className={`text-2xl font-semibold ${
+                Boolean(isDarkMode) ? 'text-gray-200' : 'text-gray-800'
+              }`}>
+                {isEditMode ? 'Edit Creator Profile' : 'Complete Your Creator Profile'}
+              </h2>
+              <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                {isEditMode ? 'Update your creator information' : 'Let\'s get to know you better'}
+              </p>
+            </div>
           </div>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-            >
-              <X className={`w-5 h-5 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-500'}`} />
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {onChangeSelection && !isEditMode && (
+              <button
+                onClick={onChangeSelection}
+                className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                  Boolean(isDarkMode)
+                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
+                }`}
+              >
+                Change Selection
+              </button>
+            )}
+            {onClose && (
+              <button
+                onClick={onClose}
+                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+              >
+                <X className={`w-5 h-5 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-500'}`} />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
