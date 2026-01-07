@@ -14,6 +14,7 @@ import ATSNDashboard from './components/ATSNDashboard'
 import PostSuggestionsDashboard from './components/PostSuggestionsDashboard'
 import Onboarding from './components/Onboarding'
 import Profile from './components/Profile'
+import EditProfilePage from './components/EditProfilePage'
 import GoogleCallback from './components/GoogleCallback'
 import TokenExchangeHandler from './components/TokenExchangeHandler'
 import SettingsDashboard from './components/SettingsDashboard'
@@ -247,9 +248,17 @@ function AppContent() {
             </ProtectedRoute>
           } 
         />
-        <Route 
-          path="/onboarding" 
-          element={<Onboarding />} 
+        <Route
+          path="/onboarding"
+          element={<Onboarding />}
+        />
+        <Route
+          path="/edit-profile"
+          element={
+            <ProtectedRoute>
+              <EditProfilePage />
+            </ProtectedRoute>
+          }
         />
         <Route 
           path="/profile" 

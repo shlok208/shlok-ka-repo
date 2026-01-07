@@ -886,13 +886,13 @@ const OnboardingForm = forwardRef(({
       case 0:
         return (
           <div className="space-y-2.5 sm:space-y-3 md:space-y-4 lg:space-y-6">
-            <div>
-              <label className={`block text-xs sm:text-sm font-medium mb-1.5 sm:mb-2 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Business Name *</label>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <label className={`text-xs sm:text-sm font-medium whitespace-nowrap ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-700'}`}>Business Name *</label>
               <input
                 type="text"
                 value={formData.business_name}
                 onChange={(e) => handleInputChange('business_name', e.target.value)}
-                className={`w-full px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
+                className={`flex-1 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm md:text-base border rounded-md sm:rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent ${
                   isDarkMode
                     ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400'
                     : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
@@ -2510,29 +2510,6 @@ const OnboardingForm = forwardRef(({
         </div>
       )}
 
-      {/* Step Content */}
-      <div className={`mb-6 p-4 rounded-lg ${
-        Boolean(isDarkMode) ? 'bg-gray-700/50' : 'bg-gray-50'
-      }`}>
-        <h3 className={`text-xl font-semibold mb-2 ${
-          Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-800'
-        }`}>
-          {steps[currentStep]}
-        </h3>
-        <p className={`${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}`}>
-          {currentStep === 0 && "Tell us about your business basics"}
-          {currentStep === 1 && "Help us understand what you do"}
-          {currentStep === 2 && "How should we represent your brand?"}
-          {currentStep === 3 && "What's your current online presence?"}
-          {currentStep === 4 && "What are your digital marketing goals?"}
-          {currentStep === 5 && "What's your content strategy?"}
-          {currentStep === 6 && "How do you fit in the market?"}
-          {currentStep === 7 && "What campaigns are you planning?"}
-          {currentStep === 8 && "What's worked well for you?"}
-          {currentStep === 9 && "How automated should your marketing be?"}
-          {currentStep === 10 && "Review everything before we start"}
-        </p>
-      </div>
 
       {error && (
         <div className={`px-4 py-3 rounded-lg mb-6 ${

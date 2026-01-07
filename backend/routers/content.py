@@ -382,11 +382,11 @@ async def update_content(
         logger.info(f"Update content request: content_id={content_id}, user_id={current_user.id}, update_data={update_data.dict(exclude_unset=True)}")
         # Convert Pydantic model to dict, excluding None values
         update_dict = update_data.dict(exclude_unset=True, exclude_none=True)
-
+        
         # First verify the content belongs to the user
         # Check if content exists and get its campaign_id
         content_response = supabase_admin.table("content_posts").select("id, campaign_id, metadata").eq("id", content_id).execute()
-
+        
         if not content_response.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -412,7 +412,7 @@ async def update_content(
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Access denied"
-                )
+            )
         
         # Build update dict with only provided fields
         update_fields = {}
@@ -533,7 +533,7 @@ async def update_created_content(
                 "updated_at": updated_content["updated_at"]
             }
         }
-
+        
     except HTTPException:
         raise
     except Exception as e:

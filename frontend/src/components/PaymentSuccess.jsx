@@ -81,9 +81,9 @@ const PaymentSuccess = () => {
           // User has subscription and completed onboarding - go to dashboard
           navigate('/dashboard');
         } else {
-          console.log('📝 User needs onboarding, redirecting to onboarding page');
-          // User has subscription but needs onboarding
-          navigate('/onboarding');
+          console.log('📝 User needs profile setup, redirecting to edit profile page');
+          // User has subscription but needs profile setup
+          navigate('/edit-profile');
         }
       } else {
         // If no active subscription and we haven't retried too many times, wait and retry

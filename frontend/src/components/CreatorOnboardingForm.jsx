@@ -1695,26 +1695,6 @@ const CreatorOnboardingForm = forwardRef(({
         </div>
       )}
 
-      {/* Step Content */}
-      <div className={`mb-6 p-4 rounded-lg ${
-        Boolean(isDarkMode) ? 'bg-gray-700/50' : 'bg-gray-50'
-      }`}>
-        <h3 className={`text-xl font-semibold mb-2 ${
-          Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-800'
-        }`}>
-          {steps[currentStep]}
-        </h3>
-        <p className={`${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}`}>
-          {currentStep === 0 && "Tell us about your creator basics"}
-          {currentStep === 1 && "How should we represent your brand?"}
-          {currentStep === 2 && "Who is your audience?"}
-          {currentStep === 3 && "What platforms are you on?"}
-          {currentStep === 4 && "What's your content strategy?"}
-          {currentStep === 5 && "What's worked well for you?"}
-          {currentStep === 6 && "How automated should your content be?"}
-          {currentStep === 7 && "Review everything before we start"}
-        </p>
-      </div>
 
       {error && (
         <div className={`px-4 py-3 rounded-lg mb-6 ${

@@ -221,8 +221,8 @@ const SubscriptionSelector = () => {
 
       console.log('✅ Profile updated with freemium plan');
 
-      // Navigate to onboarding
-      navigate('/onboarding');
+      // Navigate to edit profile
+      navigate('/edit-profile');
 
     } catch (error) {
       console.error('❌ Error setting up freemium plan:', error);
@@ -295,16 +295,16 @@ const SubscriptionSelector = () => {
               console.log('🎯 Onboarding complete, redirecting to dashboard');
               window.location.href = '/dashboard';
         } else {
-              // Onboarding incomplete - go to onboarding
-              console.log('📝 Onboarding incomplete, redirecting to onboarding');
-              window.location.href = '/onboarding';
+              // Onboarding incomplete - go to edit profile
+              console.log('📝 Onboarding incomplete, redirecting to edit profile');
+              window.location.href = '/edit-profile';
             }
           } catch (error) {
             console.error('Error checking onboarding status:', error);
             console.error('Error details:', error.response?.data || error.message);
-            // Default to onboarding if check fails
-            console.log('⚠️ Defaulting to onboarding due to error');
-            window.location.href = '/onboarding';
+            // Default to edit profile if check fails
+            console.log('⚠️ Defaulting to edit profile due to error');
+            window.location.href = '/edit-profile';
           }
         }
       } else {

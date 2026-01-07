@@ -127,17 +127,24 @@ const EditProfileModal = ({ isOpen, onClose, onSuccess, isDarkMode = false }) =>
         }`}
       >
         {/* Modal Header */}
-        <div className={`flex items-start sm:items-center justify-between p-2.5 sm:p-3 md:p-4 lg:p-6 border-b gap-2 sm:gap-3 ${
+        <div className={`flex items-start sm:items-center justify-between border-b gap-2 sm:gap-3 ${
           isDarkMode
             ? 'border-gray-700 bg-gray-800'
             : 'border-gray-200 bg-gradient-to-r from-gray-50 to-white'
         }`}>
           {/* Left section - Title and Save indicator */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 pl-4 sm:pl-6 md:pl-8 lg:pl-12 pr-2.5 sm:pr-3 md:pr-4 lg:pr-6 pt-2.5 sm:pt-3 md:pt-4 lg:pt-6 pb-2.5 sm:pb-3 md:pb-4 lg:pb-6">
             <div className="flex items-center space-x-2 flex-wrap gap-1">
-              <h2 className={`text-base sm:text-lg md:text-2xl font-bold ${
+              <h2 className={`text-base sm:text-lg md:text-2xl font-normal ${
                 isDarkMode ? 'text-gray-100' : 'text-gray-900'
-              }`}>Edit Profile</h2>
+              }`}>
+                Let us know you better :
+              </h2>
+              <p className={`text-xs sm:text-sm md:text-base mt-1 font-medium ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-600'
+              }`}>
+                Step {currentStep + 1} | {steps[currentStep]}
+              </p>
               {showSaveIndicator && (
                 <div className={`flex items-center space-x-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium whitespace-nowrap ${
                   isDarkMode
@@ -149,17 +156,10 @@ const EditProfileModal = ({ isOpen, onClose, onSuccess, isDarkMode = false }) =>
                 </div>
               )}
             </div>
-            <p className={`text-xs sm:text-sm md:text-base mt-1 ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-600'
-            }`}>
-              {profileData?.onboarding_type === 'creator' 
-                ? 'Update your creator information and preferences' 
-                : 'Update your business information and preferences'}
-            </p>
           </div>
 
           {/* Right section - Step Navigation and Close button */}
-          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 pr-2.5 sm:pr-3 md:pr-4 lg:pr-6 pl-0 pt-2.5 sm:pt-3 md:pt-4 lg:pt-6 pb-2.5 sm:pb-3 md:pb-4 lg:pb-6">
             {/* Step Navigation */}
             <div className="relative step-navigation">
               <button
@@ -311,7 +311,7 @@ const EditProfileModal = ({ isOpen, onClose, onSuccess, isDarkMode = false }) =>
                 onClose={onClose}
                 onSuccess={handleSuccess}
                 showHeader={false}
-                showProgress={true}
+                showProgress={false}
                 onStepChange={handleStepUpdate}
                 onStepComplete={handleStepComplete}
                 isDarkMode={isDarkMode}
@@ -324,7 +324,7 @@ const EditProfileModal = ({ isOpen, onClose, onSuccess, isDarkMode = false }) =>
                 onClose={onClose}
                 onSuccess={handleSuccess}
                 showHeader={false}
-                showProgress={true}
+                showProgress={false}
                 onStepChange={handleStepUpdate}
                 onStepComplete={handleStepComplete}
                 isDarkMode={isDarkMode}
