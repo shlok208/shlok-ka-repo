@@ -1248,22 +1248,6 @@ const ATSNContentModal = ({
 
                 {/* Action Buttons + Upload */}
                 <div className="flex flex-wrap items-center justify-between gap-3 mt-6 pt-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleUserImageSelection}
-                      className="text-xs text-gray-500 dark:text-gray-300"
-                    />
-                    <button
-                      onClick={handleUploadUserImage}
-                      disabled={!userImageFile || uploadingUserImage}
-                      className="px-3 py-2 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-pink-500 to-purple-600 disabled:opacity-50"
-                    >
-                      {uploadingUserImage ? 'Uploading…' : 'Upload & Replace'}
-                    </button>
-                  </div>
                   <div className="flex items-center gap-3">
                   <button
                     onClick={handleCancelAIEdit}
@@ -1304,17 +1288,6 @@ const ATSNContentModal = ({
                   )}
                 </div>
               </div>
-                {(userImageFile || imageUploadError) && (
-                  <div className="mt-2 text-xs text-gray-400">
-                    {userImageFile && (
-                      <>
-                        <p>Selected file: {userImageFile.name}</p>
-                        {!imageSaved && <p>Click “Save Image” to upload this file.</p>}
-                      </>
-                    )}
-                    {imageUploadError && <p className="text-red-400">{imageUploadError}</p>}
-                  </div>
-                )}
               </div>
             </div>
           </div>

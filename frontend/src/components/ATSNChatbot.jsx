@@ -3076,7 +3076,14 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                           ? 'text-gray-500'
                           : 'text-gray-400'
                       }`}>
-                        {new Date(message.timestamp).toLocaleTimeString()}
+                        {(() => {
+                          const date = new Date(message.timestamp);
+                          const hours = date.getHours();
+                          const minutes = date.getMinutes().toString().padStart(2, '0');
+                          const ampm = hours >= 12 ? 'PM' : 'AM';
+                          const displayHours = hours % 12 || 12;
+                          return `${displayHours}:${minutes} ${ampm}`;
+                        })()}
                       </div>
                       </div>
 
@@ -4063,7 +4070,14 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                     <div className={`absolute bottom-0 right-0 text-xs ${
                       message.sender === 'user' ? 'text-white' : 'text-gray-400'
                     }`}>
-                      {new Date(message.timestamp).toLocaleTimeString()}
+                      {(() => {
+                        const date = new Date(message.timestamp);
+                        const hours = date.getHours();
+                        const minutes = date.getMinutes().toString().padStart(2, '0');
+                        const ampm = hours >= 12 ? 'PM' : 'AM';
+                        const displayHours = hours % 12 || 12;
+                        return `${displayHours}:${minutes} ${ampm}`;
+                      })()}
                     </div>
                   </div>
                 )}
