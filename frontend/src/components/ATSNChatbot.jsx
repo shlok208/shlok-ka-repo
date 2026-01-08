@@ -1078,13 +1078,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     }
   }
 
-  const adjustInputHeight = (target) => {
-    if (!target) return
-    target.style.height = 'auto'
-    const newHeight = Math.min(target.scrollHeight, MAX_INPUT_HEIGHT)
-    target.style.height = `${newHeight}px`
-    target.style.overflowY = target.scrollHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden'
-  }
+
 
   const resetInputHeight = () => {
     if (inputRef.current) {
