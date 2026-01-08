@@ -103,7 +103,10 @@ const SocialMediaDashboard = () => {
   // Fetch comments for a specific post
   const fetchPostComments = async (platform, postId) => {
     const commentKey = `${platform}-${postId}`
+    console.log('🔍 Fetching comments for:', { platform, postId, commentKey })
+
     if (postComments[commentKey]) {
+      console.log('💾 Comments already loaded for:', commentKey)
       // Comments already loaded
       return
     }
@@ -111,22 +114,29 @@ const SocialMediaDashboard = () => {
     setLoadingComments(prev => new Set(prev).add(commentKey))
 
     try {
+      const authToken = await getAuthToken()
+      console.log('🔑 Got auth token, making API call...')
+
       const response = await fetch(`${API_BASE_URL}/social-media/post-comments/${platform}/${postId}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json'
         }
       })
 
+      console.log('📡 API Response:', { status: response.status, statusText: response.statusText })
+
       if (response.ok) {
         const data = await response.json()
+        console.log('✅ Comments data received:', data)
         setPostComments(prev => ({
           ...prev,
           [commentKey]: data.comments || []
         }))
       } else {
-        console.error('Failed to fetch comments:', response.statusText)
+        const errorText = await response.text()
+        console.error('❌ Failed to fetch comments:', { status: response.status, statusText: response.statusText, error: errorText })
         setPostComments(prev => ({
           ...prev,
           [commentKey]: []
@@ -524,6 +534,14 @@ const SocialMediaDashboard = () => {
   const platformsWithPosts = Object.keys(posts).filter(platform => posts[platform] && posts[platform].length > 0)
   const connectedPlatforms = connections ? connections.filter(conn => conn.is_active) : []
   const hasPosts = Object.keys(posts).length > 0
+
+  // Debug logging
+  console.log('🔍 SocialMediaDashboard Debug:')
+  console.log('  - posts object:', posts)
+  console.log('  - platformsWithPosts:', platformsWithPosts)
+  console.log('  - Object.keys(posts):', Object.keys(posts))
+  console.log('  - connectedPlatforms:', connectedPlatforms)
+  console.log('  - connections:', connections)
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}>

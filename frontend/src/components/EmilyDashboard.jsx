@@ -706,13 +706,13 @@ function EmilyDashboard() {
         </div>
 
         {/* Main Content Area */}
-        <div className={`flex-1 flex items-start bg-transparent h-full ${
+        <div className={`flex-1 flex items-start bg-transparent ${
           isDarkMode ? 'md:bg-gray-800' : 'md:bg-gray-50'
         }`} style={{ minHeight: 0, overflow: 'hidden' }}>
             <div className="w-full h-full flex gap-2">
                 {/* Main Chat Area */}
-              <div className="flex-1 h-full">
-                <div className={`h-full relative pt-0.5 px-8 overflow-x-auto custom-scrollbar ${
+              <div className="flex-1 h-full overflow-hidden">
+                <div className={`h-full relative pt-0.5 px-8 overflow-y-auto custom-scrollbar ${
                   isDarkMode ? 'dark-mode' : 'light-mode'
                 }`}>
                   <ATSNChatbot
@@ -722,9 +722,9 @@ function EmilyDashboard() {
                 </div>
               </div>
 
-              {/* Right Side Panel - Part of main content */}
+              {/* Right Side Panel - Part of main content - STICKY */}
               <div
-                className={`hidden md:flex transition-all duration-300 ease-in-out overflow-hidden h-full ${
+                className={`hidden md:flex sticky top-0 self-start transition-all duration-300 ease-in-out overflow-hidden h-full ${
                   isDarkMode
                     ? 'bg-gray-900'
                     : isDarkMode ? 'bg-gray-800' : 'bg-white'
@@ -733,7 +733,7 @@ function EmilyDashboard() {
                 }`}
               >
                 {isPanelOpen && (
-                  <div className="h-full flex flex-col">
+                  <div className="w-full h-full flex flex-col">
                     {/* Panel Header */}
                     <div className={`p-3 lg:p-4 border-b flex items-center justify-between flex-shrink-0 ${
                       isDarkMode
@@ -747,8 +747,8 @@ function EmilyDashboard() {
                       </span>
                     </div>
 
-                    {/* Panel Content */}
-                    <div className="flex-1 p-3 lg:p-4 overflow-y-auto">
+                    {/* Panel Content - Scrollable */}
+                    <div className="flex-1 p-3 lg:p-4 overflow-y-auto min-h-0">
                       {/* Overdue Leads Count - Only show after loading */}
                       {!overdueLeadsLoading && (
                         <div

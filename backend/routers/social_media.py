@@ -1217,7 +1217,12 @@ async def get_post_comments(
                 'limit': 50  # Limit to first 50 comments
             }
 
+            print(f"🔍 Facebook API call: {url}")
+            print(f"🔑 Access token exists: {bool(access_token)}")
+
             response = requests.get(url, params=params, timeout=10)
+
+            print(f"📡 Facebook API response: {response.status_code}")
 
             if response.status_code == 200:
                 data = response.json()
