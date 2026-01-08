@@ -7,6 +7,7 @@ import MobileNavigation from './MobileNavigation'
 import ATSNContentCard from './ATSNContentCard'
 import ATSNContentModal from './ATSNContentModal'
 import ReelModal from './ReelModal'
+import DeleteConfirmationModal from './DeleteConfirmationModal'
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'https://agent-emily.onrender.com').replace(/\/$/, '')
 
@@ -871,111 +872,15 @@ function CreatedContentDashboard() {
     if (!showDeleteModal || !itemToDelete) return null
 
     return (
-      <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-          onClick={() => setShowDeleteModal(false)}
-        />
-        <div className={`relative max-w-md w-full rounded-2xl shadow-2xl overflow-hidden ${
-          isDarkMode ? 'bg-gray-800' : 'bg-white'
-        }`}>
-          {/* Header */}
-          <div className={`p-6 border-b ${
-            isDarkMode
-              ? 'border-gray-700 bg-gradient-to-r from-red-900/20 to-red-800/20'
-              : 'border-gray-200 bg-gradient-to-r from-red-50 to-red-100'
-          }`}>
-            <div className="flex items-center justify-center space-x-3">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-r from-red-500 to-red-600 flex items-center justify-center">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </div>
-              <div>
-                <h3 className={`text-lg font-normal ${
-                  isDarkMode ? 'text-gray-100' : 'text-gray-900'
-                }`}>
-                  Delete Content
-                </h3>
-              </div>
-            </div>
-          </div>
-
-          {/* Body */}
-          <div className="p-6">
-            <div className="flex items-start space-x-4">
-              {/* Leo Avatar */}
-              <div className="flex-shrink-0">
-                <img
-                  src="/leo_logo.png"
-                  alt="Leo"
-                  className="w-16 h-16 rounded-full object-cover border-2 border-red-200"
-                  onError={(e) => {
-                    e.target.src = '/default-logo.png'
-                  }}
-                />
-              </div>
-
-              {/* Message */}
-              <div className="flex-1">
-                <div className={`relative p-4 rounded-2xl ${
-                  isDarkMode
-                    ? 'bg-gray-700 border border-gray-600'
-                    : 'bg-red-50 border border-red-200'
-                }`}>
-                  {/* Speech bubble pointer */}
-                  <div className={`absolute left-0 top-4 transform -translate-x-2 w-0 h-0 ${
-                    isDarkMode
-                      ? 'border-t-8 border-t-gray-700 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
-                      : 'border-t-8 border-t-red-50 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
-                  }`} />
-
-                  <p className={`text-sm leading-relaxed ${
-                    isDarkMode ? 'text-gray-200' : 'text-gray-800'
-                  }`}>
-                    <span className="font-semibold text-red-500">Leo here!</span> ⚠️<br />
-                    Are you sure you want to delete <strong>"{itemToDelete.title || 'this content'}"</strong>?
-                    This action cannot be undone and will permanently remove the content.
-                  </p>
-                </div>
-
-                <div className="mt-4 flex justify-end space-x-3">
-                  <button
-                    onClick={() => setShowDeleteModal(false)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      isDarkMode
-                        ? 'text-gray-400 bg-gray-700 hover:bg-gray-600'
-                        : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
-                    }`}
-                    disabled={isDeleting}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={confirmDelete}
-                    disabled={isDeleting}
-                    className="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-medium hover:from-red-600 hover:to-red-700 transition-all duration-200 disabled:opacity-50 flex items-center space-x-2"
-                  >
-                    {isDeleting ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Deleting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        <span>Delete</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDelete}
+        title="Delete Content"
+        itemName={itemToDelete.title || 'this content'}
+        itemCount={1}
+        isLoading={isDeleting}
+      />
     )
   }
 

@@ -9,6 +9,7 @@ import ContentCard from './ContentCard'
 import ATSNContentCard from './ATSNContentCard'
 import ATSNContentModal from './ATSNContentModal'
 import ReelModal from './ReelModal'
+import DeleteConfirmationModal from './DeleteConfirmationModal'
 import LeadCard from './LeadCard'
 import MultiMediaUpload from './MultiMediaUpload'
 import CharacterCard from './CharacterCard'
@@ -96,6 +97,11 @@ const ATSNChatbot = ({ externalConversations = null }) => {
   const [lastSentMessage, setLastSentMessage] = useState('')
   const [showContentModal, setShowContentModal] = useState(false)
   const [showReelModal, setShowReelModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showPublishModal, setShowPublishModal] = useState(false)
+  const [itemToPublish, setItemToPublish] = useState(null)
+  const [showScheduleConfirmModal, setShowScheduleConfirmModal] = useState(false)
+  const [itemToSchedule, setItemToSchedule] = useState(null)
   const [chatReset, setChatReset] = useState(false) // Track if chat was reset
   const [freshReset, setFreshReset] = useState(false) // Track if chat was just reset to prevent loading conversations
   const [resetTimestamp, setResetTimestamp] = useState(null) // Track when reset happened
@@ -1124,10 +1130,11 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       return
     }
 
-    if (!window.confirm(`Are you sure you want to delete ${selectedContent.length} content item(s)? This action cannot be undone.`)) {
-      return
-    }
+    setShowDeleteModal(true)
+  }
 
+  const confirmDeleteSelected = async () => {
+    setShowDeleteModal(false)
     setIsDeleting(true)
 
     try {
@@ -1245,6 +1252,34 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       return
     }
 
+    // For now, only support single item publishing with confirmation
+    if (selectedContent.length > 1) {
+      showError('Please select only one item to publish at a time')
+      return
+    }
+
+    // Find the content item
+    let contentToPublish = null
+    for (const message of messages) {
+      if (message.content_items) {
+        contentToPublish = message.content_items.find(item => item.content_id === selectedContent[0])
+        if (contentToPublish) break
+      }
+    }
+
+    if (!contentToPublish) {
+      showError('Content item not found')
+      return
+    }
+
+    setItemToPublish(contentToPublish)
+    setShowPublishModal(true)
+  }
+
+  const confirmPublishSelected = async () => {
+    if (!itemToPublish) return
+
+    setShowPublishModal(false)
     setIsPublishing(true)
 
     try {
@@ -1371,8 +1406,30 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       return
     }
 
+    // Find the content item
+    let contentToSchedule = null
+    for (const message of messages) {
+      if (message.content_items) {
+        contentToSchedule = message.content_items.find(item => item.content_id === selectedContent[0])
+        if (contentToSchedule) break
+      }
+    }
+
+    if (!contentToSchedule) {
+      showError('Content item not found')
+      return
+    }
+
+    setItemToSchedule(contentToSchedule)
+    setShowScheduleConfirmModal(true)
+  }
+
+  const confirmScheduleSelected = () => {
+    if (!itemToSchedule) return
+
+    setShowScheduleConfirmModal(false)
     // Open schedule modal
-    setScheduleData({ date: '', time: '', contentId: selectedContent[0] })
+    setScheduleData({ date: '', time: '', contentId: itemToSchedule.content_id })
     setShowScheduleModal(true)
   }
 
@@ -4189,6 +4246,223 @@ const ATSNChatbot = ({ externalConversations = null }) => {
           content={selectedContentForModal}
           onClose={handleCloseReelModal}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDeleteSelected}
+        title={`Delete ${selectedContent.length} Content Item${selectedContent.length > 1 ? 's' : ''}`}
+        itemCount={selectedContent.length}
+        isLoading={isDeleting}
+      />
+
+      {/* Publish Confirmation Modal */}
+      {showPublishModal && itemToPublish && (
+        <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowPublishModal(false)}
+          />
+          <div className={`relative max-w-md w-full rounded-2xl shadow-2xl overflow-hidden ${
+            isDarkMode ? 'bg-gray-800' : 'bg-white'
+          }`}>
+            {/* Header */}
+            <div className={`p-6 border-b ${
+              isDarkMode
+                ? 'border-gray-700 bg-gradient-to-r from-pink-900/20 to-rose-900/20'
+                : 'border-gray-200 bg-gradient-to-r from-pink-50 to-rose-50'
+            }`}>
+              <div className="flex items-center justify-center space-x-3">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className={`text-lg font-normal ${
+                    isDarkMode ? 'text-gray-100' : 'text-gray-900'
+                  }`}>
+                    Publish Content
+                  </h3>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <div className="flex items-start space-x-4">
+                {/* Emily Avatar */}
+                <div className="flex-shrink-0">
+                  <img
+                    src="/emily_icon.png"
+                    alt="Emily"
+                    className="w-16 h-16 rounded-full object-cover border-2 border-pink-200"
+                    onError={(e) => {
+                      e.target.src = '/default-logo.png'
+                    }}
+                  />
+                </div>
+
+                {/* Message */}
+                <div className="flex-1">
+                  <div className={`relative p-4 rounded-2xl ${
+                    isDarkMode
+                      ? 'bg-gray-700 border border-gray-600'
+                      : 'bg-pink-50 border border-pink-200'
+                  }`}>
+                    {/* Speech bubble pointer */}
+                    <div className={`absolute left-0 top-4 transform -translate-x-2 w-0 h-0 ${
+                      isDarkMode
+                        ? 'border-t-8 border-t-gray-700 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                        : 'border-t-8 border-t-pink-50 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                    }`} />
+
+                    <p className={`text-sm leading-relaxed ${
+                      isDarkMode ? 'text-gray-200' : 'text-gray-800'
+                    }`}>
+                      <span className="font-normal text-pink-500">Emily here!</span> 🚀<br />
+                      Ready to publish <strong>"{itemToPublish.title || 'this content'}"</strong> to <strong>{itemToPublish.platform}</strong>?
+                      This will share your content with your audience!
+                    </p>
+                  </div>
+
+                  <div className="mt-4 flex justify-end space-x-3">
+                    <button
+                      onClick={() => setShowPublishModal(false)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        isDarkMode
+                          ? 'text-gray-400 bg-gray-700 hover:bg-gray-600'
+                          : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+                      }`}
+                      disabled={isPublishing}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={confirmPublishSelected}
+                      disabled={isPublishing}
+                      className="px-4 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg font-medium hover:from-pink-600 hover:to-rose-600 transition-all duration-200 disabled:opacity-50 flex items-center space-x-2"
+                    >
+                      {isPublishing ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Publishing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                          </svg>
+                          <span>Publish</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Confirmation Modal */}
+      {showScheduleConfirmModal && itemToSchedule && (
+        <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowScheduleConfirmModal(false)}
+          />
+          <div className={`relative max-w-md w-full rounded-2xl shadow-2xl overflow-hidden ${
+            isDarkMode ? 'bg-gray-800' : 'bg-white'
+          }`}>
+            {/* Header */}
+            <div className={`p-6 border-b ${
+              isDarkMode
+                ? 'border-gray-700 bg-gradient-to-r from-green-900/20 to-emerald-900/20'
+                : 'border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50'
+            }`}>
+              <div className="flex items-center justify-center space-x-3">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className={`text-lg font-normal ${
+                    isDarkMode ? 'text-gray-100' : 'text-gray-900'
+                  }`}>
+                    Schedule Content
+                  </h3>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <div className="flex items-start space-x-4">
+                {/* Emily Avatar */}
+                <div className="flex-shrink-0">
+                  <img
+                    src="/emily_icon.png"
+                    alt="Emily"
+                    className="w-16 h-16 rounded-full object-cover border-2 border-pink-200"
+                    onError={(e) => {
+                      e.target.src = '/default-logo.png'
+                    }}
+                  />
+                </div>
+
+                {/* Message */}
+                <div className="flex-1">
+                  <div className={`relative p-4 rounded-2xl ${
+                    isDarkMode
+                      ? 'bg-gray-700 border border-gray-600'
+                      : 'bg-pink-50 border border-pink-200'
+                  }`}>
+                    {/* Speech bubble pointer */}
+                    <div className={`absolute left-0 top-4 transform -translate-x-2 w-0 h-0 ${
+                      isDarkMode
+                        ? 'border-t-8 border-t-gray-700 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                        : 'border-t-8 border-t-pink-50 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                    }`} />
+
+                    <p className={`text-sm leading-relaxed ${
+                      isDarkMode ? 'text-gray-200' : 'text-gray-800'
+                    }`}>
+                      <span className="font-normal text-pink-500">Emily here!</span> ⏰<br />
+                      Ready to schedule <strong>"{itemToSchedule.title || 'this content'}"</strong> for later?
+                      I'll help you pick the perfect time to share it!
+                    </p>
+                  </div>
+
+                  <div className="mt-4 flex justify-end space-x-3">
+                    <button
+                      onClick={() => setShowScheduleConfirmModal(false)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        isDarkMode
+                          ? 'text-gray-400 bg-gray-700 hover:bg-gray-600'
+                          : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+                      }`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={confirmScheduleSelected}
+                      className="px-4 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg font-medium hover:from-pink-600 hover:to-rose-600 transition-all duration-200 flex items-center space-x-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>Schedule</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Date Picker Modal */}

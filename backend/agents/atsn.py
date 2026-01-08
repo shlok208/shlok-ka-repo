@@ -48,6 +48,15 @@ import openai
 import aiohttp
 from supabase import create_client, Client
 
+CONTENT_TYPE_FILTERS = {
+    "static_post",
+    "carousel",
+    "reel",
+    "short_video",
+    "long_video",
+    "blog"
+}
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -500,6 +509,191 @@ HASHTAGS:
 [7–10 relevant Instagram hashtags, space-separated]
 """
 
+
+def get_linkedin_prompt(payload: dict, business_context: dict, parsed_trends: dict, profile_assets: dict = None) -> str:
+    """Generate LinkedIn-optimized content prompt"""
+
+    from datetime import datetime
+    current_datetime = datetime.now()
+    current_date = current_datetime.strftime("%Y-%m-%d")
+    current_time = current_datetime.strftime("%H:%M:%S UTC")
+
+    brand_context = build_content_brand_context(profile_assets or {})
+
+    return f"""
+You are an elite LinkedIn Ghostwriter and Thought Leadership strategist.
+
+Your goal is to write content that feels deeply personal, authoritative, and human. Avoid the "LinkedIn bro" style (excessive spacing for no reason) and the "Corporate drone" style (generic buzzwords).
+
+CORE PRINCIPLES:
+- **Personalization over Generalization**: Use "I", "We", and direct addresses ("You").
+- **Storytelling**: Start with a personal anecdote, a hard-learned lesson, or a counter-intuitive observation.
+- **Visual Structure**: Use varying paragraph lengths. Use unicode bullets (•, ➝) for lists.
+- **Authenticity**: It should feel like a real person wrote it, not a PR department.
+- **Value-First**: Every post must teach something, challenge a belief, or offer a new perspective.
+
+CURRENT DATE/TIME: {current_date} at {current_time}
+
+BUSINESS CONTEXT:
+Brand Name: {business_context.get('business_name', 'Business')}
+Industry: {business_context.get('industry', 'General')}
+Target Audience: {business_context.get('target_audience', 'Professionals, B2B')}
+Brand Voice: {business_context.get('brand_voice', 'Professional and Insightful')}
+Brand Tone: {business_context.get('brand_tone', 'Authoritative')}
+{brand_context}
+
+CONTENT STRATEGY INPUT:
+Primary Trend: {parsed_trends.get('primary_trend')}
+Content Angle: {parsed_trends.get('content_angle')}
+Example Hook: {parsed_trends.get('example_hook')}
+Format: {parsed_trends.get('format')}
+
+CONTENT IDEA:
+{payload.get('content_idea', '')}
+
+LINKEDIN SPECIFIC RULES:
+1. **The Hook (First 2 sentences)**: Must be punchy, controversial, or deeply relatable to stop the scroll. No "We are excited to announce..." nonsense.
+2. **The Body**: Deep dive into the topic. Use specifics—numbers, dates, proper nouns.
+3. **The Conclusion**: Summarize the key takeaway in one powerful line.
+4. **Call to Value (Not Action)**: Instead of "Link in bio", ask "What has been your experience with X?" or "Repost if this resonated."
+
+TASK:
+Write a high-impact LinkedIn post based on the above inputs.
+
+FORMAT (Return ONLY this format, no extra text):
+
+TITLE: [A witty or punchy headline, max 60 chars]
+
+CAPTION:
+[The full, formatted LinkedIn post. Ensure appropriate line breaks for readability.]
+
+HASHTAGS:
+[3-5 highly relevant, mix of broad (e.g., #Leadership) and niche (e.g., #SaaSMarketing) hashtags. CamelCase.]
+"""
+
+
+def get_facebook_prompt(payload: dict, business_context: dict, parsed_trends: dict, profile_assets: dict = None) -> str:
+    """Generate Facebook-optimized content prompt"""
+
+    from datetime import datetime
+    current_datetime = datetime.now()
+    current_date = current_datetime.strftime("%Y-%m-%d")
+    current_time = current_datetime.strftime("%H:%M:%S UTC")
+
+    brand_context = build_content_brand_context(profile_assets or {})
+
+    return f"""
+You are a top-tier Social Media Manager specializing in Facebook Community building.
+
+Your goal is to write content that fosters connection, nostalgia, and sharing. Facebook is the "Town Square"—content should feel like a conversation with a neighbor.
+
+CORE PRINCIPLES:
+- **Warmth & Relatability**: Use a friendly, conversational tone (e.g., "Hey everyone!", "Did you know...?").
+- **Story-Driven**: People come to Facebook for stories about people, not just products.
+- **Local & Personal**: If a location is provided, anchor the content in that community. Mention local landmarks or vibes.
+- **Interactive**: Ask easy-to-answer questions (e.g., "Hit 'Like' if you agree," "Tell us your favorite memory...").
+- **Visual Language**: Describe scenes or feelings that complement the post.
+
+CURRENT DATE/TIME: {current_date} at {current_time}
+
+BUSINESS CONTEXT:
+Brand Name: {business_context.get('business_name', 'Business')}
+Industry: {business_context.get('industry', 'General')}
+Target Audience: {business_context.get('target_audience', 'General audience/Community')}
+Brand Voice: {business_context.get('brand_voice', 'Friendly and Community-focused')}
+Brand Tone: {business_context.get('brand_tone', 'Warm')}
+{brand_context}
+
+CONTENT STRATEGY INPUT:
+Primary Trend: {parsed_trends.get('primary_trend')}
+Content Angle: {parsed_trends.get('content_angle')}
+
+CONTENT IDEA:
+{payload.get('content_idea', '')}
+
+FACEBOOK SPECIFIC RULES:
+1. **The Opener**: Friendly and inviting. Length can be medium to long if the story is good.
+2. **Emojis**: Use them to break up text and add emotion (😊, ❤️, 👇).
+3. **Links**: If there is a call to action, integrate the link naturally or point to it.
+4. **Variety**: Mix short updates with longer, heartfelt stories.
+
+TASK:
+Write an engaging Facebook post that feels personal and community-driven.
+
+FORMAT (Return ONLY this format, no extra text):
+
+TITLE: [Engaging, friendly headline, max 60 chars]
+
+CAPTION:
+[Full Facebook Post Body with emojis and good spacing]
+
+HASHTAGS:
+[2-3 highly relevant specific tags. #BrandName #LocalCommunity #Topic]
+"""
+
+
+def get_youtube_prompt(payload: dict, business_context: dict, parsed_trends: dict, profile_assets: dict = None) -> str:
+    """Generate YouTube-optimized content prompt (Shorts or Video Description)"""
+
+    from datetime import datetime
+    current_datetime = datetime.now()
+    current_date = current_datetime.strftime("%Y-%m-%d")
+    current_time = current_datetime.strftime("%H:%M:%S UTC")
+
+    brand_context = build_content_brand_context(profile_assets or {})
+
+    # Determine if shorts or long-form based on format
+    is_shorts = 'short' in parsed_trends.get('format', '').lower() or 'short' in payload.get('content_type', '').lower()
+
+    return f"""
+You are a YouTube growth strategist and scriptwriter.
+
+Follow these creative principles strictly:
+- Optimization for Click-Through Rate (CTR) and Retention is key.
+- Titles must be punchy, creating curiosity or promising high value.
+- The description (Caption) must be SEO-optimized (keywords in first 2 lines).
+- For Shorts: Fast-paced, loopable concepts.
+- For Long-form: Structured, value-packed descriptions with timestamps implied.
+- Call to Action (CTA): "Subscribe" is the main goal.
+
+CURRENT DATE/TIME: {current_date} at {current_time}
+
+BUSINESS CONTEXT:
+Brand Name: {business_context.get('business_name', 'Business')}
+Industry: {business_context.get('industry', 'General')}
+Target Audience: {business_context.get('target_audience', 'Viewers/Subscribers')}
+{brand_context}
+
+CONTENT STRATEGY INPUT:
+Primary Trend: {parsed_trends.get('primary_trend')}
+Content Angle: {parsed_trends.get('content_angle')}
+
+CONTENT IDEA:
+{payload.get('content_idea', '')}
+
+YOUTUBE CONTENT REQUIREMENTS:
+- Platform: YouTube ({'Shorts' if is_shorts else 'Video'})
+- Format: Video Title & Description
+- SEO: Include keywords relevant to the topic in the description.
+- CTA: "Don't forget to like and subscribe."
+
+TASK:
+Create a high-CTR Title, a rich Description, and a visually compelling Thumbnail concept for this video content.
+
+FORMAT (Return ONLY this format, no extra text):
+
+TITLE: [Click-optimized Video Title, max 100 chars]
+
+CAPTION:
+[Full Video Description including intro, summary, and links placeholders]
+
+THUMBNAIL_PROMPT:
+[A detailed visual description for a high-CTR YouTube thumbnail. Focus on facial expressions, high contrast, and one clear focal point. No text in the prompt, just the visual scene.]
+
+HASHTAGS:
+[3-5 hashtags for the description (e.g. #shorts #topic)]
+"""
+
 def get_platform_specific_prompt(platform: str, payload: dict, business_context: dict, parsed_trends: dict, profile_assets: dict = None) -> str:
     """Return platform-optimized prompt based on platform type"""
 
@@ -507,6 +701,12 @@ def get_platform_specific_prompt(platform: str, payload: dict, business_context:
 
     if platform_lower == 'instagram':
         return get_instagram_prompt(payload, business_context, parsed_trends, profile_assets)
+    elif platform_lower == 'linkedin':
+        return get_linkedin_prompt(payload, business_context, parsed_trends, profile_assets)
+    elif platform_lower == 'facebook':
+        return get_facebook_prompt(payload, business_context, parsed_trends, profile_assets)
+    elif 'youtube' in platform_lower: # Handles 'youtube', 'youtube shorts', etc.
+        return get_youtube_prompt(payload, business_context, parsed_trends, profile_assets)
     else:
         # Fallback to general social media prompt for now
         from datetime import datetime
@@ -568,8 +768,13 @@ def parse_instagram_response(response_text: str) -> dict:
             hashtags_text = line.replace('HASHTAGS:', '').strip()
             content_data['hashtags'] = hashtags_text.split()
             current_section = 'hashtags'
+        elif line.startswith('THUMBNAIL_PROMPT:'):
+            content_data['thumbnail_prompt'] = line.replace('THUMBNAIL_PROMPT:', '').strip()
+            current_section = 'thumbnail_prompt'
         elif current_section == 'caption' and line:
             content_data['content'] += ' ' + line
+        elif current_section == 'thumbnail_prompt' and line:
+            content_data['thumbnail_prompt'] += ' ' + line
         elif current_section == 'hashtags' and line:
             # Continue collecting hashtags from subsequent lines
             content_data['hashtags'].extend(line.split())
@@ -619,11 +824,50 @@ LOGO REQUIREMENTS (MANDATORY - NO EXCEPTIONS):
         logo_available = True
         logger.info(f"✅ Logo included in image enhancer prompt: {logo_url}")
 
+    thumbnail_prompt_input = generated_post.get('thumbnail_prompt')
+    is_youtube_thumbnail = bool(thumbnail_prompt_input)
+
     # Load image enhancer prompts and get style-specific complete prompt
     image_type = payload.get('Image_type')
     image_prompt_enhancer = ""
 
-    if image_type:
+    if is_youtube_thumbnail:
+        # Specialized prompt for refining YouTube Thumbnails
+        image_prompt_enhancer = f"""
+You are an expert YouTube Thumbnail Artist. CURRENT DATE/TIME: {current_date} at {current_time}
+
+Your GOAL is to take a rough thumbnail concept and turn it into a high-fidelity generation prompt for DALL-E 3.
+
+CRITICAL THUMBNAIL RULES:
+- High Contrast and Saturation: Thumbnails must pop on small screens.
+- Facial Expressions: If people are present, expressions must be exaggerated and clear (Joy, Shock, Anger, Curiosity).
+- Composition: Use the "Rule of Thirds". Main subject on the right or left, leaving space for text overlay (though we won't add text here).
+- Background: Blurred or simple backgrounds to separate the subject.
+- Anti-AI Look: Ensure skin textures are real, lighting is cinematic, and eyes are perfectly detailed.
+
+INPUT CONCEPT:
+{thumbnail_prompt_input}
+
+BUSINESS CONTEXT:
+Industry: {business_context.get('industry', 'General')}
+Target Audience: {business_context.get('target_audience', 'Viewers')}
+{brand_assets_context}
+
+{logo_context}
+
+TASK:
+Refine the INPUT CONCEPT into a highly detailed DALL-E 3 prompt that produces a photorealistic, click-worthy YouTube thumbnail background.
+DO NOT include any text in the image itself (text overlays are added in post-production).
+
+OUTPUT FORMAT (Return ONLY this JSON):
+{{
+  "image_prompt": "A detailed DALL-E 3 prompt for this thumbnail...",
+  "visual_style": "YouTube High-CTR Thumbnail",
+  "aspect_ratio": "16:9",
+  "negative_prompt": "text, bad hands, distortions, low contrast, blurry"
+}}
+"""
+    elif image_type:
         try:
             # Load the image enhancer prompts configuration
             config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'image_enhancer_prompts.json')
@@ -694,7 +938,16 @@ LOGO REQUIREMENTS (MANDATORY - NO EXCEPTIONS):
             logger.warning(f"Could not load image enhancer prompts for Image_type '{image_type}': {e}")
             # Fall back to default prompt structure if style-specific prompt fails
             image_prompt_enhancer = f"""
-You are an expert visual prompt engineer for AI image generation, specializing in Instagram content. CURRENT DATE/TIME: {current_date} at {current_time}
+You are an expert visual prompt engineer for AI image generation, specializing in high-end, photorealistic social media content. CURRENT DATE/TIME: {current_date} at {current_time}
+
+Think like a documentary photographer or a high-end commercial director, NOT a digital artist.
+
+CRITICAL AESTHETIC GUIDELINES (ANTI-AI LOOK):
+- Visual Style: Shot on 35mm film, Kodak Portra 400, or high-end DSLR (Canon R5).
+- Lighting: Natural, soft, window light, or golden hour. AVOID neon, excessive bloom, or "magical" glows.
+- Texture: Film grain, skin texture, real-world imperfections. AVOID smooth, plastic-looking skin.
+- Composition: Rule of thirds, depth of field, natural framing. AVOID perfectly symmetrical or centered compositions if unnatural.
+- Chaos: Allow for slight messiness, organic clutter, and lived-in environments. AVOID sterile, empty, or perfect rooms.
 
 Think like a senior brand designer, not a stock image generator.
 
@@ -703,6 +956,12 @@ Prefer one strong visual idea over many elements.
 If the concept feels generic or overdone, simplify it.
 White space and restraint are allowed.
 The image should feel intentional, not decorative.
+
+If the core idea involves wordplay, strike-through, or typography-based meaning:
+- Text IS allowed, but must be minimal (3–4 words max).
+- Use visual typography as the central metaphor.
+- Prefer a single word with a strike-through effect over full sentences.
+- The text itself should carry the idea, not explain it.
 
 INPUT CONTEXT:
 Platform: Instagram
@@ -752,7 +1011,16 @@ OUTPUT FORMAT (Return ONLY this JSON):
         # No Image_type specified, use default prompt structure
         user_message = user_query or payload.get('content_idea', 'Create a professional Instagram image')
         image_prompt_enhancer = f"""
-You are an expert visual prompt engineer for AI image generation, specializing in Instagram content. CURRENT DATE/TIME: {current_date} at {current_time}
+You are an expert visual prompt engineer for AI image generation, specializing in high-end, photorealistic social media content. CURRENT DATE/TIME: {current_date} at {current_time}
+
+Think like a documentary photographer or a high-end commercial director, NOT a digital artist.
+
+CRITICAL AESTHETIC GUIDELINES (ANTI-AI LOOK):
+- Visual Style: Shot on 35mm film, Kodak Portra 400, or high-end DSLR (Canon R5).
+- Lighting: Natural, soft, window light, or golden hour. AVOID neon, excessive bloom, or "magical" glows.
+- Texture: Film grain, skin texture, real-world imperfections. AVOID smooth, plastic-looking skin.
+- Composition: Rule of thirds, depth of field, natural framing. AVOID perfectly symmetrical or centered compositions if unnatural.
+- Chaos: Allow for slight messiness, organic clutter, and lived-in environments. AVOID sterile, empty, or perfect rooms.
 
 Think like a senior brand designer, not a stock image generator.
 
@@ -761,6 +1029,12 @@ Prefer one strong visual idea over many elements.
 If the concept feels generic or overdone, simplify it.
 White space and restraint are allowed.
 The image should feel intentional, not decorative.
+
+If the core idea involves wordplay, strike-through, or typography-based meaning:
+- Text IS allowed, but must be minimal (1–3 words max).
+- Use visual typography as the central metaphor.
+- Prefer a single word with a strike-through effect over full sentences.
+- The text itself should carry the idea, not explain it.
 
 INPUT CONTEXT:
 Platform: Instagram
@@ -776,7 +1050,7 @@ Brand Voice: {business_context.get('brand_voice', 'Professional and friendly')}
 
 {logo_context}
 
-ORIGINAL USER MESSAGE:
+ORIGINAL USER MESSAGE:  
 {user_message}
 
 PRIMARY GOAL:
@@ -1162,7 +1436,7 @@ Focus on colors that resonate with {business_context.get('target_audience', 'Gen
 class CreateContentPayload(BaseModel):
     channel: Optional[Literal["Social Media", "Blog"]] = None
     platform: Optional[Literal["Instagram", "Facebook", "LinkedIn", "Youtube"]] = None
-    content_type: Optional[Literal["static_post", "carousel", "short_video or reel", "long_video", "blog"]] = None
+    content_type: Optional[Literal["static_post", "carousel", "reel", "short_video", "long_video", "blog"]] = None
     media: Optional[Literal["Generate", "Upload", "without media"]] = None
     media_file: Optional[str] = None
     content_idea: Optional[str] = Field(None, min_length=10)
@@ -1196,7 +1470,7 @@ class EditContentPayload(BaseModel):
     start_date: Optional[str] = None  # Format: YYYY-MM-DD (calculated from date_range)
     end_date: Optional[str] = None    # Format: YYYY-MM-DD (calculated from date_range)
     status: Optional[Literal["generated", "scheduled", "published"]] = None
-    content_type: Optional[Literal["post", "short_video", "long_video", "blog"]] = None
+    content_type: Optional[Literal["static_post", "carousel", "reel", "short_video", "long_video", "blog"]] = None
     content_id: Optional[str] = None  # Specific content to edit (selected by user)
     query: Optional[str] = None  # Search query for semantic search in title and content
     edit_instruction: Optional[str] = None  # What changes to make to the content
@@ -1219,7 +1493,7 @@ class ViewContentPayload(BaseModel):
     start_date: Optional[str] = None  # Format: YYYY-MM-DD (calculated from date_range)
     end_date: Optional[str] = None    # Format: YYYY-MM-DD (calculated from date_range)
     status: Optional[Literal["generated", "scheduled", "published"]] = None
-    content_type: Optional[Literal["post", "short_video", "long_video", "blog"]] = None
+    content_type: Optional[Literal["static_post", "carousel", "reel", "short_video", "long_video", "blog"]] = None
     query: Optional[str] = None  # Search query for semantic search in title and content
     all: Optional[bool] = None  # When true, show all posts without limits
 
@@ -1337,7 +1611,6 @@ class AgentState(BaseModel):
     intent_change_detected: bool = False  # Whether an intent change was detected
     previous_intent: Optional[str] = None  # Previous intent before change
     intent_change_type: str = "none"  # Type of intent change: 'none', 'refinement', 'complete_shift'
-    pending_intent_change: Optional[str] = None  # Pending intent change waiting for user confirmation
     # Temporary fields for PII handling
     temp_original_email: Optional[str] = None
     temp_original_phone: Optional[str] = None
@@ -1753,27 +2026,7 @@ def construct_create_content_payload(state: AgentState) -> AgentState:
     # Use user_query which contains the full conversation context
     conversation = state.user_query
 
-    prompt = f"""You are extracting information to create content AND detecting intent changes with confidence scores.
-
-FIRST: Detect if the user has changed their intent from "{state.intent}".
-
-INTENT CHANGE DETECTION:
-Current Intent: {state.intent}
-CORE INTENTS: greeting, general_talks, create_content, edit_content, delete_content, view_content, publish_content, schedule_content, create_leads, view_leads, edit_leads, delete_leads, follow_up_leads, view_insights, view_analytics
-
-Analyze the user's LATEST message for intent changes. Return:
-- "same_intent" if no change (confidence: 1.0)
-- "intent_changed: [new_intent]" if confident of change (confidence: 0.8-1.0)
-- "possible_change: [new_intent]" if uncertain (confidence: 0.4-0.7)
-
-EXAMPLES:
-- User says "Actually, show me my leads" → intent_changed: view_leads (confidence: 0.95)
-- User says "Instagram platform" as clarification → same_intent (confidence: 1.0)
-- User says "Nevermind, delete that post instead" → intent_changed: delete_content (confidence: 0.9)
-- User says "How are my analytics?" → intent_changed: view_analytics (confidence: 0.85)
-- User says "Schedule this for tomorrow" → intent_changed: schedule_content (confidence: 0.9)
-
-SECOND: If intent change confidence < 0.8, extract payload information using these rules:
+    prompt = f"""You are extracting information to create content. Be EXTREMELY STRICT and CONSERVATIVE in your extraction.
 
 CRITICAL PRINCIPLES:
 1. ONLY extract information that is EXPLICITLY and CLEARLY stated
@@ -1841,28 +2094,21 @@ If ANY doubt exists, set the uncertain field(s) to null.
 User conversation:
 {conversation}
 
-Return a JSON object with this structure:
+Return a JSON object with exactly this structure:
 {{
-    "intent_analysis": {{
-        "change_detected": "same_intent" | "intent_changed: [intent]" | "possible_change: [intent]",
-        "confidence": 0.0-1.0,
-        "reasoning": "brief explanation of decision"
-    }},
-    "payload": {{
-        "channel": "Social Media" | "Blog" | null,
-        "platform": "Instagram" | "Facebook" | "LinkedIn" | "YouTube" | null,
-        "content_type": "static_post" | "carousel" | "short_video or reel" | "long_video" | "blog" | null,
-        "media": "Generate" | "Upload" | "without media" | null,
-        "content_idea": "string with at least 10 words" | null,
-        "Post_type": "one of the allowed post types" | null,
-        "Image_type": "one of the allowed image types" | null
-    }}
+    "channel": "Social Media" | "Blog" | null,
+    "platform": "Instagram" | "Facebook" | "LinkedIn" | "YouTube" | null,
+    "content_type": "static_post" | "carousel" | "short_video or reel" | "long_video" | "blog" | null,
+    "media": "Generate" | "Upload" | "without media" | null,
+    "content_idea": "string with at least 10 words" | null,
+    "Post_type": "one of the allowed post types" | null,
+    "Image_type": "one of the allowed image types" | null
 }}
 
 IMPORTANT: Return ONLY the JSON object, no additional text or explanation.
 {JSON_ONLY_INSTRUCTION}"""
 
-    return _extract_payload_with_confidence_intent_detection(state, prompt)
+    return _extract_payload(state, prompt)
 
 
 def construct_edit_content_payload(state: AgentState) -> AgentState:
@@ -2080,7 +2326,7 @@ Extract these fields ONLY if explicitly mentioned:
 - platform: "Instagram", "Facebook", "LinkedIn", or "Youtube"
 - date_range: PARSE dates into YYYY-MM-DD format (e.g., "2025-12-27") or date ranges like "2025-12-20 to 2025-12-27"
 - status: "generated", "scheduled", or "published"
-- content_type: "post", "short_video", "long_video", "blog", "email", or "message"
+- content_type: "static_post", "carousel", "reel", "short_video", "long_video", "blog" (set to null if the user just says "posts")
 - query: Any search terms or phrases the user wants to search for in content (e.g., "posts for new year", "christmas content", "product launch")
 - all: Set to true if user wants to see ALL posts without any limits (e.g., "show all posts", "all posts", "every post")
 
@@ -2106,16 +2352,22 @@ CRITICAL QUERY EXTRACTION:
 - Set query field to the search phrase if user wants to find content by topic/theme
 - If no specific search query mentioned, set query to null
 
+CONTENT TYPE CLASSIFICATION RULES:
+1. Set content_type to null if the user just says "posts" or "content" without specifying a subtype.
+2. Only set content_type if the user explicitly mentions one of: "static post" (→ static_post), "carousel post" (→ carousel), "reel" (→ reel), "short video" (→ short_video), "long video" (→ long_video), or "blog post" (→ blog).
+3. Generic mention of "videos" defaults to "long_video" unless clarified as "short" or "reel".
+4. Do NOT classify general "posts" as "static_post"; leave content_type null when unclear.
+
 CRITICAL RULES:
 1. Set fields to null if NOT explicitly mentioned in the conversation
-2. DO NOT infer or assume values - only extract what the user explicitly stated
+2. DO NOT infer or assume values—only extract what the user explicitly stated
 3. If user says "view content" without mentioning status, set status to null
 4. If user says "show posts" without mentioning status, set status to null
-5. Only set status to "published" if user explicitly says "published", "posted", "live", etc.
-6. Only set status to "scheduled" if user explicitly says "scheduled", "scheduled posts", etc.
-7. Only set status to "generated" if user explicitly says "generated", "draft", "created", etc.
+5. Only set status to "published" if the user explicitly says "published", "posted", "live", etc.
+6. Only set status to "scheduled" if the user explicitly says "scheduled", "scheduled posts", etc.
+7. Only set status to "generated" if the user explicitly says "generated", "draft", "created", etc.
 8. Extract search queries like "posts about new year", "christmas content", "summer campaigns"
-9. IMPORTANT: When user responds to clarification questions with single words, parse dates correctly:
+9. IMPORTANT: When the user responds with single words, parse dates correctly:
    - "yesterday" → date_range: yesterday's date
    - "today" → date_range: today's date
    - "tomorrow" → date_range: tomorrow's date
@@ -2127,10 +2379,13 @@ CRITICAL RULES:
    - "Instagram" → platform: "Instagram"
    - "Facebook" → platform: "Facebook"
    - "Social Media" → channel: "Social Media"
-   - "post" → content_type: "post"
-   - "generated" → status: "generated"
-   - "published" → status: "published"
-10. Preserve existing payload values - only update fields that are explicitly mentioned in the current response
+   - "static post" → content_type: "static_post"
+   - "carousel" → content_type: "carousel"
+   - "reel" → content_type: "reel"
+   - "short video" → content_type: "short_video"
+   - "long video" → content_type: "long_video"
+   - "blog" → content_type: "blog"
+10. Preserve existing payload values—only update fields that are explicitly mentioned in the current response
 
 
 Extract ONLY explicitly mentioned information. Set fields to null if not mentioned.
@@ -2953,109 +3208,6 @@ def _extract_payload(state: AgentState, prompt: str) -> AgentState:
     return state
 
 
-def _extract_payload_with_confidence_intent_detection(state: AgentState, prompt: str) -> AgentState:
-    """Extract payload and handle confidence-based intent change detection in one LLM call"""
-    import json
-    import re
-
-    max_retries = 2
-
-    for attempt in range(max_retries):
-        try:
-            response = model.generate_content(prompt)
-            raw_result = response.text.strip()
-
-            # Extract JSON (same logic as existing _extract_payload)
-            result = raw_result
-            if "```json" in result:
-                result = result.split("```json")[1].split("```")[0].strip()
-            elif "```" in result:
-                code_blocks = re.findall(r'```(?:json)?\s*\n?(.*?)```', result, re.DOTALL)
-                if code_blocks:
-                    result = code_blocks[0].strip()
-
-            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw_result, re.DOTALL)
-            if json_match and (not result or not result.startswith('{')):
-                result = json_match.group(0).strip()
-
-            if not result.startswith('{') or not result.endswith('}'):
-                if attempt < max_retries - 1:
-                    continue
-                raise ValueError(f"No JSON found in response")
-
-            extracted_data = json.loads(result)
-
-            # Handle intent change detection with confidence
-            intent_analysis = extracted_data.get('intent_analysis', {})
-            change_result = intent_analysis.get('change_detected', 'same_intent')
-            confidence = intent_analysis.get('confidence', 1.0)
-
-            print(f"🎯 Intent analysis: {change_result} (confidence: {confidence})")
-
-            # Only process intent changes with high confidence (>0.8)
-            if change_result.startswith("intent_changed:") and confidence > 0.8:
-                new_intent = change_result.split(":", 1)[1].strip()
-
-                if new_intent in INTENT_MAP:
-                    old_intent = state.intent
-                    state.intent_change_detected = True
-                    state.previous_intent = old_intent
-
-                    # Determine change type
-                    content_intents = ['create_content', 'edit_content', 'delete_content', 'view_content', 'publish_content', 'schedule_content']
-                    lead_intents = ['create_leads', 'view_leads', 'edit_leads', 'delete_leads', 'follow_up_leads']
-                    analytics_intents = ['view_insights', 'view_analytics']
-
-                    old_category = 'content' if old_intent in content_intents else 'leads' if old_intent in lead_intents else 'analytics' if old_intent in analytics_intents else None
-                    new_category = 'content' if new_intent in content_intents else 'leads' if new_intent in lead_intents else 'analytics' if new_intent in analytics_intents else None
-
-                    state.intent_change_type = 'refinement' if old_category == new_category else 'complete_shift'
-                    state.intent = new_intent
-
-                    if state.intent_change_type == 'complete_shift':
-                        state.payload = {}
-                        state.payload_complete = False
-                        state.clarification_question = None
-                        state.clarification_options = None
-                        state.waiting_for_user = False
-                        state.result = get_intent_change_message(old_intent, new_intent)
-                        state.current_step = "payload_construction"
-
-                        print(f"🔄 High-confidence intent change: {old_intent} → {new_intent} ({state.intent_change_type})")
-                        return state  # Return early for complete shifts
-
-            # For possible changes (medium confidence), ask for clarification
-            elif change_result.startswith("possible_change:") and 0.4 <= confidence <= 0.7:
-                possible_intent = change_result.split(":", 1)[1].strip()
-                state.clarification_question = f"I think you might want to {possible_intent.replace('_', ' ')} instead. Should I switch to that?"
-                state.clarification_options = ["Yes, switch to that", "No, continue with current task"]
-                state.pending_intent_change = possible_intent
-                print(f"🤔 Medium-confidence intent change detected, asking for confirmation: {possible_intent}")
-                return state
-
-            # For same_intent or low-confidence changes, proceed with payload extraction
-            if 'payload' in extracted_data:
-                payload_data = extracted_data['payload']
-                if state.payload:
-                    for key, value in payload_data.items():
-                        if value is not None:
-                            state.payload[key] = value
-                else:
-                    state.payload = payload_data
-
-                state.current_step = "payload_completion"
-                print(f"📝 Payload extracted: {state.payload}")
-
-            return state
-
-        except Exception as e:
-            if attempt < max_retries - 1:
-                continue
-            # On final failure, preserve current intent but log error
-            print(f"❌ Error in confidence-based intent detection: {e}")
-            return state
-
-
 # ==================== PAYLOAD COMPLETERS ====================
 
 FIELD_CLARIFICATIONS = {
@@ -3278,14 +3430,14 @@ FIELD_CLARIFICATIONS = {
             ]
         },
         "content_type": {
-            "question": "Which content type would you like to explore? I can show you Posts, Short videos, Long videos, Blogs, Emails, or Messages.",
+            "question": "Which content type would you like to explore? I can show you Static Posts, Carousel Posts, Reels, Short Videos, Long Videos, or Blog Posts.",
             "options": [
-                {"label": "Post", "value": "post"},
-                {"label": "Short video", "value": "short video"},
-                {"label": "Long video", "value": "long video"},
-                {"label": "Blog", "value": "blog"},
-                {"label": "Email", "value": "email"},
-                {"label": "Message", "value": "message"}
+                {"label": "Image Posts", "value": "static_post"},
+                {"label": "Carousel Posts", "value": "carousel"},
+                {"label": "Reels", "value": "reel"},
+                {"label": "Short Videos", "value": "short_video"},
+                {"label": "Long Videos", "value": "long_video"},
+                {"label": "Blog Posts", "value": "blog"}
             ]
         },
     },
@@ -3684,17 +3836,21 @@ def complete_view_content_payload(state: AgentState) -> AgentState:
                 state.payload["status"] = "published"
             else:
                 state.payload["status"] = None
-    
+
     # Normalize content_type if present
     if state.payload.get("content_type"):
         content_type_val = str(state.payload["content_type"]).lower().strip()
-        valid_types = ["post", "short_video", "long_video", "blog"]
+        valid_types = ["static_post", "carousel", "reel", "short_video", "long_video", "blog"]
         if content_type_val in valid_types:
             state.payload["content_type"] = content_type_val
         else:
             # Try to match variations
-            if content_type_val in ["posts", "post"]:
-                state.payload["content_type"] = "post"
+            if content_type_val in ["static", "static post", "image post", "photo post", "posts", "post"]:
+                state.payload["content_type"] = "static_post"
+            elif content_type_val in ["carousel", "carousel post", "multiple images"]:
+                state.payload["content_type"] = "carousel"
+            elif content_type_val in ["reel", "short video", "instagram reel"]:
+                state.payload["content_type"] = "reel"
             elif "short" in content_type_val and "video" in content_type_val:
                 state.payload["content_type"] = "short_video"
             elif "long" in content_type_val and "video" in content_type_val:
@@ -4983,8 +5139,26 @@ def complete_payload(state: AgentState) -> AgentState:
         state.current_step = "end"
         return state
 
-    # Intent change detection is now handled within constructor functions
-    # No separate LLM call needed here
+    # Check for intent changes in the user's latest response before proceeding
+    print(f"🔄 Calling detect_intent_changes in complete_payload for intent: {state.intent}")
+    old_state = state
+    state = detect_intent_changes(state)
+    if state and state.intent_change_detected:
+        print(f"✅ Intent change detected in complete_payload: {state.previous_intent} → {state.intent} ({state.intent_change_type})")
+    elif not state:
+        print(f"❌ detect_intent_changes returned None in complete_payload, restoring old state")
+        state = old_state
+
+    # If a complete intent shift was detected, restart the workflow
+    if state.intent_change_detected and state.intent_change_type == 'complete_shift':
+        print("🔄 Complete intent shift detected during payload completion, restarting workflow")
+        # Reset to initial state and return to classification
+        state.current_step = "intent_classification"
+        state.payload_complete = False
+        state.clarification_question = None
+        state.clarification_options = None
+        state.waiting_for_user = False
+        return state
     
     # Route to specific completer
     completers = {
@@ -8421,49 +8595,17 @@ class ATSNAgent:
             self.state.waiting_for_user = False
             self.state.current_step = "payload_construction"
 
-            # Handle pending intent change confirmations
-            if hasattr(self.state, 'pending_intent_change') and self.state.pending_intent_change:
-                # Check if user confirmed or declined the intent change
-                user_response_lower = user_query.lower().strip()
-                if 'yes' in user_response_lower or 'switch' in user_response_lower:
-                    # User confirmed intent change
-                    old_intent = self.state.intent
-                    new_intent = self.state.pending_intent_change
-
-                    self.state.intent = new_intent
-                    self.state.intent_change_detected = True
-                    self.state.previous_intent = old_intent
-
-                    # Determine change type
-                    content_intents = ['create_content', 'edit_content', 'delete_content', 'view_content', 'publish_content', 'schedule_content']
-                    lead_intents = ['create_leads', 'view_leads', 'edit_leads', 'delete_leads', 'follow_up_leads']
-                    analytics_intents = ['view_insights', 'view_analytics']
-
-                    old_category = 'content' if old_intent in content_intents else 'leads' if old_intent in lead_intents else 'analytics' if old_intent in analytics_intents else None
-                    new_category = 'content' if new_intent in content_intents else 'leads' if new_intent in lead_intents else 'analytics' if new_intent in analytics_intents else None
-
-                    self.state.intent_change_type = 'refinement' if old_category == new_category else 'complete_shift'
-
-                    if self.state.intent_change_type == 'complete_shift':
-                        self.state.payload = {}
-                        self.state.payload_complete = False
-                        self.state.result = get_intent_change_message(old_intent, new_intent)
-                        self.state.current_step = "payload_construction"
-
-                    # Clear pending state
-                    self.state.pending_intent_change = None
-                    self.state.clarification_question = None
-                    self.state.clarification_options = None
-
-                    print(f"✅ User confirmed intent change: {old_intent} → {new_intent}")
-
-                elif 'no' in user_response_lower or 'continue' in user_response_lower or 'stay' in user_response_lower:
-                    # User declined intent change, continue with current intent
-                    self.state.pending_intent_change = None
-                    self.state.clarification_question = None
-                    self.state.clarification_options = None
-                    print(f"❌ User declined intent change, continuing with {self.state.intent}")
-
+            # Check for intent changes in clarification responses
+            if self.state and self.state.intent:
+                print(f"🔄 Calling detect_intent_changes in process_query for intent: {self.state.intent}")
+                old_state = self.state
+                self.state = detect_intent_changes(self.state)
+                if self.state and self.state.intent_change_detected:
+                    print(f"✅ Intent change detected in process_query: {self.state.previous_intent} → {self.state.intent} ({self.state.intent_change_type})")
+                elif not self.state:
+                    print(f"❌ detect_intent_changes returned None, restoring old state")
+                    self.state = old_state
+            
             # Preserve user_id if provided
             if active_user_id:
                 self.state.user_id = active_user_id

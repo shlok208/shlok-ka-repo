@@ -96,6 +96,56 @@ const SocialMediaDashboard = () => {
   const [isDarkMode, setIsDarkMode] = useState(getDarkModePreference)
   const [profile, setProfile] = useState(null)
   const [expandedCaptions, setExpandedCaptions] = useState(new Set())
+  const [expandedComments, setExpandedComments] = useState(new Set())
+  const [postComments, setPostComments] = useState({})
+  const [loadingComments, setLoadingComments] = useState(new Set())
+
+  // Fetch comments for a specific post
+  const fetchPostComments = async (platform, postId) => {
+    const commentKey = `${platform}-${postId}`
+    if (postComments[commentKey]) {
+      // Comments already loaded
+      return
+    }
+
+    setLoadingComments(prev => new Set(prev).add(commentKey))
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/social-media/post-comments/${platform}/${postId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setPostComments(prev => ({
+          ...prev,
+          [commentKey]: data.comments || []
+        }))
+      } else {
+        console.error('Failed to fetch comments:', response.statusText)
+        setPostComments(prev => ({
+          ...prev,
+          [commentKey]: []
+        }))
+      }
+    } catch (error) {
+      console.error('Error fetching comments:', error)
+      setPostComments(prev => ({
+        ...prev,
+        [commentKey]: []
+      }))
+    } finally {
+      setLoadingComments(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(commentKey)
+        return newSet
+      })
+    }
+  }
 
   // Apply dark mode class to document element
   useEffect(() => {
@@ -692,7 +742,7 @@ const SocialMediaDashboard = () => {
                             </div>
 
                             {/* Likes Count */}
-                            {latestPost.likes_count !== undefined && latestPost.likes_count > 0 && (
+                            {latestPost.likes_count !== undefined && (
                               <div className="mb-1">
                                 <p className={`text-sm font-normal ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
                                   {formatEngagement(latestPost.likes_count)} {latestPost.likes_count === 1 ? 'like' : 'likes'}
@@ -732,10 +782,81 @@ const SocialMediaDashboard = () => {
                             </div>
 
                             {/* Comments Count */}
-                            {latestPost.comments_count !== undefined && latestPost.comments_count > 0 && (
-                              <button className={`text-sm mb-2 ${isDarkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'}`}>
-                                View all {formatEngagement(latestPost.comments_count)} {latestPost.comments_count === 1 ? 'comment' : 'comments'}
+                            {latestPost.comments_count !== undefined && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const key = `${platform}-${latestPost.id}`
+                                  const isExpanded = expandedComments.has(key)
+
+                                  if (!isExpanded) {
+                                    // Fetch comments when expanding
+                                    fetchPostComments(platform, latestPost.id)
+                                  }
+
+                                  setExpandedComments(prev => {
+                                    const newSet = new Set(prev)
+                                    if (newSet.has(key)) {
+                                      newSet.delete(key)
+                                    } else {
+                                      newSet.add(key)
+                                    }
+                                    return newSet
+                                  })
+                                }}
+                                disabled={loadingComments.has(`${platform}-${latestPost.id}`)}
+                                className={`text-sm mb-2 ${isDarkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'} ${loadingComments.has(`${platform}-${latestPost.id}`) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              >
+                                {loadingComments.has(`${platform}-${latestPost.id}`) ? 'Loading...' : (expandedComments.has(`${platform}-${latestPost.id}`) ? 'Hide' : 'View all')} {formatEngagement(latestPost.comments_count)} {latestPost.comments_count === 1 ? 'comment' : 'comments'}
                               </button>
+                            )}
+
+                            {/* Comments Display */}
+                            {expandedComments.has(`${platform}-${latestPost.id}`) && (
+                              <div className={`mb-2 p-3 rounded-lg border ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                <div className={`text-xs mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Comments:</div>
+                                <div className="space-y-2 max-h-60 overflow-y-auto">
+                                  {loadingComments.has(`${platform}-${latestPost.id}`) ? (
+                                    <div className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Loading comments...</div>
+                                  ) : (
+                                    <>
+                                      {postComments[`${platform}-${latestPost.id}`]?.length > 0 ? (
+                                        postComments[`${platform}-${latestPost.id}`].map((comment, index) => (
+                                          <div key={index} className={`text-sm p-2 rounded ${isDarkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                                            <div className="flex items-start space-x-2">
+                                              {comment.author_picture && (
+                                                <img
+                                                  src={comment.author_picture}
+                                                  alt={comment.author}
+                                                  className="w-6 h-6 rounded-full flex-shrink-0"
+                                                />
+                                              )}
+                                              <div className="flex-1 min-w-0">
+                                                <div className={`font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                                                  {comment.author}
+                                                </div>
+                                                <div className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                  {comment.text}
+                                                </div>
+                                                <div className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                  {comment.created_time ? new Date(comment.created_time).toLocaleDateString() : ''}
+                                                  {comment.likes_count > 0 && (
+                                                    <span className="ml-2">❤️ {comment.likes_count}</span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <div className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                          No comments available or failed to load comments.
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
                             )}
 
                             {/* Timestamp */}
