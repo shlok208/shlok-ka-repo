@@ -15,6 +15,7 @@ from typing import List
 BASE_META_OAUTH_SCOPES: List[str] = [
     "pages_show_list",
     "pages_read_engagement",
+    "pages_read_user_content",  # Required to read Page posts
     "pages_manage_metadata",
     "pages_manage_posts",
     "pages_manage_engagement",

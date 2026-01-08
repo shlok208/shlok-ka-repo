@@ -1176,12 +1176,102 @@ async def get_platform_stats(authorization: str = Header(None)):
             platform, stats = result
             if stats:
                 platform_stats[platform] = stats
-        
+
         print(f"📊 Final platform stats: {platform_stats}")
         return platform_stats
-        
+
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ Error getting platform stats: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get platform stats: {str(e)}")
+
+
+@router.get("/post-comments/{platform}/{post_id}")
+async def get_post_comments(
+    platform: str,
+    post_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get comments for a specific post"""
+    try:
+        print(f"💬 Getting comments for {platform} post: {post_id}")
+
+        # Get user's connection for the platform
+        response = supabase_admin.table("platform_connections").select("*").eq("user_id", current_user.id).eq("platform", platform.lower()).eq("is_active", True).execute()
+
+        if not response.data:
+            raise HTTPException(status_code=404, detail=f"No active {platform} connection found")
+
+        connection = response.data[0]
+        access_token = decrypt_token(connection.get('access_token_encrypted', ''))
+
+        comments = []
+
+        if platform.lower() == 'facebook':
+            # Facebook comments endpoint
+            url = f"https://graph.facebook.com/v18.0/{post_id}/comments"
+            params = {
+                'access_token': access_token,
+                'fields': 'id,message,created_time,from{name,id,picture},likes.summary(true)',
+                'limit': 50  # Limit to first 50 comments
+            }
+
+            print(f"🔍 Facebook API call: {url}")
+            print(f"🔑 Access token exists: {bool(access_token)}")
+
+            response = requests.get(url, params=params, timeout=10)
+
+            print(f"📡 Facebook API response: {response.status_code}")
+
+            if response.status_code == 200:
+                data = response.json()
+                for comment in data.get('data', []):
+                    comment_data = {
+                        'id': comment.get('id'),
+                        'text': comment.get('message', ''),
+                        'created_time': comment.get('created_time'),
+                        'author': comment.get('from', {}).get('name', 'Unknown'),
+                        'author_id': comment.get('from', {}).get('id'),
+                        'author_picture': comment.get('from', {}).get('picture', {}).get('data', {}).get('url'),
+                        'likes_count': comment.get('likes', {}).get('summary', {}).get('total_count', 0)
+                    }
+                    comments.append(comment_data)
+
+        elif platform.lower() == 'instagram':
+            # Instagram comments endpoint
+            url = f"https://graph.facebook.com/v18.0/{post_id}/comments"
+            params = {
+                'access_token': access_token,
+                'fields': 'id,text,timestamp,username,likes_count',
+                'limit': 50
+            }
+
+            response = requests.get(url, params=params, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                for comment in data.get('data', []):
+                    comment_data = {
+                        'id': comment.get('id'),
+                        'text': comment.get('text', ''),
+                        'created_time': comment.get('timestamp'),
+                        'author': comment.get('username', 'Unknown'),
+                        'author_id': comment.get('username'),
+                        'likes_count': comment.get('likes_count', 0)
+                    }
+                    comments.append(comment_data)
+
+        elif platform.lower() == 'linkedin':
+            # LinkedIn doesn't provide comments API in the same way
+            # This is a placeholder - LinkedIn API for comments is more complex
+            comments = []
+
+        print(f"✅ Retrieved {len(comments)} comments for {platform} post {post_id}")
+        return {"comments": comments, "count": len(comments)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting post comments: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get post comments: {str(e)}")

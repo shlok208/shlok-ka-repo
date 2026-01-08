@@ -9,6 +9,7 @@ import ContentCard from './ContentCard'
 import ATSNContentCard from './ATSNContentCard'
 import ATSNContentModal from './ATSNContentModal'
 import ReelModal from './ReelModal'
+import DeleteConfirmationModal from './DeleteConfirmationModal'
 import LeadCard from './LeadCard'
 import MultiMediaUpload from './MultiMediaUpload'
 import CharacterCard from './CharacterCard'
@@ -96,6 +97,11 @@ const ATSNChatbot = ({ externalConversations = null }) => {
   const [lastSentMessage, setLastSentMessage] = useState('')
   const [showContentModal, setShowContentModal] = useState(false)
   const [showReelModal, setShowReelModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showPublishModal, setShowPublishModal] = useState(false)
+  const [itemToPublish, setItemToPublish] = useState(null)
+  const [showScheduleConfirmModal, setShowScheduleConfirmModal] = useState(false)
+  const [itemToSchedule, setItemToSchedule] = useState(null)
   const [chatReset, setChatReset] = useState(false) // Track if chat was reset
   const [freshReset, setFreshReset] = useState(false) // Track if chat was just reset to prevent loading conversations
   const [resetTimestamp, setResetTimestamp] = useState(null) // Track when reset happened
@@ -126,12 +132,19 @@ const ATSNChatbot = ({ externalConversations = null }) => {
   const [likedMessages, setLikedMessages] = useState(new Set())
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const MAX_INPUT_HEIGHT = 96 // Approx height for three text lines
   const lastExternalConversationsRef = useRef(null)
   const hasScrolledToBottomRef = useRef(false)
 
   // Greeting Typewriter Effect
   const [greetingText, setGreetingText] = useState('')
   const [fullGreeting, setFullGreeting] = useState('')
+
+  // Auto-resize textarea
+  const adjustInputHeight = (target) => {
+    target.style.height = 'auto'; // Reset height
+    target.style.height = `${Math.min(target.scrollHeight, MAX_INPUT_HEIGHT)}px`;
+  };
 
   useEffect(() => {
     const hour = new Date().getHours()
@@ -1065,12 +1078,33 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     }
   }
 
+  const adjustInputHeight = (target) => {
+    if (!target) return
+    target.style.height = 'auto'
+    const newHeight = Math.min(target.scrollHeight, MAX_INPUT_HEIGHT)
+    target.style.height = `${newHeight}px`
+    target.style.overflowY = target.scrollHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden'
+  }
+
+  const resetInputHeight = () => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto'
+      inputRef.current.style.overflowY = 'hidden'
+    }
+  }
+
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSendMessage()
     }
   }
+
+  useEffect(() => {
+    if (!inputMessage) {
+      resetInputHeight()
+    }
+  }, [inputMessage])
 
   // Content selection functions
   const handleContentSelect = (contentId, intent) => {
@@ -1173,10 +1207,11 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       return
     }
 
-    if (!window.confirm(`Are you sure you want to delete ${selectedContent.length} content item(s)? This action cannot be undone.`)) {
-      return
-    }
+    setShowDeleteModal(true)
+  }
 
+  const confirmDeleteSelected = async () => {
+    setShowDeleteModal(false)
     setIsDeleting(true)
 
     try {
@@ -1294,6 +1329,34 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       return
     }
 
+    // For now, only support single item publishing with confirmation
+    if (selectedContent.length > 1) {
+      showError('Please select only one item to publish at a time')
+      return
+    }
+
+    // Find the content item
+    let contentToPublish = null
+    for (const message of messages) {
+      if (message.content_items) {
+        contentToPublish = message.content_items.find(item => item.content_id === selectedContent[0])
+        if (contentToPublish) break
+      }
+    }
+
+    if (!contentToPublish) {
+      showError('Content item not found')
+      return
+    }
+
+    setItemToPublish(contentToPublish)
+    setShowPublishModal(true)
+  }
+
+  const confirmPublishSelected = async () => {
+    if (!itemToPublish) return
+
+    setShowPublishModal(false)
     setIsPublishing(true)
 
     try {
@@ -1420,8 +1483,30 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       return
     }
 
+    // Find the content item
+    let contentToSchedule = null
+    for (const message of messages) {
+      if (message.content_items) {
+        contentToSchedule = message.content_items.find(item => item.content_id === selectedContent[0])
+        if (contentToSchedule) break
+      }
+    }
+
+    if (!contentToSchedule) {
+      showError('Content item not found')
+      return
+    }
+
+    setItemToSchedule(contentToSchedule)
+    setShowScheduleConfirmModal(true)
+  }
+
+  const confirmScheduleSelected = () => {
+    if (!itemToSchedule) return
+
+    setShowScheduleConfirmModal(false)
     // Open schedule modal
-    setScheduleData({ date: '', time: '', contentId: selectedContent[0] })
+    setScheduleData({ date: '', time: '', contentId: itemToSchedule.content_id })
     setShowScheduleModal(true)
   }
 
@@ -3032,139 +3117,26 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                   ? 'bg-gradient-to-r from-purple-300 via-blue-300 to-green-300'
                                   : 'bg-gradient-to-r from-purple-500 via-blue-500 to-green-500'
                                 : isDarkMode
+<<<<<<< HEAD
                                   ? 'bg-gradient-to-r from-purple-400 to-pink-400'
                                   : 'bg-gradient-to-r from-purple-600 to-pink-500'
                             }`}>
                             {formatAgentName(message.agent_name)}
                           </span>
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleCopyMessage(message)}
-                              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-                                }`}
-                              title="Copy message"
-                            >
-                              <Copy className={`w-3 h-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                                }`} />
-                            </button>
-                            <button
-                              onClick={() => handleLikeMessage(message)}
-                              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-                                }`}
-                              title={likedMessages.has(message.id) ? "Unlike message" : "Like message"}
-                            >
-                              <Heart className={`w-3 h-3 ${likedMessages.has(message.id)
-                                ? 'text-red-500 fill-current'
-                                : isDarkMode
-                                  ? 'text-gray-400'
-                                  : 'text-gray-600'
-                                }`} />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteMessage(message)}
-                              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-                                }`}
-                              title="Delete message"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
+=======
+                                ? 'text-purple-400 hover:text-pink-400'
+                                : 'text-purple-600 hover:text-pink-500'
+                            }`}
+                          >
+                            <div className="font-normal text-center">{option.label}</div>
+                            {option.description && (
+                              <div className="text-xs opacity-75 mt-1 text-center leading-tight">{option.description}</div>
+                            )}
+                          </button>
+                        ))}
                         </div>
-
-                        <div className="relative max-w-none leading-tight">
-                          {/* Clean message text to remove stray characters */}
-                          {(() => {
-                            let displayText = message.text || '';
-                            // Remove trailing )} patterns
-                            displayText = displayText.replace(/\s*\)\s*\}\s*$/g, '').trim();
-                            // Remove any standalone )} patterns
-                            displayText = displayText.replace(/\s*\)\s*\}\s*/g, '');
-
-                            // Check if message contains markdown syntax
-                            const hasMarkdown = displayText.includes('#') || displayText.includes('*') || displayText.includes('`') || displayText.includes('[');
-
-                            return hasMarkdown ? (
-                              <div className={`leading-tight pr-16 ${isDarkMode ? 'prose-invert prose prose-gray' : 'prose'
-                                }`}>
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                  {displayText}
-                                </ReactMarkdown>
-                              </div>
-                            ) : (
-                              <div className={`whitespace-pre-line leading-tight pr-16 ${isDarkMode ? 'text-white' : ''
-                                }`}>
-                                {displayText}
-                              </div>
-                            );
-                          })()}
-                          <div className={`absolute bottom-0 right-0 text-xs ${message.sender === 'user'
-                            ? 'text-white'
-                            : isDarkMode
-                              ? 'text-gray-500'
-                              : 'text-gray-400'
-                            }`}>
-                            {new Date(message.timestamp).toLocaleTimeString()}
-                          </div>
-                        </div>
-
-                        {/* Handle upload requests */}
-                        {message.clarification_data && message.clarification_data.type === 'upload_request' && message.waiting_for_user && (
-                          <div className="mt-4">
-                            <button
-                              onClick={() => {
-                                // Open media upload modal for image upload
-                                setShowMediaUploadModal(true)
-                              }}
-                              className={`px-4 py-2 rounded-lg font-medium transition-colors ${isDarkMode
-                                ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                                : 'bg-blue-500 hover:bg-blue-600 text-white'
-                                }`}
-                            >
-                              📤 Upload {message.clarification_data.upload_type === 'image' ? 'Image' : 'Media'}
-                            </button>
-                            <p className={`mt-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                              }`}>
-                              {message.clarification_data.message}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Render clarification options only for active clarifications */}
-                        {message.clarification_options && message.clarification_options.length > 0 && message.waiting_for_user && (
-                          <div className="mt-4 flex flex-wrap gap-3">
-                            {message.clarification_options.map((option, index) => (
-                              <button
-                                key={index}
-                                onClick={() => handleOptionSelect(option.value)}
-                                className={`px-3 py-2 transition-all duration-200 text-base font-normal hover:underline ${message.agent_name?.toLowerCase() === 'leo'
-                                  ? isDarkMode
-                                    ? 'text-blue-300 hover:text-blue-200'
-                                    : 'text-blue-600 hover:text-blue-700'
-                                  : message.agent_name?.toLowerCase() === 'emily'
-                                    ? isDarkMode
-                                      ? 'text-pink-300 hover:text-pink-200'
-                                      : 'text-purple-600 hover:text-purple-700'
-                                    : message.agent_name?.toLowerCase() === 'chase'
-                                      ? isDarkMode
-                                        ? 'text-green-300 hover:text-green-200'
-                                        : 'text-green-800 hover:text-amber-800'
-                                      : message.agent_name?.toLowerCase() === 'atsn'
-                                        ? isDarkMode
-                                          ? 'text-purple-300 hover:text-blue-300'
-                                          : 'text-purple-500 hover:text-blue-500'
-                                        : isDarkMode
-                                          ? 'text-purple-400 hover:text-pink-400'
-                                          : 'text-purple-600 hover:text-pink-500'
-                                  }`}
-                              >
-                                <div className="font-normal text-center">{option.label}</div>
-                                {option.description && (
-                                  <div className="text-xs opacity-75 mt-1 text-center leading-tight">{option.description}</div>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                    )}
 
                         {/* Render content cards if available */}
                         {message.content_items && message.content_items.length > 0 && (
@@ -3263,6 +3235,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                             platform={contentItem.platform}
                                             contentType={contentItem.content_type}
                                             minimal={message.intent !== 'created_content'}
+                                            isDarkMode={isDarkMode}
                                             onCopy={() => {
                                               let textToCopy = '';
 
@@ -3286,10 +3259,6 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                               // Open content preview modal
                                               setSelectedContentForModal(content);
                                               setShowContentModal(true);
-                                            }}
-                                            onEdit={() => {
-                                              // Handle edit action - could navigate to edit page or open modal
-                                              console.log('Edit content:', contentItem.content_id);
                                             }}
                                           />
                                         )}
@@ -3575,470 +3544,1360 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                         {message.lead_items && message.lead_items.length > 0 && (
                           <div className="mt-4">
                             {/* Filter Controls */}
-                            <div className={`rounded-xl shadow-lg border p-4 mb-4 ${isDarkMode
-                              ? 'bg-gray-800 border-gray-700 shadow-gray-900/50'
-                              : 'bg-amber-50 border-amber-200'
-                              }`}>
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                                {/* Search Filter */}
-                                <div>
-                                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
-                                    }`}>
-                                    Search
-                                  </label>
-                                  <input
-                                    type="text"
-                                    placeholder="Name or email..."
-                                    value={leadFilters.search}
-                                    onChange={(e) => setLeadFilters(prev => ({ ...prev, search: e.target.value }))}
-                                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
-                                      ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500 placeholder-gray-400'
-                                      : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
-                                      }`}
-                                  />
-                                </div>
-
-                                {/* Status Filter */}
-                                <div>
-                                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
-                                    }`}>
-                                    Status
-                                  </label>
-                                  <select
-                                    value={leadFilters.status}
-                                    onChange={(e) => setLeadFilters(prev => ({ ...prev, status: e.target.value }))}
-                                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
-                                      ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
-                                      : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
-                                      }`}
-                                  >
-                                    <option value="">All Status</option>
-                                    <option value="new">New</option>
-                                    <option value="contacted">Contacted</option>
-                                    <option value="responded">Responded</option>
-                                    <option value="qualified">Qualified</option>
-                                    <option value="converted">Converted</option>
-                                    <option value="lost">Lost</option>
-                                    <option value="invalid">Invalid</option>
-                                  </select>
-                                </div>
-
-                                {/* Source Filter */}
-                                <div>
-                                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
-                                    }`}>
-                                    Source
-                                  </label>
-                                  <select
-                                    value={leadFilters.source}
-                                    onChange={(e) => setLeadFilters(prev => ({ ...prev, source: e.target.value }))}
-                                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
-                                      ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
-                                      : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
-                                      }`}
-                                  >
-                                    <option value="">All Sources</option>
-                                    <option value="Website">Website</option>
-                                    <option value="Facebook">Facebook</option>
-                                    <option value="Instagram">Instagram</option>
-                                    <option value="LinkedIn">LinkedIn</option>
-                                    <option value="Walk Ins">Walk Ins</option>
-                                    <option value="Referral">Referral</option>
-                                    <option value="Email">Email</option>
-                                    <option value="Phone Call">Phone Call</option>
-                                    <option value="Manual Entry">Manual Entry</option>
-                                  </select>
-                                </div>
-
-                                {/* Date From Filter */}
-                                <div>
-                                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
-                                    }`}>
-                                    Date From
-                                  </label>
-                                  <input
-                                    type="date"
-                                    value={leadFilters.dateFrom}
-                                    onChange={(e) => setLeadFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
-                                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
-                                      ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
-                                      : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
-                                      }`}
-                                  />
-                                </div>
-
-                                {/* Date To Filter */}
-                                <div>
-                                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
-                                    }`}>
-                                    Date To
-                                  </label>
-                                  <input
-                                    type="date"
-                                    value={leadFilters.dateTo}
-                                    onChange={(e) => setLeadFilters(prev => ({ ...prev, dateTo: e.target.value }))}
-                                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
-                                      ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
-                                      : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
-                                      }`}
-                                  />
-                                </div>
-                              </div>
-
-                              {/* Clear Filters Button */}
-                              <div className="flex justify-end mt-4">
-                                <button
-                                  onClick={() => setLeadFilters({
-                                    status: '',
-                                    source: '',
-                                    search: '',
-                                    dateFrom: '',
-                                    dateTo: ''
-                                  })}
-                                  className={`px-4 py-2 text-sm rounded-md transition-colors border ${isDarkMode
-                                    ? 'text-green-300 hover:text-green-200 hover:bg-gray-700 border-green-600'
-                                    : 'text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200'
-                                    }`}
-                                >
-                                  Clear Filters
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className={`rounded-xl shadow-lg border overflow-hidden ${isDarkMode
-                              ? 'bg-gray-800 border-gray-700 shadow-gray-900/50'
-                              : 'bg-amber-50 border-amber-200'
-                              }`}>
-                              {(() => {
-                                // Apply filters to lead items
-                                const filteredLeads = message.lead_items.filter(lead => {
-                                  // Search filter (name or email)
-                                  if (leadFilters.search) {
-                                    const searchLower = leadFilters.search.toLowerCase()
-                                    const nameMatch = (lead.name || '').toLowerCase().includes(searchLower)
-                                    const emailMatch = (lead.email || '').toLowerCase().includes(searchLower)
-                                    if (!nameMatch && !emailMatch) return false
-                                  }
-
-                                  // Status filter
-                                  if (leadFilters.status && lead.status !== leadFilters.status) {
-                                    return false
-                                  }
-
-                                  // Source filter
-                                  if (leadFilters.source && lead.source_platform !== leadFilters.source) {
-                                    return false
-                                  }
-
-                                  // Date range filter
-                                  if (leadFilters.dateFrom || leadFilters.dateTo) {
-                                    const leadDate = new Date(lead.created_at)
-                                    if (leadFilters.dateFrom) {
-                                      const fromDate = new Date(leadFilters.dateFrom)
-                                      if (leadDate < fromDate) return false
-                                    }
-                                    if (leadFilters.dateTo) {
-                                      const toDate = new Date(leadFilters.dateTo)
-                                      toDate.setHours(23, 59, 59, 999) // End of day
-                                      if (leadDate > toDate) return false
-                                    }
-                                  }
-
-                                  return true
-                                })
-
-                                return (
-                                  <>
-                                    {/* Results count */}
-                                    <div className={`px-4 py-3 border-b flex justify-between items-center ${isDarkMode
-                                      ? 'bg-gray-700 border-gray-600'
-                                      : 'bg-green-100 border-green-200'
+                            <div className="w-full mb-4" style={{ transform: 'scale(0.8)', transformOrigin: 'top left' }}>
+                              <div className={`rounded-xl shadow-lg border p-4 ${isDarkMode
+                                ? 'bg-gray-800 border-gray-700 shadow-gray-900/50'
+                                : 'bg-amber-50 border-amber-200'
+                                }`}>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                                  {/* Search Filter */}
+                                  <div>
+                                    <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
                                       }`}>
-                                      <span className={`text-sm font-medium ${isDarkMode ? 'text-green-300' : 'text-green-800'
+                                      Search
+                                    </label>
+                                    <input
+                                      type="text"
+                                      placeholder="Name or email..."
+                                      value={leadFilters.search}
+                                      onChange={(e) => setLeadFilters(prev => ({ ...prev, search: e.target.value }))}
+                                      className={`w-[90%] px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
+                                        ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500 placeholder-gray-400'
+                                        : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
+                                        }`}
+                                    />
+                                  </div>
+
+                                  {/* Status Filter */}
+                                  <div>
+                                    <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
+                                      }`}>
+                                      Status
+                                    </label>
+                                    <select
+                                      value={leadFilters.status}
+                                      onChange={(e) => setLeadFilters(prev => ({ ...prev, status: e.target.value }))}
+                                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
+                                        ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
+                                        : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
+                                        }`}
+                                    >
+                                      <option value="">All Status</option>
+                                      <option value="new">New</option>
+                                      <option value="contacted">Contacted</option>
+                                      <option value="responded">Responded</option>
+                                      <option value="qualified">Qualified</option>
+                                      <option value="converted">Converted</option>
+                                      <option value="lost">Lost</option>
+                                      <option value="invalid">Invalid</option>
+                                    </select>
+                                  </div>
+
+                                  {/* Source Filter */}
+                                  <div>
+                                    <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
+                                      }`}>
+                                      Source
+                                    </label>
+                                    <select
+                                      value={leadFilters.source}
+                                      onChange={(e) => setLeadFilters(prev => ({ ...prev, source: e.target.value }))}
+                                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
+                                        ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
+                                        : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
+                                        }`}
+                                    >
+                                      <option value="">All Sources</option>
+                                      <option value="Website">Website</option>
+                                      <option value="Facebook">Facebook</option>
+                                      <option value="Instagram">Instagram</option>
+                                      <option value="LinkedIn">LinkedIn</option>
+                                      <option value="Walk Ins">Walk Ins</option>
+                                      <option value="Referral">Referral</option>
+                                      <option value="Email">Email</option>
+                                      <option value="Phone Call">Phone Call</option>
+                                      <option value="Manual Entry">Manual Entry</option>
+                                    </select>
+                                  </div>
+
+                                  {/* Date From Filter */}
+                                  <div>
+                                    <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
+                                      }`}>
+                                      Date From
+                                    </label>
+                                    <input
+                                      type="date"
+                                      value={leadFilters.dateFrom}
+                                      onChange={(e) => setLeadFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+                                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
+                                        ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
+                                        : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
+                                        }`}
+                                    />
+                                  </div>
+
+                                  {/* Date To Filter */}
+                                  <div>
+                                    <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
+                                      }`}>
+                                      Date To
+                                    </label>
+                                    <input
+                                      type="date"
+                                      value={leadFilters.dateTo}
+                                      onChange={(e) => setLeadFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+                                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
+                                        ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
+                                        : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
+                                        }`}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Clear Filters Button */}
+                                <div className="flex justify-end mt-4">
+>>>>>>> 8fef7364c267ecfee5cf370ac2c666a24fe787a8
+                                  <button
+                                    onClick={() => handleCopyMessage(message)}
+                                    className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+                                      }`}
+                                    title="Copy message"
+                                  >
+                                    <Copy className={`w-3 h-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                                      }`} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleLikeMessage(message)}
+                                    className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+                                      }`}
+                                    title={likedMessages.has(message.id) ? "Unlike message" : "Like message"}
+                                  >
+                                    <Heart className={`w-3 h-3 ${likedMessages.has(message.id)
+                                      ? 'text-red-500 fill-current'
+                                      : isDarkMode
+                                        ? 'text-gray-400'
+                                        : 'text-gray-600'
+                                      }`} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteMessage(message)}
+                                    className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+                                      }`}
+                                    title="Delete message"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="relative max-w-none leading-tight">
+                              {/* Clean message text to remove stray characters */}
+                              {(() => {
+                                let displayText = message.text || '';
+                                // Remove trailing )} patterns
+                                displayText = displayText.replace(/\s*\)\s*\}\s*$/g, '').trim();
+                                // Remove any standalone )} patterns
+                                displayText = displayText.replace(/\s*\)\s*\}\s*/g, '');
+
+                                // Check if message contains markdown syntax
+                                const hasMarkdown = displayText.includes('#') || displayText.includes('*') || displayText.includes('`') || displayText.includes('[');
+
+                                return hasMarkdown ? (
+                                  <div className={`leading-tight pr-16 ${isDarkMode ? 'prose-invert prose prose-gray' : 'prose'
+                                    }`}>
+<<<<<<< HEAD
+  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+    {displayText}
+  </ReactMarkdown>
+                              </div >
+=======
+                                  <span className={`text-sm font-medium ${
+                                    isDarkMode ? 'text-green-300' : 'text-green-800'
+                                  }`}>
+                                    Showing {filteredLeads.length} of {message.lead_items.length} leads
+                                  </span>
+                                </div>
+
+                                <div className="w-full overflow-x-auto">
+                                  <table className="w-full table-fixed">
+                                    <thead className={`border-b ${
+                                      isDarkMode
+                                        ? 'bg-gray-700 border-gray-600'
+                                        : 'bg-green-100 border-green-200'
+                                    }`}>
+                                      <tr>
+                                        <th className="w-8 px-1 py-3 text-left">
+                                          {(message.intent === 'view_leads' || message.intent === 'delete_leads') && (
+                                            <button
+                                              onClick={() => {
+                                                const allFilteredIds = filteredLeads.map(item => item.lead_id || item.id)
+                                                setSelectedLeads(allFilteredIds)
+                                              }}
+                                              className={`p-1 rounded transition-colors ${
+                                                isDarkMode
+                                                  ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-600'
+                                                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
+                                              }`}
+                                              title="Select All Filtered"
+                                            >
+                                              <CheckSquare className="w-3 h-3" />
+                                            </button>
+                                          )}
+                                        </th>
+                                        <th className="w-1/3 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider truncate">
+                                          Lead Name
+                                        </th>
+                                        <th className="w-20 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider truncate">
+                                          Status
+                                        </th>
+                                        <th className="w-24 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider truncate">
+                                          Source
+                                        </th>
+                                        <th className="w-28 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider truncate">
+                                          Latest Remark
+                                        </th>
+                                        <th className="w-24 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wider truncate">
+                                          Created
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className={`divide-y ${
+                                      isDarkMode ? 'divide-gray-600' : 'divide-green-200'
+                                    }`}>
+                                      {filteredLeads.map((leadItem, index) => (
+                                        <tr key={`${message.id}-${index}`} className={`transition-colors ${
+                                          isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-amber-50'
                                         }`}>
-                                        Showing {filteredLeads.length} of {message.lead_items.length} leads
-                                      </span>
-                                    </div>
-
-                                    <div className="overflow-x-auto max-w-[90%]">
-                                      <table className="w-full min-w-[600px]">
-                                        <thead className={`border-b ${isDarkMode
-                                          ? 'bg-gray-700 border-gray-600'
-                                          : 'bg-green-100 border-green-200'
-                                          }`}>
-                                          <tr>
-                                            <th className="px-2 md:px-4 py-3 text-left">
-                                              {(message.intent === 'view_leads' || message.intent === 'delete_leads') && (
-                                                <button
-                                                  onClick={() => {
-                                                    const allFilteredIds = filteredLeads.map(item => item.lead_id || item.id)
-                                                    setSelectedLeads(allFilteredIds)
-                                                  }}
-                                                  className={`p-1 rounded transition-colors ${isDarkMode
-                                                    ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-600'
-                                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
-                                                    }`}
-                                                  title="Select All Filtered"
-                                                >
-                                                  <CheckSquare className="w-3 h-3 md:w-4 md:h-4" />
-                                                </button>
-                                              )}
-                                            </th>
-                                            <th className={`px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                              }`}>
-                                              Lead Name
-                                            </th>
-                                            <th className={`hidden sm:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                              }`}>
-                                              Email
-                                            </th>
-                                            <th className={`hidden md:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                              }`}>
-                                              Phone
-                                            </th>
-                                            <th className={`px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                              }`}>
-                                              Status
-                                            </th>
-                                            <th className={`hidden lg:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                              }`}>
-                                              Source
-                                            </th>
-                                            <th className={`hidden xl:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                              }`}>
-                                              Latest Remark
-                                            </th>
-                                            <th className={`hidden xl:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                              }`}>
-                                              Created
-                                            </th>
-                                          </tr>
-                                        </thead>
-                                        <tbody className={`divide-y ${isDarkMode ? 'divide-gray-600' : 'divide-green-200'
-                                          }`}>
-                                          {filteredLeads.map((leadItem, index) => (
-                                            <tr key={`${message.id}-${index}`} className={`transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-amber-50'
-                                              }`}>
-                                              <td className="px-2 md:px-4 py-3">
-                                                {(message.intent === 'view_leads' || message.intent === 'delete_leads') && (
-                                                  <button
-                                                    onClick={() => handleLeadSelect(leadItem.lead_id || leadItem.id, message.intent)}
-                                                    className={`w-4 h-4 md:w-5 md:h-5 rounded border-2 flex items-center justify-center transition-colors ${selectedLeads.includes(leadItem.lead_id || leadItem.id)
-                                                      ? 'bg-green-600 border-green-600 text-white'
-                                                      : isDarkMode
-                                                        ? 'bg-gray-700 border-gray-500 hover:border-green-400'
-                                                        : 'bg-white border-gray-300 hover:border-green-400'
-                                                      }`}
-                                                  >
-                                                    {selectedLeads.includes(leadItem.lead_id || leadItem.id) ? (
-                                                      <CheckSquare className="w-2.5 h-2.5 md:w-3 md:h-3" />
-                                                    ) : (
-                                                      <Square className="w-2.5 h-2.5 md:w-3 md:h-3" />
-                                                    )}
-                                                  </button>
+                                          <td className="w-8 px-1 py-3">
+                                            {(message.intent === 'view_leads' || message.intent === 'delete_leads') && (
+                                              <button
+                                                onClick={() => handleLeadSelect(leadItem.lead_id || leadItem.id, message.intent)}
+                                                className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                                                  selectedLeads.includes(leadItem.lead_id || leadItem.id)
+                                                    ? 'bg-green-600 border-green-600 text-white'
+                                                    : isDarkMode
+                                                    ? 'bg-gray-700 border-gray-500 hover:border-green-400'
+                                                    : 'bg-white border-gray-300 hover:border-green-400'
+                                                }`}
+                                              >
+                                                {selectedLeads.includes(leadItem.lead_id || leadItem.id) ? (
+                                                  <CheckSquare className="w-2.5 h-2.5" />
+                                                ) : (
+                                                  <Square className="w-2.5 h-2.5" />
                                                 )}
-                                              </td>
-                                              <td className="px-2 md:px-4 py-3">
-                                                <div className="flex items-center gap-2 md:gap-3">
-                                                  <div className="w-6 h-6 md:w-8 md:h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                                                    <User className="w-2.5 h-2.5 md:w-3 md:h-3 text-white" />
-                                                  </div>
-                                                  <span className={`font-medium truncate text-sm md:text-base ${isDarkMode ? 'text-gray-100' : 'text-gray-900'
-                                                    }`}>
-                                                    {leadItem.name || 'Unknown Lead'}
-                                                  </span>
-                                                </div>
-                                              </td>
-                                              <td className={`hidden sm:table-cell px-2 md:px-4 py-3 text-sm truncate max-w-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                                }`}>
-                                                {leadItem.email || 'No email'}
-                                              </td>
-                                              <td className={`hidden md:table-cell px-2 md:px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                                }`}>
-                                                {leadItem.phone || 'No phone'}
-                                              </td>
-                                              <td className="px-2 md:px-4 py-3">
-                                                <span className={`px-1.5 md:px-2 py-0.5 md:py-1 rounded-full text-xs font-medium ${leadItem.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                                                  leadItem.status === 'contacted' ? 'bg-purple-100 text-purple-800' :
-                                                    leadItem.status === 'responded' ? 'bg-green-100 text-green-800' :
-                                                      leadItem.status === 'qualified' ? 'bg-orange-100 text-orange-800' :
-                                                        leadItem.status === 'converted' ? 'bg-emerald-100 text-emerald-800' :
-                                                          leadItem.status === 'lost' ? 'bg-gray-100 text-gray-800' :
-                                                            leadItem.status === 'invalid' ? 'bg-red-100 text-red-800' :
-                                                              'bg-gray-100 text-gray-800'
-                                                  }`}>
-                                                  {leadItem.status ? leadItem.status.charAt(0).toUpperCase() + leadItem.status.slice(1) : 'Unknown'}
-                                                </span>
-                                              </td>
-                                              <td className={`hidden lg:table-cell px-2 md:px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                                }`}>
-                                                {leadItem.source || leadItem.source_platform || 'Unknown'}
-                                              </td>
-                                              <td className={`hidden xl:table-cell px-2 md:px-4 py-3 text-sm max-w-xs truncate ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                                }`} title={leadItem.last_remark}>
-                                                {leadItem.last_remark || 'No remarks'}
-                                              </td>
-                                              <td className={`hidden xl:table-cell px-2 md:px-4 py-3 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                                                }`}>
-                                                {leadItem.created_at || 'Unknown'}
-                                              </td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </>
-                                )
-                              })()}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Render lead cards if available */}
-                        {message.lead_id && fetchedLeads[message.lead_id] && (
-                          <div className="mt-4 flex flex-wrap gap-4">
-                            <LeadCard
-                              key={message.lead_id}
-                              lead={fetchedLeads[message.lead_id]}
-                              onClick={() => setSelectedLeadId(message.lead_id)}
-                              isSelected={selectedLeadId === message.lead_id}
-                              selectionMode={true}
-                              isDarkMode={isDarkMode}
-                            />
-                          </div>
-                        )}
-
-                        {/* Selection controls for lead operations */}
-                        {message.intent === 'view_leads' && message.lead_items && message.lead_items.length > 0 && (
-                          <div className="mt-4 flex flex-wrap items-center gap-3 p-3 rounded-lg">
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => {
-                                  const allLeadIds = message.lead_items.map(item => item.lead_id || item.id)
-                                  setSelectedLeads(allLeadIds)
-                                }}
-                                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
-                                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
-                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
-                                  }`}
-                              >
-                                <CheckSquare className="w-4 h-4" />
-                                <span>Select All</span>
-                              </button>
-                              <button
-                                onClick={() => setSelectedLeads([])}
-                                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
-                                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
-                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
-                                  }`}
-                              >
-                                <Square className="w-4 h-4" />
-                                <span>Deselect All</span>
-                              </button>
-                              <span className="text-base text-gray-600">
-                                {selectedLeads.length}/{message.lead_items.length} selected
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Lead Action Buttons for Selected Leads */}
-                        {selectedLeads.length > 0 && (
-                          <div className={`mt-4 flex flex-wrap items-center gap-3 p-4 backdrop-blur-md border rounded-xl shadow-lg ${isDarkMode
-                            ? 'bg-gray-800/90 border-gray-700'
-                            : 'bg-white/90 border-gray-200'
-                            }`}>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={handleEditSelectedLead}
-                                disabled={selectedLeads.length !== 1}
-                                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${isDarkMode
-                                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
-                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
-                                  }`}
-                              >
-                                <Edit className="w-4 h-4" />
-                                <span>Edit Lead {selectedLeads.length !== 1 ? '(Select 1)' : ''}</span>
-                              </button>
-                              <button
-                                onClick={handleDeleteSelectedLeads}
-                                disabled={isDeleting}
-                                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${isDarkMode
-                                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
-                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
-                                  }`}
-                              >
-                                {isDeleting ? (
-                                  <>
-                                    <RefreshCw className="w-4 h-4 animate-spin" />
-                                    Deleting...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Trash2 className="w-4 h-4" />
-                                    Delete Selected ({selectedLeads.length})
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Lead Action Buttons */}
-                        {message.lead_id && fetchedLeads[message.lead_id] && (
-                          <div className={`mt-4 flex flex-wrap items-center gap-3 p-4 backdrop-blur-md border rounded-xl shadow-lg ${isDarkMode
-                            ? 'bg-gray-800/90 border-gray-700'
-                            : 'bg-white/90 border-gray-200'
-                            }`}>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={handleEditLead}
-                                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
-                                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
-                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
-                                  }`}
-                              >
-                                <Edit className="w-4 h-4" />
-                                <span>Edit</span>
-                              </button>
-                              <button
-                                onClick={handleSaveLead}
-                                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
-                                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
-                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
-                                  }`}
-                              >
-                                <Save className="w-4 h-4" />
-                                <span>Save</span>
-                              </button>
-                              <button
-                                onClick={handleDeleteLead}
-                                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
-                                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
-                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
-                                  }`}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                                <span>Delete</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="relative">
-                        <p className="text-base whitespace-pre-wrap pr-16">{message.text}</p>
-                        <div className={`absolute bottom-0 right-0 text-xs ${message.sender === 'user' ? 'text-white' : 'text-gray-400'
-                          }`}>
-                          {new Date(message.timestamp).toLocaleTimeString()}
+                                              </button>
+                                            )}
+                                          </td>
+                                          <td className="w-1/3 px-2 py-3">
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                                <User className="w-2.5 h-2.5 text-white" />
+                                              </div>
+                                              <span
+                                                className={`font-medium truncate text-sm cursor-help ${
+                                                  isDarkMode ? 'text-gray-100' : 'text-gray-900'
+                                                }`}
+                                                title=""
+                                                onMouseEnter={(e) => {
+                                                  // Show loading state first
+                                                  e.target.title = "Loading...";
+                                                  // Simulate loading delay, then show actual data
+                                                  setTimeout(() => {
+                                                    e.target.title = `Email: ${leadItem.email || 'N/A'}\nPhone: ${leadItem.phone || 'N/A'}`;
+                                                  }, 300);
+                                                }}
+                                              >
+                                                {leadItem.name || 'Unknown Lead'}
+                                              </span>
+                                            </div>
+                                          </td>
+                                          <td className="w-20 px-2 py-3">
+                                            <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium truncate ${
+                                              leadItem.status === 'new' ? 'bg-blue-100 text-blue-800' :
+                                              leadItem.status === 'contacted' ? 'bg-purple-100 text-purple-800' :
+                                              leadItem.status === 'responded' ? 'bg-green-100 text-green-800' :
+                                              leadItem.status === 'qualified' ? 'bg-orange-100 text-orange-800' :
+                                              leadItem.status === 'converted' ? 'bg-emerald-100 text-emerald-800' :
+                                              leadItem.status === 'lost' ? 'bg-gray-100 text-gray-800' :
+                                              leadItem.status === 'invalid' ? 'bg-red-100 text-red-800' :
+                                              'bg-gray-100 text-gray-800'
+                                            }`}>
+                                              {leadItem.status ? leadItem.status.charAt(0).toUpperCase() + leadItem.status.slice(1) : 'Unknown'}
+                                            </span>
+                                          </td>
+                                          <td className="w-24 px-2 py-3 text-sm truncate">
+                                            {leadItem.source || leadItem.source_platform || 'Unknown'}
+                                          </td>
+                                          <td className="w-28 px-2 py-3 text-sm truncate" title={leadItem.last_remark}>
+                                            {leadItem.last_remark || 'No remarks'}
+                                          </td>
+                                          <td className="w-24 px-2 py-3 text-sm truncate">
+                                            {leadItem.created_at || 'Unknown'}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </>
+                            )
+                          })()}
                         </div>
                       </div>
                     )}
-                  </div>
+
+                    {/* Render lead cards if available */}
+                    {message.lead_id && fetchedLeads[message.lead_id] && (
+                      <div className="mt-4 flex flex-wrap gap-4">
+                        <LeadCard
+                          key={message.lead_id}
+                          lead={fetchedLeads[message.lead_id]}
+                          onClick={() => setSelectedLeadId(message.lead_id)}
+                          isSelected={selectedLeadId === message.lead_id}
+                          selectionMode={true}
+                          isDarkMode={isDarkMode}
+                        />
+                      </div>
+                    )}
+
+                    {/* Selection controls for lead operations */}
+                    {message.intent === 'view_leads' && message.lead_items && message.lead_items.length > 0 && (
+                      <div className="mt-4 flex flex-wrap items-center gap-3 p-3 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              const allLeadIds = message.lead_items.map(item => item.lead_id || item.id)
+                              setSelectedLeads(allLeadIds)
+                            }}
+                            className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${
+                                    isDarkMode
+                                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                                      : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                                  }`}
+                          >
+                            <CheckSquare className="w-4 h-4" />
+                            <span>Select All</span>
+                          </button>
+                          <button
+                            onClick={() => setSelectedLeads([])}
+                            className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${
+                                    isDarkMode
+                                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                                      : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                                  }`}
+                          >
+                            <Square className="w-4 h-4" />
+                            <span>Deselect All</span>
+                          </button>
+                          <span className="text-base text-gray-600">
+                            {selectedLeads.length}/{message.lead_items.length} selected
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Lead Action Buttons for Selected Leads */}
+                    {selectedLeads.length > 0 && (
+                      <div className={`mt-4 flex flex-wrap items-center gap-3 p-4 backdrop-blur-md border rounded-xl shadow-lg ${
+                        isDarkMode
+                          ? 'bg-gray-800/90 border-gray-700'
+                          : 'bg-white/90 border-gray-200'
+                      }`}>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleEditSelectedLead}
+                            disabled={selectedLeads.length !== 1}
+                            className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${
+                              isDarkMode
+                                ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                                : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                            }`}
+                          >
+                            <Edit className="w-4 h-4" />
+                            <span>Edit Lead {selectedLeads.length !== 1 ? '(Select 1)' : ''}</span>
+                          </button>
+                          <button
+                            onClick={handleDeleteSelectedLeads}
+                            disabled={isDeleting}
+                            className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${
+                              isDarkMode
+                                ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                                : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                            }`}
+                          >
+                            {isDeleting ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                Deleting...
+                              </>
+>>>>>>> 8fef7364c267ecfee5cf370ac2c666a24fe787a8
+                            ) : (
+  <div className={`whitespace-pre-line leading-tight pr-16 ${isDarkMode ? 'text-white' : ''
+    }`}>
+    {displayText}
+  </div>
+);
+                          }) ()}
+<div className={`absolute bottom-0 right-0 text-xs ${message.sender === 'user'
+  ? 'text-white'
+  : isDarkMode
+    ? 'text-gray-500'
+    : 'text-gray-400'
+  }`}>
+  {new Date(message.timestamp).toLocaleTimeString()}
+</div>
+                        </div >
+
+  {/* Handle upload requests */ }
+{
+  message.clarification_data && message.clarification_data.type === 'upload_request' && message.waiting_for_user && (
+    <div className="mt-4">
+      <button
+        onClick={() => {
+          // Open media upload modal for image upload
+          setShowMediaUploadModal(true)
+        }}
+        className={`px-4 py-2 rounded-lg font-medium transition-colors ${isDarkMode
+          ? 'bg-blue-600 hover:bg-blue-500 text-white'
+          : 'bg-blue-500 hover:bg-blue-600 text-white'
+          }`}
+      >
+        📤 Upload {message.clarification_data.upload_type === 'image' ? 'Image' : 'Media'}
+      </button>
+      <p className={`mt-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'
+        }`}>
+        {message.clarification_data.message}
+      </p>
+    </div>
+  )
+}
+
+{/* Render clarification options only for active clarifications */ }
+{
+  message.clarification_options && message.clarification_options.length > 0 && message.waiting_for_user && (
+    <div className="mt-4 flex flex-wrap gap-3">
+      {message.clarification_options.map((option, index) => (
+        <button
+          key={index}
+          onClick={() => handleOptionSelect(option.value)}
+          className={`px-3 py-2 transition-all duration-200 text-base font-normal hover:underline ${message.agent_name?.toLowerCase() === 'leo'
+            ? isDarkMode
+              ? 'text-blue-300 hover:text-blue-200'
+              : 'text-blue-600 hover:text-blue-700'
+            : message.agent_name?.toLowerCase() === 'emily'
+              ? isDarkMode
+                ? 'text-pink-300 hover:text-pink-200'
+                : 'text-purple-600 hover:text-purple-700'
+              : message.agent_name?.toLowerCase() === 'chase'
+                ? isDarkMode
+                  ? 'text-green-300 hover:text-green-200'
+                  : 'text-green-800 hover:text-amber-800'
+                : message.agent_name?.toLowerCase() === 'atsn'
+                  ? isDarkMode
+                    ? 'text-purple-300 hover:text-blue-300'
+                    : 'text-purple-500 hover:text-blue-500'
+                  : isDarkMode
+                    ? 'text-purple-400 hover:text-pink-400'
+                    : 'text-purple-600 hover:text-pink-500'
+            }`}
+        >
+          <div className="font-normal text-center">{option.label}</div>
+          {option.description && (
+            <div className="text-xs opacity-75 mt-1 text-center leading-tight">{option.description}</div>
+          )}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+{/* Render content cards if available */ }
+{
+  message.content_items && message.content_items.length > 0 && (
+    <div className="mt-4">
+      {/* Horizontal scrollable posts window */}
+      <div className="w-full max-w-4xl">
+        <div className="relative">
+          {/* Scrollable container with window effect - shows ~5 posts width */}
+          <div className="overflow-x-auto overflow-y-hidden max-w-full" style={{
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#9CA3AF #E5E7EB'
+          }}>
+            <div className="chat-scrollbar flex gap-4 pb-2 px-1" style={{
+              width: 'max-content',
+              minWidth: message.content_items.length > 5 ? `${message.content_items.length * 336}px` : 'auto' // 320px + 16px gap (w-80 = 320px)
+            }}>
+              {message.content_items.map((contentItem, index) => (
+                <div key={`${message.id}-${index}`} className="relative flex-shrink-0 w-96">
+                  {/* Selection checkbox for view, delete, and publish operations */}
+                  {(message.intent === 'view_content' || message.intent === 'delete_content' || message.intent === 'created_content' || message.intent === 'publish_content') && (
+                    <div className="absolute top-2 right-2 z-10">
+                      <button
+                        onClick={() => handleContentSelect(contentItem.content_id, message.intent)}
+                        className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${selectedContent.includes(contentItem.content_id)
+                          ? (message.intent === 'delete_content' ? 'bg-red-600 border-red-600' : 'bg-purple-600 border-purple-600') + ' text-white'
+                          : 'bg-white border-gray-300 hover:border-purple-400'
+                          }`}
+                      >
+                        {selectedContent.includes(contentItem.content_id) ? (
+                          <CheckSquare className="w-4 h-4" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Use ATSNContentCard for posts and reels, ContentCard for others */}
+                  {contentItem.raw_data?.content_type === 'post' || contentItem.content_type?.toLowerCase().includes('post') ||
+                    contentItem.content_type?.toLowerCase().includes('reel') || contentItem.content_type?.toLowerCase().includes('video') ? (
+                    <ATSNContentCard
+                      content={{
+                        id: contentItem.content_id,
+                        title: contentItem.title_display || contentItem.title,
+                        content: contentItem.content_preview || contentItem.content_text,
+                        hashtags: contentItem.hashtags_display ?
+                          contentItem.hashtags_display.split(' ').filter(tag => tag.startsWith('#')).map(tag => tag.substring(1)) :
+                          (contentItem.hashtags ?
+                            (Array.isArray(contentItem.hashtags) ? contentItem.hashtags : []) :
+                            []),
+                        media_url: contentItem.media_url,
+                        images: contentItem.images || [],
+                        metadata: contentItem.metadata || {},
+                        post_type: contentItem.raw_data?.post_type,
+                        content_type: contentItem.content_type,
+                        selected_content_type: contentItem.raw_data?.selected_content_type,
+                        carousel_images: contentItem.raw_data?.carousel_images || contentItem.raw_data?.images,
+                        // Add additional fields for different content types
+                        email_subject: contentItem.email_subject,
+                        email_body: contentItem.email_body,
+                        short_video_script: contentItem.short_video_script,
+                        long_video_script: contentItem.long_video_script,
+                        message: contentItem.message
+                      }}
+                      platform={contentItem.platform}
+                      contentType={contentItem.content_type}
+                      intent={message.intent}
+                      onClick={() => handleContentClick(contentItem)}
+                      isDarkMode={isDarkMode}
+                    />
+                  ) : (
+                    <ContentCard
+                      content={{
+                        id: contentItem.content_id,
+                        title: contentItem.title_display || contentItem.title,
+                        content: contentItem.content_preview || contentItem.content_text,
+                        hashtags: contentItem.hashtags_display ?
+                          contentItem.hashtags_display.split(' ').filter(tag => tag.startsWith('#')).map(tag => tag.substring(1)) :
+                          (contentItem.hashtags ?
+                            (Array.isArray(contentItem.hashtags) ? contentItem.hashtags : []) :
+                            []),
+                        media_url: contentItem.media_url,
+                        images: contentItem.images || [],
+                        metadata: contentItem.metadata || {},
+                        post_type: contentItem.raw_data?.post_type,
+                        content_type: contentItem.content_type,
+                        selected_content_type: contentItem.raw_data?.selected_content_type,
+                        carousel_images: contentItem.raw_data?.carousel_images || contentItem.raw_data?.images,
+                        // Add additional fields for different content types
+                        email_subject: contentItem.email_subject,
+                        email_body: contentItem.email_body,
+                        short_video_script: contentItem.short_video_script,
+                        long_video_script: contentItem.long_video_script,
+                        message: contentItem.message
+                      }}
+                      platform={contentItem.platform}
+                      contentType={contentItem.content_type}
+                      minimal={message.intent !== 'created_content'}
+                      onCopy={() => {
+                        let textToCopy = '';
+
+                        // Handle different content types for copying
+                        if (contentItem.content_type?.toLowerCase() === 'email' && contentItem.email_subject && contentItem.email_body) {
+                          textToCopy = `Subject: ${contentItem.email_subject}\n\n${contentItem.email_body}`;
+                        } else if ((contentItem.content_type?.toLowerCase() === 'short video' || contentItem.content_type?.toLowerCase() === 'long video') && (contentItem.short_video_script || contentItem.long_video_script)) {
+                          textToCopy = contentItem.short_video_script || contentItem.long_video_script;
+                        } else if (contentItem.content_type?.toLowerCase() === 'message' && contentItem.message) {
+                          textToCopy = contentItem.message;
+                        } else {
+                          textToCopy = contentItem.content_preview || contentItem.content_text;
+                        }
+
+                        if (textToCopy) {
+                          navigator.clipboard.writeText(textToCopy);
+                          showSuccess('Content copied to clipboard!');
+                        }
+                      }}
+                      onPreview={(content) => {
+                        // Open content preview modal
+                        setSelectedContentForModal(content);
+                        setShowContentModal(true);
+                      }}
+                      onEdit={() => {
+                        // Handle edit action - could navigate to edit page or open modal
+                        console.log('Edit content:', contentItem.content_id);
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Scroll indicators */}
+          {message.content_items.length > 5 && (
+            <div className="flex justify-center mt-2">
+              <div className="flex items-center gap-1 text-xs text-gray-500">
+                <span>← Scroll to see more posts →</span>
+              </div>
+            </div>
+          )}
+        </div>
 
 
-                  {/* Message metadata - Hidden */}
-                  {/* {message.intent && (
+        {/* Action buttons for publish content */}
+        {message.intent === 'publish_content' && message.content_items && message.content_items.length > 0 && selectedContent.length > 0 && (
+          <div className={`mt-4 flex flex-wrap items-center gap-3 p-4 backdrop-blur-md border rounded-xl shadow-lg ${isDarkMode
+            ? 'bg-gray-800/90 border-gray-700'
+            : 'bg-white/90 border-gray-200'
+            }`}>
+            <div className="flex gap-2">
+              <button
+                onClick={handlePublishSelected}
+                disabled={isPublishing}
+                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${isDarkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                  }`}
+              >
+                {isPublishing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Publishing...
+                  </>
+                ) : (
+                  <>
+                    <Share className="w-4 h-4" />
+                    Publish Selected ({selectedContent.length})
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Action buttons for created content */}
+        {message.intent === 'created_content' && message.content_items && message.content_items.length > 0 && (
+          <div className={`mt-4 flex flex-wrap items-center gap-3 p-4 backdrop-blur-md border rounded-xl shadow-lg ${isDarkMode
+            ? 'bg-gray-800/90 border-gray-700'
+            : 'bg-white/90 border-gray-200'
+            }`}>
+            <div className="flex gap-2">
+              <button
+                onClick={handleEditSelected}
+                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                  }`}
+              >
+                <Edit className="w-4 h-4" />
+                <span>Edit</span>
+              </button>
+              <button
+                onClick={handlePublishSelected}
+                disabled={isPublishing}
+                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${isDarkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                  }`}
+              >
+                {isPublishing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Publishing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Share className="w-4 h-4" />
+                    <span>Publish</span>
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleScheduleSelected}
+                disabled={isScheduling}
+                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${isDarkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                  }`}
+              >
+                {isScheduling ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Scheduling...</span>
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-4 h-4" />
+                    <span>Schedule</span>
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleSaveSelected}
+                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                  }`}
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Draft</span>
+              </button>
+              <button
+                onClick={handleDeleteSelected}
+                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                  }`}
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Selection controls for view operations - below posts */}
+        {message.intent === 'view_content' && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 p-3 rounded-lg">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleSelectAll(message.content_items)}
+                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                  }`}
+              >
+                <CheckSquare className="w-4 h-4" />
+                <span>Select All</span>
+              </button>
+              <button
+                onClick={handleDeselectAll}
+                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                  }`}
+              >
+                <Square className="w-4 h-4" />
+                <span>Deselect All</span>
+              </button>
+              <span className="text-base text-gray-600">
+                {selectedContent.length}/{message.content_items.length} selected
+              </span>
+            </div>
+            {selectedContent.length > 0 && (
+              <div className="flex gap-2">
+                <button
+                  onClick={handleEditSelected}
+                  disabled={selectedContent.length > 1}
+                  className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${isDarkMode
+                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                    }`}
+                >
+                  <Edit className="w-4 h-4" />
+                  <span>Edit {selectedContent.length === 1 ? '' : '(Select 1)'}</span>
+                </button>
+                <button
+                  onClick={handlePublishSelected}
+                  disabled={isPublishing}
+                  className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${isDarkMode
+                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                    }`}
+                >
+                  {isPublishing ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Publishing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share className="w-4 h-4" />
+                      <span>Publish ({selectedContent.length})</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleScheduleSelected}
+                  disabled={selectedContent.length > 1}
+                  className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${isDarkMode
+                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                    }`}
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Schedule {selectedContent.length === 1 ? '' : '(Select 1)'}</span>
+                </button>
+                <button
+                  onClick={handleDeleteSelected}
+                  disabled={isDeleting}
+                  className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${isDarkMode
+                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                    }`}
+                >
+                  {isDeleting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Delete ({selectedContent.length})</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Selection controls for delete operations - below posts */}
+        {message.intent === 'delete_content' && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 p-3 rounded-lg">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleSelectAll(message.content_items)}
+                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                  }`}
+              >
+                <CheckSquare className="w-4 h-4" />
+                <span>Select All</span>
+              </button>
+              <button
+                onClick={handleDeselectAll}
+                className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                  }`}
+              >
+                <Square className="w-4 h-4" />
+                <span>Deselect All</span>
+              </button>
+              <span className="text-base text-gray-600">
+                {selectedContent.length}/{message.content_items.length} selected
+              </span>
+            </div>
+            {selectedContent.length > 0 && (
+              <button
+                onClick={handleDeleteSelected}
+                disabled={isDeleting}
+                className="px-4 py-2 text-base bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete Selected ({selectedContent.length})
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+{/* Render lead table for view_leads and other lead operations */ }
+{
+  message.lead_items && message.lead_items.length > 0 && (
+    <div className="mt-4">
+      {/* Filter Controls */}
+      <div className={`rounded-xl shadow-lg border p-4 mb-4 ${isDarkMode
+        ? 'bg-gray-800 border-gray-700 shadow-gray-900/50'
+        : 'bg-amber-50 border-amber-200'
+        }`}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* Search Filter */}
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
+              }`}>
+              Search
+            </label>
+            <input
+              type="text"
+              placeholder="Name or email..."
+              value={leadFilters.search}
+              onChange={(e) => setLeadFilters(prev => ({ ...prev, search: e.target.value }))}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
+                ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500 placeholder-gray-400'
+                : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
+                }`}
+            />
+          </div>
+
+          {/* Status Filter */}
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
+              }`}>
+              Status
+            </label>
+            <select
+              value={leadFilters.status}
+              onChange={(e) => setLeadFilters(prev => ({ ...prev, status: e.target.value }))}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
+                ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
+                : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
+                }`}
+            >
+              <option value="">All Status</option>
+              <option value="new">New</option>
+              <option value="contacted">Contacted</option>
+              <option value="responded">Responded</option>
+              <option value="qualified">Qualified</option>
+              <option value="converted">Converted</option>
+              <option value="lost">Lost</option>
+              <option value="invalid">Invalid</option>
+            </select>
+          </div>
+
+          {/* Source Filter */}
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
+              }`}>
+              Source
+            </label>
+            <select
+              value={leadFilters.source}
+              onChange={(e) => setLeadFilters(prev => ({ ...prev, source: e.target.value }))}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
+                ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
+                : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
+                }`}
+            >
+              <option value="">All Sources</option>
+              <option value="Website">Website</option>
+              <option value="Facebook">Facebook</option>
+              <option value="Instagram">Instagram</option>
+              <option value="LinkedIn">LinkedIn</option>
+              <option value="Walk Ins">Walk Ins</option>
+              <option value="Referral">Referral</option>
+              <option value="Email">Email</option>
+              <option value="Phone Call">Phone Call</option>
+              <option value="Manual Entry">Manual Entry</option>
+            </select>
+          </div>
+
+          {/* Date From Filter */}
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
+              }`}>
+              Date From
+            </label>
+            <input
+              type="date"
+              value={leadFilters.dateFrom}
+              onChange={(e) => setLeadFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
+                ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
+                : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
+                }`}
+            />
+          </div>
+
+          {/* Date To Filter */}
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-green-300' : 'text-green-800'
+              }`}>
+              Date To
+            </label>
+            <input
+              type="date"
+              value={leadFilters.dateTo}
+              onChange={(e) => setLeadFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${isDarkMode
+                ? 'bg-gray-700 border-gray-600 text-gray-200 focus:ring-green-500 focus:border-green-500'
+                : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
+                }`}
+            />
+          </div>
+        </div>
+
+        {/* Clear Filters Button */}
+        <div className="flex justify-end mt-4">
+          <button
+            onClick={() => setLeadFilters({
+              status: '',
+              source: '',
+              search: '',
+              dateFrom: '',
+              dateTo: ''
+            })}
+            className={`px-4 py-2 text-sm rounded-md transition-colors border ${isDarkMode
+              ? 'text-green-300 hover:text-green-200 hover:bg-gray-700 border-green-600'
+              : 'text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200'
+              }`}
+          >
+            Clear Filters
+          </button>
+        </div>
+      </div>
+
+      <div className={`rounded-xl shadow-lg border overflow-hidden ${isDarkMode
+        ? 'bg-gray-800 border-gray-700 shadow-gray-900/50'
+        : 'bg-amber-50 border-amber-200'
+        }`}>
+        {(() => {
+          // Apply filters to lead items
+          const filteredLeads = message.lead_items.filter(lead => {
+            // Search filter (name or email)
+            if (leadFilters.search) {
+              const searchLower = leadFilters.search.toLowerCase()
+              const nameMatch = (lead.name || '').toLowerCase().includes(searchLower)
+              const emailMatch = (lead.email || '').toLowerCase().includes(searchLower)
+              if (!nameMatch && !emailMatch) return false
+            }
+
+            // Status filter
+            if (leadFilters.status && lead.status !== leadFilters.status) {
+              return false
+            }
+
+            // Source filter
+            if (leadFilters.source && lead.source_platform !== leadFilters.source) {
+              return false
+            }
+
+            // Date range filter
+            if (leadFilters.dateFrom || leadFilters.dateTo) {
+              const leadDate = new Date(lead.created_at)
+              if (leadFilters.dateFrom) {
+                const fromDate = new Date(leadFilters.dateFrom)
+                if (leadDate < fromDate) return false
+              }
+              if (leadFilters.dateTo) {
+                const toDate = new Date(leadFilters.dateTo)
+                toDate.setHours(23, 59, 59, 999) // End of day
+                if (leadDate > toDate) return false
+              }
+            }
+
+            return true
+          })
+
+          return (
+            <>
+              {/* Results count */}
+              <div className={`px-4 py-3 border-b flex justify-between items-center ${isDarkMode
+                ? 'bg-gray-700 border-gray-600'
+                : 'bg-green-100 border-green-200'
+                }`}>
+                <span className={`text-sm font-medium ${isDarkMode ? 'text-green-300' : 'text-green-800'
+                  }`}>
+                  Showing {filteredLeads.length} of {message.lead_items.length} leads
+                </span>
+              </div>
+
+              <div className="overflow-x-auto max-w-[90%]">
+                <table className="w-full min-w-[600px]">
+                  <thead className={`border-b ${isDarkMode
+                    ? 'bg-gray-700 border-gray-600'
+                    : 'bg-green-100 border-green-200'
+                    }`}>
+                    <tr>
+                      <th className="px-2 md:px-4 py-3 text-left">
+                        {(message.intent === 'view_leads' || message.intent === 'delete_leads') && (
+                          <button
+                            onClick={() => {
+                              const allFilteredIds = filteredLeads.map(item => item.lead_id || item.id)
+                              setSelectedLeads(allFilteredIds)
+                            }}
+                            className={`p-1 rounded transition-colors ${isDarkMode
+                              ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-600'
+                              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
+                              }`}
+                            title="Select All Filtered"
+                          >
+                            <CheckSquare className="w-3 h-3 md:w-4 md:h-4" />
+                          </button>
+                        )}
+                      </th>
+                      <th className={`px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                        Lead Name
+                      </th>
+                      <th className={`hidden sm:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                        Email
+                      </th>
+                      <th className={`hidden md:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                        Phone
+                      </th>
+                      <th className={`px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                        Status
+                      </th>
+                      <th className={`hidden lg:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                        Source
+                      </th>
+                      <th className={`hidden xl:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                        Latest Remark
+                      </th>
+                      <th className={`hidden xl:table-cell px-2 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                        Created
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y ${isDarkMode ? 'divide-gray-600' : 'divide-green-200'
+                    }`}>
+                    {filteredLeads.map((leadItem, index) => (
+                      <tr key={`${message.id}-${index}`} className={`transition-colors ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-amber-50'
+                        }`}>
+                        <td className="px-2 md:px-4 py-3">
+                          {(message.intent === 'view_leads' || message.intent === 'delete_leads') && (
+                            <button
+                              onClick={() => handleLeadSelect(leadItem.lead_id || leadItem.id, message.intent)}
+                              className={`w-4 h-4 md:w-5 md:h-5 rounded border-2 flex items-center justify-center transition-colors ${selectedLeads.includes(leadItem.lead_id || leadItem.id)
+                                ? 'bg-green-600 border-green-600 text-white'
+                                : isDarkMode
+                                  ? 'bg-gray-700 border-gray-500 hover:border-green-400'
+                                  : 'bg-white border-gray-300 hover:border-green-400'
+                                }`}
+                            >
+                              {selectedLeads.includes(leadItem.lead_id || leadItem.id) ? (
+                                <CheckSquare className="w-2.5 h-2.5 md:w-3 md:h-3" />
+                              ) : (
+                                <Square className="w-2.5 h-2.5 md:w-3 md:h-3" />
+                              )}
+                            </button>
+                          )}
+                        </td>
+                        <td className="px-2 md:px-4 py-3">
+                          <div className="flex items-center gap-2 md:gap-3">
+                            <div className="w-6 h-6 md:w-8 md:h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                              <User className="w-2.5 h-2.5 md:w-3 md:h-3 text-white" />
+                            </div>
+                            <span className={`font-medium truncate text-sm md:text-base ${isDarkMode ? 'text-gray-100' : 'text-gray-900'
+                              }`}>
+                              {leadItem.name || 'Unknown Lead'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className={`hidden sm:table-cell px-2 md:px-4 py-3 text-sm truncate max-w-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                          }`}>
+                          {leadItem.email || 'No email'}
+                        </td>
+                        <td className={`hidden md:table-cell px-2 md:px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                          }`}>
+                          {leadItem.phone || 'No phone'}
+                        </td>
+                        <td className="px-2 md:px-4 py-3">
+                          <span className={`px-1.5 md:px-2 py-0.5 md:py-1 rounded-full text-xs font-medium ${leadItem.status === 'new' ? 'bg-blue-100 text-blue-800' :
+                            leadItem.status === 'contacted' ? 'bg-purple-100 text-purple-800' :
+                              leadItem.status === 'responded' ? 'bg-green-100 text-green-800' :
+                                leadItem.status === 'qualified' ? 'bg-orange-100 text-orange-800' :
+                                  leadItem.status === 'converted' ? 'bg-emerald-100 text-emerald-800' :
+                                    leadItem.status === 'lost' ? 'bg-gray-100 text-gray-800' :
+                                      leadItem.status === 'invalid' ? 'bg-red-100 text-red-800' :
+                                        'bg-gray-100 text-gray-800'
+                            }`}>
+                            {leadItem.status ? leadItem.status.charAt(0).toUpperCase() + leadItem.status.slice(1) : 'Unknown'}
+                          </span>
+                        </td>
+                        <td className={`hidden lg:table-cell px-2 md:px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                          }`}>
+                          {leadItem.source || leadItem.source_platform || 'Unknown'}
+                        </td>
+                        <td className={`hidden xl:table-cell px-2 md:px-4 py-3 text-sm max-w-xs truncate ${isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                          }`} title={leadItem.last_remark}>
+                          {leadItem.last_remark || 'No remarks'}
+                        </td>
+                        <td className={`hidden xl:table-cell px-2 md:px-4 py-3 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                          }`}>
+                          {leadItem.created_at || 'Unknown'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )
+        })()}
+      </div>
+    </div>
+  )
+}
+
+{/* Render lead cards if available */ }
+{
+  message.lead_id && fetchedLeads[message.lead_id] && (
+    <div className="mt-4 flex flex-wrap gap-4">
+      <LeadCard
+        key={message.lead_id}
+        lead={fetchedLeads[message.lead_id]}
+        onClick={() => setSelectedLeadId(message.lead_id)}
+        isSelected={selectedLeadId === message.lead_id}
+        selectionMode={true}
+        isDarkMode={isDarkMode}
+      />
+    </div>
+  )
+}
+
+{/* Selection controls for lead operations */ }
+{
+  message.intent === 'view_leads' && message.lead_items && message.lead_items.length > 0 && (
+    <div className="mt-4 flex flex-wrap items-center gap-3 p-3 rounded-lg">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => {
+            const allLeadIds = message.lead_items.map(item => item.lead_id || item.id)
+            setSelectedLeads(allLeadIds)
+          }}
+          className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+            ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+            : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+            }`}
+        >
+          <CheckSquare className="w-4 h-4" />
+          <span>Select All</span>
+        </button>
+        <button
+          onClick={() => setSelectedLeads([])}
+          className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+            ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+            : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+            }`}
+        >
+          <Square className="w-4 h-4" />
+          <span>Deselect All</span>
+        </button>
+        <span className="text-base text-gray-600">
+          {selectedLeads.length}/{message.lead_items.length} selected
+        </span>
+      </div>
+    </div>
+  )
+}
+
+{/* Lead Action Buttons for Selected Leads */ }
+{
+  selectedLeads.length > 0 && (
+    <div className={`mt-4 flex flex-wrap items-center gap-3 p-4 backdrop-blur-md border rounded-xl shadow-lg ${isDarkMode
+      ? 'bg-gray-800/90 border-gray-700'
+      : 'bg-white/90 border-gray-200'
+      }`}>
+      <div className="flex gap-2">
+        <button
+          onClick={handleEditSelectedLead}
+          disabled={selectedLeads.length !== 1}
+          className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${isDarkMode
+            ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+            : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+            }`}
+        >
+          <Edit className="w-4 h-4" />
+          <span>Edit Lead {selectedLeads.length !== 1 ? '(Select 1)' : ''}</span>
+        </button>
+        <button
+          onClick={handleDeleteSelectedLeads}
+          disabled={isDeleting}
+          className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg ${isDarkMode
+            ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+            : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+            }`}
+        >
+          {isDeleting ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              Deleting...
+            </>
+          ) : (
+            <>
+              <Trash2 className="w-4 h-4" />
+              Delete Selected ({selectedLeads.length})
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+{/* Lead Action Buttons */ }
+{
+  message.lead_id && fetchedLeads[message.lead_id] && (
+    <div className={`mt-4 flex flex-wrap items-center gap-3 p-4 backdrop-blur-md border rounded-xl shadow-lg ${isDarkMode
+      ? 'bg-gray-800/90 border-gray-700'
+      : 'bg-white/90 border-gray-200'
+      }`}>
+      <div className="flex gap-2">
+        <button
+          onClick={handleEditLead}
+          className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+            ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+            : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+            }`}
+        >
+          <Edit className="w-4 h-4" />
+          <span>Edit</span>
+        </button>
+        <button
+          onClick={handleSaveLead}
+          className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+            ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+            : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+            }`}
+        >
+          <Save className="w-4 h-4" />
+          <span>Save</span>
+        </button>
+        <button
+          onClick={handleDeleteLead}
+          className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${isDarkMode
+            ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+            : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+            }`}
+        >
+          <Trash2 className="w-4 h-4" />
+          <span>Delete</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+                      </div >
+                    ) : (
+  <div className="relative">
+    <p className="text-base whitespace-pre-wrap pr-16">{message.text}</p>
+    <div className={`absolute bottom-0 right-0 text-xs ${message.sender === 'user' ? 'text-white' : 'text-gray-400'
+      }`}>
+      {new Date(message.timestamp).toLocaleTimeString()}
+    </div>
+  </div>
+)}
+                  </div >
+
+
+  {/* Message metadata - Hidden */ }
+{/* {message.intent && (
                 <div className="mt-1 text-xs text-gray-500 flex items-center gap-2">
                   <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
                     {message.intent}
@@ -4051,641 +4910,852 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                 </div>
               )} */}
 
-                  {
-                    isLoading && message.sender === 'user' && index === messages.length - 1 && (
-                      <div className="mt-2 ml-12">
-                        <span className={`text-sm italic animate-pulse ${isDarkMode ? 'text-white' : 'text-gray-600'}`}>
-                          {getThinkingMessage()}
-                        </span>
-                      </div>
-                    )
-                  }
-                </div>
+{
+  isLoading && message.sender === 'user' && index === messages.length - 1 && (
+    <div className="mt-2 ml-12">
+      <span className={`text-sm italic animate-pulse ${isDarkMode ? 'text-white' : 'text-gray-600'}`}>
+        {getThinkingMessage()}
+      </span>
+    </div>
+  )
+}
+                </div >
               </div >
             ))
             }
-            <div ref={messagesEndRef} />
+<div ref={messagesEndRef} />
           </div >
         )}
       </div >
 
-      {/* Input - Only show when there are messages */}
-      {
-        messages.length > 0 && (
-          <div className={`p-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'
-            }`}>
-            {/* New Chat Option */}
-            <div className="flex items-center justify-between mb-3">
-              <button
-                onClick={handleReset}
-                className={`flex items-center gap-2 text-sm font-medium transition-colors ${isDarkMode
-                  ? 'text-white hover:text-gray-200'
-                  : 'text-blue-600 hover:text-blue-700'
-                  }`}
-              >
-                <span className="text-lg">+</span>
-                <span>New Chat</span>
-              </button>
-              <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
+  {/* Input - Only show when there are messages */ }
+{
+  messages.length > 0 && (
+    <div className={`p-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'
+      }`}>
+      {/* New Chat Option */}
+      <div className="flex items-center justify-between mb-3">
+        <button
+          onClick={handleReset}
+          className={`flex items-center gap-2 text-sm font-medium transition-colors ${isDarkMode
+            ? 'text-white hover:text-gray-200'
+            : 'text-blue-600 hover:text-blue-700'
+            }`}
+        >
+          <span className="text-lg">+</span>
+          <span>New Chat</span>
+        </button>
+        <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
+          }`}>
+          Press Enter to send
+        </div>
+      </div>
+
+
+      <div className="relative">
+        <textarea
+          ref={inputRef}
+          rows={1}
+          value={inputMessage}
+          onChange={(e) => {
+            setInputMessage(e.target.value)
+            adjustInputHeight(e.target)
+          }}
+          onKeyPress={handleKeyPress}
+          placeholder="Ask me to manage your content or leads..."
+          className={`w-full px-6 pr-14 py-4 text-base rounded-[10px] backdrop-blur-sm focus:outline-none shadow-lg resize-none transition-[height] overflow-hidden ${isDarkMode
+            ? 'bg-gray-700/80 border-0 focus:ring-0 text-gray-100 placeholder-gray-400'
+            : 'bg-white/80 border border-white/20 focus:ring-2 focus:ring-white/30 focus:border-white/50 text-gray-900 placeholder-gray-500'
+            }`}
+          disabled={isLoading}
+          style={{ maxHeight: `${MAX_INPUT_HEIGHT}px`, overflowY: 'auto' }}
+        />
+        <button
+          onClick={handleSendMessage}
+          disabled={isLoading || !inputMessage.trim()}
+          className={`absolute right-3 top-1/2 transform -translate-y-1/2 w-7 h-7 transition-all flex items-center justify-center ${isDarkMode
+            ? 'text-green-400 hover:text-green-300 disabled:text-gray-500'
+            : 'text-blue-600 hover:text-blue-700 disabled:text-gray-400'
+            } disabled:cursor-not-allowed`}
+        >
+          <Send className="w-5 h-5 transform rotate-45" />
+        </button>
+      </div>
+
+      <div className={`mt-2 text-xs text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
+        }`}>
+        Try: "Show scheduled posts" • "Create lead" • "View analytics"
+      </div>
+    </div>
+  )
+}
+
+{/* ATSN Content Modal */ }
+{
+  showContentModal && selectedContentForModal && (
+    <ATSNContentModal
+      content={selectedContentForModal}
+      onClose={handleCloseContentModal}
+    />
+  )
+}
+
+{/* Reel Modal */ }
+{
+  showReelModal && selectedContentForModal && (
+    <ReelModal
+      content={selectedContentForModal}
+      onClose={handleCloseReelModal}
+    />
+  )
+}
+
+{/* Delete Confirmation Modal */ }
+<DeleteConfirmationModal
+  isOpen={showDeleteModal}
+  onClose={() => setShowDeleteModal(false)}
+  onConfirm={confirmDeleteSelected}
+  title={`Delete ${selectedContent.length} Content Item${selectedContent.length > 1 ? 's' : ''}`}
+  itemCount={selectedContent.length}
+  isLoading={isDeleting}
+/>
+
+{/* Publish Confirmation Modal */ }
+{
+  showPublishModal && itemToPublish && (
+    <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={() => setShowPublishModal(false)}
+      />
+      <div className={`relative max-w-md w-full rounded-2xl shadow-2xl overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'
+        }`}>
+        {/* Header */}
+        <div className={`p-6 border-b ${isDarkMode
+          ? 'border-gray-700 bg-gradient-to-r from-pink-900/20 to-rose-900/20'
+          : 'border-gray-200 bg-gradient-to-r from-pink-50 to-rose-50'
+          }`}>
+          <div className="flex items-center justify-center space-x-3">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 flex items-center justify-center">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            </div>
+            <div>
+              <h3 className={`text-lg font-normal ${isDarkMode ? 'text-gray-100' : 'text-gray-900'
                 }`}>
-                Press Enter to send
-              </div>
+                Publish Content
+              </h3>
             </div>
+          </div>
+        </div>
 
-
-            <div className="relative">
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Ask me to manage your content or leads..."
-                className={`w-full px-6 pr-14 py-4 text-base rounded-[10px] backdrop-blur-sm focus:outline-none shadow-lg ${isDarkMode
-                  ? 'bg-gray-700/80 border-0 focus:ring-0 text-gray-100 placeholder-gray-400'
-                  : 'bg-white/80 border border-white/20 focus:ring-2 focus:ring-white/30 focus:border-white/50 text-gray-900 placeholder-gray-500'
-                  }`}
-                disabled={isLoading}
+        {/* Body */}
+        <div className="p-6">
+          <div className="flex items-start space-x-4">
+            {/* Emily Avatar */}
+            <div className="flex-shrink-0">
+              <img
+                src="/emily_icon.png"
+                alt="Emily"
+                className="w-16 h-16 rounded-full object-cover border-2 border-pink-200"
+                onError={(e) => {
+                  e.target.src = '/default-logo.png'
+                }}
               />
-              <button
-                onClick={handleSendMessage}
-                disabled={isLoading || !inputMessage.trim()}
-                className={`absolute right-3 top-1/2 transform -translate-y-1/2 w-7 h-7 transition-all flex items-center justify-center ${isDarkMode
-                  ? 'text-green-400 hover:text-green-300 disabled:text-gray-500'
-                  : 'text-blue-600 hover:text-blue-700 disabled:text-gray-400'
-                  } disabled:cursor-not-allowed`}
-              >
-                <Send className="w-5 h-5 transform rotate-45" />
-              </button>
             </div>
 
-            <div className={`mt-2 text-xs text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-              Try: "Show scheduled posts" • "Create lead" • "View analytics"
-            </div>
-          </div>
-        )
-      }
+            {/* Message */}
+            <div className="flex-1">
+              <div className={`relative p-4 rounded-2xl ${isDarkMode
+                ? 'bg-gray-700 border border-gray-600'
+                : 'bg-pink-50 border border-pink-200'
+                }`}>
+                {/* Speech bubble pointer */}
+                <div className={`absolute left-0 top-4 transform -translate-x-2 w-0 h-0 ${isDarkMode
+                  ? 'border-t-8 border-t-gray-700 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                  : 'border-t-8 border-t-pink-50 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                  }`} />
 
-      {/* ATSN Content Modal */}
-      {
-        showContentModal && selectedContentForModal && (
-          <ATSNContentModal
-            content={selectedContentForModal}
-            onClose={handleCloseContentModal}
-          />
-        )
-      }
-
-      {/* Reel Modal */}
-      {
-        showReelModal && selectedContentForModal && (
-          <ReelModal
-            content={selectedContentForModal}
-            onClose={handleCloseReelModal}
-          />
-        )
-      }
-
-      {/* Date Picker Modal */}
-      {
-        showDatePicker && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                handleDatePickerCancel()
-              }
-            }}
-          >
-            <div
-              className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl"
-            >
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Date Range</h3>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    value={selectedDateRange.start}
-                    onChange={(e) => setSelectedDateRange(prev => ({ ...prev, start: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    min="2024-01-01"
-                    max="2030-12-31"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    End Date (Optional - leave empty for single date)
-                  </label>
-                  <input
-                    type="date"
-                    value={selectedDateRange.end}
-                    onChange={(e) => setSelectedDateRange(prev => ({ ...prev, end: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    min={selectedDateRange.start || "2024-01-01"}
-                    max="2030-12-31"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={handleDatePickerCancel}
-                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDatePickerConfirm}
-                  disabled={!selectedDateRange.start}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
-                >
-                  Confirm
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      }
-
-      {/* Single Date Picker Modal for Lead Follow-up */}
-      {
-        showSingleDatePicker && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                handleSingleDatePickerCancel()
-              }
-            }}
-          >
-            <div
-              className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl"
-            >
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Follow-up Date</h3>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Follow-up Date
-                  </label>
-                  <input
-                    type="date"
-                    value={selectedSingleDate}
-                    onChange={(e) => setSelectedSingleDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    min={new Date().toISOString().split('T')[0]} // Today or later
-                    max="2030-12-31"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={handleSingleDatePickerCancel}
-                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSingleDatePickerConfirm}
-                  disabled={!selectedSingleDate}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
-                >
-                  Confirm
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      }
-
-      {/* Media Upload Modal */}
-      {
-        showMediaUploadModal && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setShowMediaUploadModal(false)
-              }
-            }}
-          >
-            <div
-              className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {selectedFilesForUpload.length > 0 ? 'Confirm Upload' : 'Upload Media for Your Post'}
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowMediaUploadModal(false)
-                    setSelectedFilesForUpload([])
-                  }}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              <div className="mb-4">
-                {selectedFilesForUpload.length === 0 ? (
-                  <>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Select an image or video file from your computer. Supported formats: JPG, PNG, GIF, WebP, MP4, MOV, AVI, WebM.
-                    </p>
-
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-gray-400 transition-colors"
-                      onClick={() => document.getElementById('media-file-input').click()}>
-                      <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium text-gray-700">
-                          Click to select a file
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Images: PNG, JPG, GIF, WebP up to 10MB | Videos: MP4, MOV, AVI, WebM up to 50MB
-                        </p>
-                      </div>
-                      <input
-                        id="media-file-input"
-                        type="file"
-                        accept="image/*,video/*"
-                        onChange={(e) => {
-                          const file = e.target.files[0]
-                          if (file) {
-                            // Validate file type
-                            const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-                            const allowedVideoTypes = ['video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm']
-                            const allowedTypes = [...allowedImageTypes, ...allowedVideoTypes]
-
-                            if (!allowedTypes.includes(file.type)) {
-                              showError('Please select a valid image or video file')
-                              return
-                            }
-
-                            // Validate file size
-                            const isVideo = allowedVideoTypes.includes(file.type)
-                            const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024
-                            if (file.size > maxSize) {
-                              showError(`File size must be less than ${isVideo ? '50MB' : '10MB'}`)
-                              return
-                            }
-
-                            handleFileSelection([file])
-                          }
-                        }}
-                        className="hidden"
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Please confirm you want to upload this file:
-                    </p>
-
-                    <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                      <div className="flex items-start gap-4">
-                        {selectedFilesForUpload[0].type.startsWith('image/') ? (
-                          <img
-                            src={URL.createObjectURL(selectedFilesForUpload[0])}
-                            alt="Selected file"
-                            className="w-20 h-20 object-cover rounded-lg border"
-                          />
-                        ) : (
-                          <div className="w-20 h-20 bg-gray-200 rounded-lg flex items-center justify-center">
-                            <Video className="w-8 h-8 text-gray-500" />
-                          </div>
-                        )}
-
-                        <div className="flex-1">
-                          <h4 className="font-medium text-gray-900 mb-1">
-                            {selectedFilesForUpload[0].name}
-                          </h4>
-                          <p className="text-sm text-gray-600 mb-1">
-                            Type: {selectedFilesForUpload[0].type.split('/')[1].toUpperCase()}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            Size: {(selectedFilesForUpload[0].size / (1024 * 1024)).toFixed(2)} MB
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                      <div className="flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <h4 className="text-sm font-medium text-blue-900 mb-1">
-                            Ready to upload
-                          </h4>
-                          <p className="text-sm text-blue-700">
-                            This file will be uploaded to our secure storage and used in your content creation.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="flex gap-3">
-                {selectedFilesForUpload.length === 0 ? (
-                  <button
-                    onClick={() => {
-                      setShowMediaUploadModal(false)
-                      setSelectedFilesForUpload([])
-                    }}
-                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                  >
-                    Cancel
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      onClick={handleCancelUpload}
-                      disabled={isUploadingMedia}
-                      className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
-                    >
-                      Change File
-                    </button>
-                    <button
-                      onClick={handleConfirmUpload}
-                      disabled={isUploadingMedia}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {isUploadingMedia ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                          Uploading...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="w-4 h-4" />
-                          Upload & Continue
-                        </>
-                      )}
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )
-      }
-
-      {/* Edit Lead Modal */}
-      {
-        showEditLeadModal && editLeadData && (
-          <div
-            className={`fixed inset-0 ${isDarkMode ? 'bg-black bg-opacity-75' : 'bg-black bg-opacity-50'} flex items-center justify-center z-50`}
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setShowEditLeadModal(false)
-                setEditLeadData(null)
-              }
-            }}
-          >
-            <div
-              className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto`}
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className={`text-xl font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Edit Lead</h3>
-                <button
-                  onClick={() => {
-                    setShowEditLeadModal(false)
-                    setEditLeadData(null)
-                  }}
-                  className={`${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'} transition-colors`}
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              <form onSubmit={async (e) => {
-                e.preventDefault()
-                try {
-                  const formData = new FormData(e.target)
-
-                  // Update lead status if it changed
-                  const newStatus = formData.get('status')
-                  const remarks = formData.get('remarks')
-
-                  if (newStatus !== editLeadData.status) {
-                    await leadsAPI.updateLeadStatus(editLeadData.id, newStatus, remarks || null)
-                  }
-
-                  // Update other lead details directly in database
-                  const updatedLeadData = {
-                    name: formData.get('name'),
-                    email: formData.get('email'),
-                    phone_number: formData.get('phone'),
-                    source_platform: formData.get('source_platform')
-                  }
-
-                  // Direct API call to update lead details
-                  await leadsAPI.updateLead(editLeadData.id, updatedLeadData)
-
-                  showSuccess('Lead updated successfully')
-
-                  setShowEditLeadModal(false)
-                  setEditLeadData(null)
-                  setSelectedLeads([])
-
-                  // Refresh the current view to reflect the changes
-                  if (messages.length > 0) {
-                    const lastMessage = messages[messages.length - 1]
-                    if (lastMessage.intent === 'view_leads' || lastMessage.intent === 'delete_leads') {
-                      // Trigger a refresh by sending a new view leads command
-                      await sendMessage('Show my leads')
-                    }
-                  }
-                } catch (error) {
-                  console.error('Error updating lead:', error)
-                  showError('Failed to update lead. Please try again.')
-                }
-              }} className="space-y-4">
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Lead Name
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    defaultValue={editLeadData.name}
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400' : 'border-gray-300 bg-white text-gray-900'}`}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    defaultValue={editLeadData.email}
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400' : 'border-gray-300 bg-white text-gray-900'}`}
-                  />
-                </div>
-
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    name="phone"
-                    defaultValue={editLeadData.phone}
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400' : 'border-gray-300 bg-white text-gray-900'}`}
-                  />
-                </div>
-
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Status
-                  </label>
-                  <select
-                    name="status"
-                    defaultValue={editLeadData.status}
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200' : 'border-gray-300 bg-white text-gray-900'}`}
-                  >
-                    <option value="new">New</option>
-                    <option value="contacted">Contacted</option>
-                    <option value="responded">Responded</option>
-                    <option value="qualified">Qualified</option>
-                    <option value="converted">Converted</option>
-                    <option value="lost">Lost</option>
-                    <option value="invalid">Invalid</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Source Platform
-                  </label>
-                  <select
-                    name="source_platform"
-                    defaultValue={editLeadData.source_platform}
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200' : 'border-gray-300 bg-white text-gray-900'}`}
-                  >
-                    <option value="Website">Website</option>
-                    <option value="Facebook">Facebook</option>
-                    <option value="Instagram">Instagram</option>
-                    <option value="LinkedIn">LinkedIn</option>
-                    <option value="Walk Ins">Walk Ins</option>
-                    <option value="Referral">Referral</option>
-                    <option value="Email">Email</option>
-                    <option value="Phone Call">Phone Call</option>
-                    <option value="Manual Entry">Manual Entry</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Remarks
-                  </label>
-                  <textarea
-                    name="remarks"
-                    defaultValue={editLeadData.last_remark}
-                    rows={3}
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400' : 'border-gray-300 bg-white text-gray-900'}`}
-                    placeholder="Add any additional notes or remarks..."
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowEditLeadModal(false)
-                      setEditLeadData(null)
-                    }}
-                    className={`flex-1 px-4 py-2 rounded-md transition-colors ${isDarkMode ? 'text-gray-300 bg-gray-700 hover:bg-gray-600' : 'text-gray-700 bg-gray-100 hover:bg-gray-200'}`}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className={`flex-1 px-4 py-2 rounded-md transition-colors ${isDarkMode ? 'bg-blue-700 hover:bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
-                  >
-                    Update Lead
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )
-      }
-
-      {/* Publish Success Modal */}
-      {
-        showPublishSuccessModal && publishSuccessData && (
-          <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowPublishSuccessModal(false)} />
-            <div className={`relative max-w-md w-full rounded-2xl shadow-2xl overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'
-              }`}>
-              <div className="p-6">
-                <div className="text-center mb-4">
-                  <div className={`text-4xl mb-2 ${isDarkMode ? 'text-green-400' : 'text-green-500'}`}>🎉</div>
-                  <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'
-                    }`}>
-                    Content Published Successfully!
-                  </h3>
-                </div>
-
-                <div className={`p-4 rounded-lg mb-4 ${isDarkMode ? 'bg-gray-700' : 'bg-blue-50'
+                <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-gray-200' : 'text-gray-800'
                   }`}>
-                  <div className={`absolute left-0 top-4 transform -translate-x-2 w-0 h-0 ${isDarkMode
-                    ? 'border-t-8 border-t-gray-700 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
-                    : 'border-t-8 border-t-blue-50 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
-                    }`} />
+                  <span className="font-normal text-pink-500">Emily here!</span> 🚀<br />
+                  Ready to publish <strong>"{itemToPublish.title || 'this content'}"</strong> to <strong>{itemToPublish.platform}</strong>?
+                  This will share your content with your audience!
+                </p>
+              </div>
 
-                  <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-gray-200' : 'text-gray-800'
-                    }`}>
-                    <span className="font-normal text-pink-500">Emily here!</span> 🎉<br />
-                    Your content has been successfully published to {publishSuccessData.platform}!
-                    {publishSuccessData.postUrl && (
-                      <a href={publishSuccessData.postUrl} target="_blank" rel="noopener noreferrer"
-                        className="text-blue-500 hover:underline ml-1">
-                        View post →
-                      </a>
-                    )}
+              <div className="mt-4 flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowPublishModal(false)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${isDarkMode
+                    ? 'text-gray-400 bg-gray-700 hover:bg-gray-600'
+                    : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+                    }`}
+                  disabled={isPublishing}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmPublishSelected}
+                  disabled={isPublishing}
+                  className="px-4 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg font-medium hover:from-pink-600 hover:to-rose-600 transition-all duration-200 disabled:opacity-50 flex items-center space-x-2"
+                >
+                  {isPublishing ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Publishing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      <span>Publish</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+{/* Schedule Confirmation Modal */ }
+{
+  showScheduleConfirmModal && itemToSchedule && (
+    <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={() => setShowScheduleConfirmModal(false)}
+      />
+      <div className={`relative max-w-md w-full rounded-2xl shadow-2xl overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'
+        }`}>
+        {/* Header */}
+        <div className={`p-6 border-b ${isDarkMode
+          ? 'border-gray-700 bg-gradient-to-r from-green-900/20 to-emerald-900/20'
+          : 'border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50'
+          }`}>
+          <div className="flex items-center justify-center space-x-3">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className={`text-lg font-normal ${isDarkMode ? 'text-gray-100' : 'text-gray-900'
+                }`}>
+                Schedule Content
+              </h3>
+            </div>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="p-6">
+          <div className="flex items-start space-x-4">
+            {/* Emily Avatar */}
+            <div className="flex-shrink-0">
+              <img
+                src="/emily_icon.png"
+                alt="Emily"
+                className="w-16 h-16 rounded-full object-cover border-2 border-pink-200"
+                onError={(e) => {
+                  e.target.src = '/default-logo.png'
+                }}
+              />
+            </div>
+
+            {/* Message */}
+            <div className="flex-1">
+              <div className={`relative p-4 rounded-2xl ${isDarkMode
+                ? 'bg-gray-700 border border-gray-600'
+                : 'bg-pink-50 border border-pink-200'
+                }`}>
+                {/* Speech bubble pointer */}
+                <div className={`absolute left-0 top-4 transform -translate-x-2 w-0 h-0 ${isDarkMode
+                  ? 'border-t-8 border-t-gray-700 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                  : 'border-t-8 border-t-pink-50 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                  }`} />
+
+                <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-gray-200' : 'text-gray-800'
+                  }`}>
+                  <span className="font-normal text-pink-500">Emily here!</span> ⏰<br />
+                  Ready to schedule <strong>"{itemToSchedule.title || 'this content'}"</strong> for later?
+                  I'll help you pick the perfect time to share it!
+                </p>
+              </div>
+
+              <div className="mt-4 flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowScheduleConfirmModal(false)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${isDarkMode
+                    ? 'text-gray-400 bg-gray-700 hover:bg-gray-600'
+                    : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+                    }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmScheduleSelected}
+                  className="px-4 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg font-medium hover:from-pink-600 hover:to-rose-600 transition-all duration-200 flex items-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Schedule</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+{/* Date Picker Modal */ }
+{
+  showDatePicker && (
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          handleDatePickerCancel()
+        }
+      }}
+    >
+      <div
+        className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl"
+      >
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Date Range</h3>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Start Date
+            </label>
+            <input
+              type="date"
+              value={selectedDateRange.start}
+              onChange={(e) => setSelectedDateRange(prev => ({ ...prev, start: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              min="2024-01-01"
+              max="2030-12-31"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              End Date (Optional - leave empty for single date)
+            </label>
+            <input
+              type="date"
+              value={selectedDateRange.end}
+              onChange={(e) => setSelectedDateRange(prev => ({ ...prev, end: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              min={selectedDateRange.start || "2024-01-01"}
+              max="2030-12-31"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={handleDatePickerCancel}
+            className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleDatePickerConfirm}
+            disabled={!selectedDateRange.start}
+            className="flex-1 px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+{/* Single Date Picker Modal for Lead Follow-up */ }
+{
+  showSingleDatePicker && (
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          handleSingleDatePickerCancel()
+        }
+      }}
+    >
+      <div
+        className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl"
+      >
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Follow-up Date</h3>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Follow-up Date
+            </label>
+            <input
+              type="date"
+              value={selectedSingleDate}
+              onChange={(e) => setSelectedSingleDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              min={new Date().toISOString().split('T')[0]} // Today or later
+              max="2030-12-31"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={handleSingleDatePickerCancel}
+            className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSingleDatePickerConfirm}
+            disabled={!selectedSingleDate}
+            className="flex-1 px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+{/* Media Upload Modal */ }
+{
+  showMediaUploadModal && (
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          setShowMediaUploadModal(false)
+        }
+      }}
+    >
+      <div
+        className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
+      >
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">
+            {selectedFilesForUpload.length > 0 ? 'Confirm Upload' : 'Upload Media for Your Post'}
+          </h3>
+          <button
+            onClick={() => {
+              setShowMediaUploadModal(false)
+              setSelectedFilesForUpload([])
+            }}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="mb-4">
+          {selectedFilesForUpload.length === 0 ? (
+            <>
+              <p className="text-sm text-gray-600 mb-4">
+                Select an image or video file from your computer. Supported formats: JPG, PNG, GIF, WebP, MP4, MOV, AVI, WebM.
+              </p>
+
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-gray-400 transition-colors"
+                onClick={() => document.getElementById('media-file-input').click()}>
+                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-gray-700">
+                    Click to select a file
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Images: PNG, JPG, GIF, WebP up to 10MB | Videos: MP4, MOV, AVI, WebM up to 50MB
                   </p>
                 </div>
+                <input
+                  id="media-file-input"
+                  type="file"
+                  accept="image/*,video/*"
+                  onChange={(e) => {
+                    const file = e.target.files[0]
+                    if (file) {
+                      // Validate file type
+                      const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+                      const allowedVideoTypes = ['video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm']
+                      const allowedTypes = [...allowedImageTypes, ...allowedVideoTypes]
 
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={() => {
-                      console.log('Closing publish success modal')
-                      setShowPublishSuccessModal(false)
-                      setPublishSuccessData(null)
-                    }}
-                    className="px-6 py-2 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg font-medium hover:from-pink-600 hover:to-purple-600 transition-all duration-200 transform hover:scale-105"
-                  >
-                    Awesome! ✨
-                  </button>
+                      if (!allowedTypes.includes(file.type)) {
+                        showError('Please select a valid image or video file')
+                        return
+                      }
+
+                      // Validate file size
+                      const isVideo = allowedVideoTypes.includes(file.type)
+                      const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024
+                      if (file.size > maxSize) {
+                        showError(`File size must be less than ${isVideo ? '50MB' : '10MB'}`)
+                        return
+                      }
+
+                      handleFileSelection([file])
+                    }
+                  }}
+                  className="hidden"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-gray-600 mb-4">
+                Please confirm you want to upload this file:
+              </p>
+
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <div className="flex items-start gap-4">
+                  {selectedFilesForUpload[0].type.startsWith('image/') ? (
+                    <img
+                      src={URL.createObjectURL(selectedFilesForUpload[0])}
+                      alt="Selected file"
+                      className="w-20 h-20 object-cover rounded-lg border"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 bg-gray-200 rounded-lg flex items-center justify-center">
+                      <Video className="w-8 h-8 text-gray-500" />
+                    </div>
+                  )}
+
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900 mb-1">
+                      {selectedFilesForUpload[0].name}
+                    </h4>
+                    <p className="text-sm text-gray-600 mb-1">
+                      Type: {selectedFilesForUpload[0].type.split('/')[1].toUpperCase()}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Size: {(selectedFilesForUpload[0].size / (1024 * 1024)).toFixed(2)} MB
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )
-      }
 
-      {/* Character Card Tooltip */}
-      <CharacterCard
-        agentName={tooltipAgent}
-        isVisible={!!tooltipAgent}
-        position={tooltipPosition}
-        isDarkMode={isDarkMode}
-      />
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="text-sm font-medium text-blue-900 mb-1">
+                      Ready to upload
+                    </h4>
+                    <p className="text-sm text-blue-700">
+                      This file will be uploaded to our secure storage and used in your content creation.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex gap-3">
+          {selectedFilesForUpload.length === 0 ? (
+            <button
+              onClick={() => {
+                setShowMediaUploadModal(false)
+                setSelectedFilesForUpload([])
+              }}
+              className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            >
+              Cancel
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleCancelUpload}
+                disabled={isUploadingMedia}
+                className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+              >
+                Change File
+              </button>
+              <button
+                onClick={handleConfirmUpload}
+                disabled={isUploadingMedia}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isUploadingMedia ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    Upload & Continue
+                  </>
+                )}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+{/* Edit Lead Modal */ }
+{
+  showEditLeadModal && editLeadData && (
+    <div
+      className={`fixed inset-0 ${isDarkMode ? 'bg-black bg-opacity-75' : 'bg-black bg-opacity-50'} flex items-center justify-center z-50`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          setShowEditLeadModal(false)
+          setEditLeadData(null)
+        }
+      }}
+    >
+      <div
+        className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto`}
+      >
+        <div className="flex justify-between items-center mb-6">
+          <h3 className={`text-xl font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Edit Lead</h3>
+          <button
+            onClick={() => {
+              setShowEditLeadModal(false)
+              setEditLeadData(null)
+            }}
+            className={`${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'} transition-colors`}
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <form onSubmit={async (e) => {
+          e.preventDefault()
+          try {
+            const formData = new FormData(e.target)
+
+            // Update lead status if it changed
+            const newStatus = formData.get('status')
+            const remarks = formData.get('remarks')
+
+            if (newStatus !== editLeadData.status) {
+              await leadsAPI.updateLeadStatus(editLeadData.id, newStatus, remarks || null)
+            }
+
+            // Update other lead details directly in database
+            const updatedLeadData = {
+              name: formData.get('name'),
+              email: formData.get('email'),
+              phone_number: formData.get('phone'),
+              source_platform: formData.get('source_platform')
+            }
+
+            // Direct API call to update lead details
+            await leadsAPI.updateLead(editLeadData.id, updatedLeadData)
+
+            showSuccess('Lead updated successfully')
+
+            setShowEditLeadModal(false)
+            setEditLeadData(null)
+            setSelectedLeads([])
+
+            // Refresh the current view to reflect the changes
+            if (messages.length > 0) {
+              const lastMessage = messages[messages.length - 1]
+              if (lastMessage.intent === 'view_leads' || lastMessage.intent === 'delete_leads') {
+                // Trigger a refresh by sending a new view leads command
+                await sendMessage('Show my leads')
+              }
+            }
+          } catch (error) {
+            console.error('Error updating lead:', error)
+            showError('Failed to update lead. Please try again.')
+          }
+        }} className="space-y-4">
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Lead Name
+            </label>
+            <input
+              type="text"
+              name="name"
+              defaultValue={editLeadData.name}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400' : 'border-gray-300 bg-white text-gray-900'}`}
+              required
+            />
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Email Address
+            </label>
+            <input
+              type="email"
+              name="email"
+              defaultValue={editLeadData.email}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400' : 'border-gray-300 bg-white text-gray-900'}`}
+            />
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Phone Number
+            </label>
+            <input
+              type="tel"
+              name="phone"
+              defaultValue={editLeadData.phone}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400' : 'border-gray-300 bg-white text-gray-900'}`}
+            />
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Status
+            </label>
+            <select
+              name="status"
+              defaultValue={editLeadData.status}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200' : 'border-gray-300 bg-white text-gray-900'}`}
+            >
+              <option value="new">New</option>
+              <option value="contacted">Contacted</option>
+              <option value="responded">Responded</option>
+              <option value="qualified">Qualified</option>
+              <option value="converted">Converted</option>
+              <option value="lost">Lost</option>
+              <option value="invalid">Invalid</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Source Platform
+            </label>
+            <select
+              name="source_platform"
+              defaultValue={editLeadData.source_platform}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200' : 'border-gray-300 bg-white text-gray-900'}`}
+            >
+              <option value="Website">Website</option>
+              <option value="Facebook">Facebook</option>
+              <option value="Instagram">Instagram</option>
+              <option value="LinkedIn">LinkedIn</option>
+              <option value="Walk Ins">Walk Ins</option>
+              <option value="Referral">Referral</option>
+              <option value="Email">Email</option>
+              <option value="Phone Call">Phone Call</option>
+              <option value="Manual Entry">Manual Entry</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Remarks
+            </label>
+            <textarea
+              name="remarks"
+              defaultValue={editLeadData.last_remark}
+              rows={3}
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-200 placeholder-gray-400' : 'border-gray-300 bg-white text-gray-900'}`}
+              placeholder="Add any additional notes or remarks..."
+            />
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowEditLeadModal(false)
+                setEditLeadData(null)
+              }}
+              className={`flex-1 px-4 py-2 rounded-md transition-colors ${isDarkMode ? 'text-gray-300 bg-gray-700 hover:bg-gray-600' : 'text-gray-700 bg-gray-100 hover:bg-gray-200'}`}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className={`flex-1 px-4 py-2 rounded-md transition-colors ${isDarkMode ? 'bg-blue-700 hover:bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+            >
+              Update Lead
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+{/* Publish Success Modal */ }
+{
+  showPublishSuccessModal && publishSuccessData && (
+    <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowPublishSuccessModal(false)} />
+      <div className={`relative max-w-md w-full rounded-2xl shadow-2xl overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'
+        }`}>
+        <div className="p-6">
+          <div className="text-center mb-4">
+            <div className={`text-4xl mb-2 ${isDarkMode ? 'text-green-400' : 'text-green-500'}`}>🎉</div>
+            <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'
+              }`}>
+              Content Published Successfully!
+            </h3>
+          </div>
+
+          <div className={`p-4 rounded-lg mb-4 ${isDarkMode ? 'bg-gray-700' : 'bg-blue-50'
+            }`}>
+            <div className={`absolute left-0 top-4 transform -translate-x-2 w-0 h-0 ${isDarkMode
+              ? 'border-t-8 border-t-gray-700 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+              : 'border-t-8 border-t-blue-50 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+              }`} />
+
+            <p className={`text-sm leading-relaxed ${isDarkMode ? 'text-gray-200' : 'text-gray-800'
+              }`}>
+              <span className="font-normal text-pink-500">Emily here!</span> 🎉<br />
+              Your content has been successfully published to {publishSuccessData.platform}!
+              {publishSuccessData.postUrl && (
+                <a href={publishSuccessData.postUrl} target="_blank" rel="noopener noreferrer"
+                  className="text-blue-500 hover:underline ml-1">
+                  View post →
+                </a>
+              )}
+            </p>
+          </div>
+
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => {
+                console.log('Closing publish success modal')
+                setShowPublishSuccessModal(false)
+                setPublishSuccessData(null)
+              }}
+              className="px-6 py-2 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg font-medium hover:from-pink-600 hover:to-purple-600 transition-all duration-200 transform hover:scale-105"
+            >
+              Awesome! ✨
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+{/* Character Card Tooltip */ }
+<CharacterCard
+  agentName={tooltipAgent}
+  isVisible={!!tooltipAgent}
+  position={tooltipPosition}
+  isDarkMode={isDarkMode}
+/>
     </div >
   )
 }
