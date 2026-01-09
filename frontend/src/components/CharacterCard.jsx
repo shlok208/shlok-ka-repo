@@ -70,13 +70,13 @@ const CharacterCard = ({ agentName, isVisible = false, position = { x: 0, y: 0 }
       newX = viewportWidth - cardWidth / 2 - 10
     }
 
-    // Check vertical boundaries
-    if (position.y - cardHeight - 20 < 0) {
-      // Too high, show below cursor instead
-      newY = position.y + 20
+    // Check vertical boundaries - prefer showing below
+    if (position.y + cardHeight + 20 > viewportHeight) {
+      // Not enough space below, show above cursor instead
+      newY = position.y - cardHeight - 8
     } else {
-      // Normal position above cursor
-      newY = position.y - 8
+      // Normal position below cursor
+      newY = position.y + 20
     }
 
     setAdjustedPosition({ x: newX, y: newY })
@@ -95,7 +95,7 @@ const CharacterCard = ({ agentName, isVisible = false, position = { x: 0, y: 0 }
       style={{
         left: adjustedPosition.x,
         top: adjustedPosition.y,
-        transform: position.y - adjustedPosition.y > 0 ? 'translate(-50%, -100%)' : 'translate(-50%, 20px)',
+        transform: adjustedPosition.y > position.y ? 'translateX(-50%)' : 'translate(-50%, -100%)',
       }}
     >
       <div className="flex items-start gap-5">
@@ -159,23 +159,7 @@ const CharacterCard = ({ agentName, isVisible = false, position = { x: 0, y: 0 }
       </div>
 
             {/* Tooltip arrow */}
-            {position.y - adjustedPosition.y > 0 ? (
-              // Arrow pointing down (card above cursor)
-              <>
-                <div
-                  className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent ${
-                    isDarkMode ? 'border-t-gray-900/90' : 'border-t-white/90'
-                  }`}
-                  style={{ marginTop: '-1px' }}
-                ></div>
-                <div
-                  className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent ${
-                    isDarkMode ? 'border-t-gray-700/50' : 'border-t-white/20'
-                  }`}
-                  style={{ marginTop: '0px' }}
-                ></div>
-              </>
-            ) : (
+            {adjustedPosition.y > position.y ? (
               // Arrow pointing up (card below cursor)
               <>
                 <div
@@ -189,6 +173,22 @@ const CharacterCard = ({ agentName, isVisible = false, position = { x: 0, y: 0 }
                     isDarkMode ? 'border-b-gray-700/50' : 'border-b-white/20'
                   }`}
                   style={{ marginBottom: '0px' }}
+                ></div>
+              </>
+            ) : (
+              // Arrow pointing down (card above cursor)
+              <>
+                <div
+                  className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent ${
+                    isDarkMode ? 'border-t-gray-900/90' : 'border-t-white/90'
+                  }`}
+                  style={{ marginTop: '-1px' }}
+                ></div>
+                <div
+                  className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent ${
+                    isDarkMode ? 'border-t-gray-700/50' : 'border-t-white/20'
+                  }`}
+                  style={{ marginTop: '0px' }}
                 ></div>
               </>
             )}

@@ -2421,14 +2421,14 @@ const OnboardingForm = forwardRef(({
                 className="w-6 h-6 object-contain"
               />
             </div>
-            <div>
-              <h2 className={`text-2xl font-semibold ${Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-800'}`}>
-                {isEditMode ? 'Edit Profile' : 'Complete Your Profile'}
-              </h2>
-              <p className={`${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}`}>
-                {isEditMode ? 'Update your business information' : 'Let\'s get to know your business better'}
-              </p>
-            </div>
+          <div>
+            <h2 className={`text-2xl font-semibold ${Boolean(isDarkMode) ? 'text-gray-100' : 'text-gray-800'}`}>
+              {isEditMode ? 'Edit Profile' : 'Complete Your Profile'}
+            </h2>
+            <p className={`${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-600'}`}>
+              {isEditMode ? 'Update your business information' : 'Let\'s get to know your business better'}
+            </p>
+          </div>
           </div>
           <div className="flex items-center gap-2">
             {onChangeSelection && !isEditMode && (
@@ -2443,16 +2443,16 @@ const OnboardingForm = forwardRef(({
                 Change Selection
               </button>
             )}
-            {onClose && (
-              <button
-                onClick={onClose}
-                className={`p-2 rounded-lg transition-colors ${
-                  isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-                }`}
-              >
-                <X className={`w-5 h-5 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-500'}`} />
-              </button>
-            )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className={`p-2 rounded-lg transition-colors ${
+                isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+              }`}
+            >
+              <X className={`w-5 h-5 ${Boolean(isDarkMode) ? 'text-gray-300' : 'text-gray-500'}`} />
+            </button>
+          )}
           </div>
         </div>
       )}

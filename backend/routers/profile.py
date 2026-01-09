@@ -59,6 +59,31 @@ async def get_usage_counts(current_user: User = Depends(get_current_user)):
         logger.error(f"Error fetching usage counts for user {current_user.id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching usage counts: {str(e)}")
 
+@router.get("/agents/profiles")
+async def get_agent_profiles():
+    """Get all agent profiles with likes_count and tasks_count"""
+    try:
+        response = supabase_client.table('agent_profiles').select('agent_name, likes_count, tasks_count').execute()
+        
+        if not response.data:
+            logger.warning("No agent profiles found")
+            return {}
+        
+        # Convert to a dictionary keyed by agent_name for easy lookup
+        profiles = {}
+        for profile in response.data:
+            agent_name = profile.get('agent_name', '').lower()
+            profiles[agent_name] = {
+                'likes_count': profile.get('likes_count', 0) or 0,
+                'tasks_count': profile.get('tasks_count', 0) or 0
+            }
+        
+        return profiles
+
+    except Exception as e:
+        logger.error(f"Error fetching agent profiles: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching agent profiles: {str(e)}")
+
 @router.post("/agents/{agent_name}/like")
 async def increment_agent_likes(agent_name: str, current_user: User = Depends(get_current_user)):
     """Increment the likes count for a specific agent"""

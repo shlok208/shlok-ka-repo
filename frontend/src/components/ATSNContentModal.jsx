@@ -702,15 +702,15 @@ const ATSNContentModal = ({
                     >
                       {carouselImages.map((img, index) => (
                         <div key={index} className="min-w-full h-full flex-shrink-0">
-                          <img
+                  <img
                             src={img}
                             alt={`Carousel image ${index + 1}`}
                             className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.target.style.display = 'none'
-                            }}
-                          />
-                        </div>
+                    onError={(e) => {
+                      e.target.style.display = 'none'
+                    }}
+                  />
+                </div>
                       ))}
                     </div>
                   </div>
@@ -1375,7 +1375,7 @@ const ATSNContentModal = ({
                     </button>
                   )}
                 </div>
-              </div>
+                </div>
               </div>
             </div>
           </div>

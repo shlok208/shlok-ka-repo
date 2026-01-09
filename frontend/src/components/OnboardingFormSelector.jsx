@@ -77,13 +77,13 @@ const OnboardingFormSelector = ({ onSelect }) => {
   }
 
   return (
-    <div
+    <div 
       className={`fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in ${
         isDarkMode ? 'bg-black/70' : 'bg-black/60'
       }`}
       style={{ pointerEvents: 'auto' }}
     >
-      <div
+      <div 
         className={`rounded-3xl shadow-2xl max-w-4xl w-full overflow-hidden transform animate-slide-up ${
           isDarkMode ? 'bg-gray-800' : 'bg-white'
         }`}

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { Send, ArrowRight, User, Bot, RefreshCw, MessageCircle, Clock, AlertCircle, Trash2, Square, CheckSquare, Edit, Share, Calendar, Save, Copy, Upload, Video, Mail, Phone, Heart, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import Lottie from 'lottie-react'
 import ContentCard from './ContentCard'
 import ATSNContentCard from './ATSNContentCard'
 import ATSNContentModal from './ATSNContentModal'
@@ -16,6 +17,7 @@ import CharacterCard from './CharacterCard'
 import { leadsAPI } from '../services/leads'
 import { connectionsAPI } from '../services/connections'
 import { mediaAPI } from '../services/api'
+import { profileAPI } from '../services/profile'
 
 // Get dark mode state from localStorage or default to dark mode
 const getDarkModePreference = () => {
@@ -66,6 +68,19 @@ const getApiBaseUrl = () => {
 }
 const API_BASE_URL = getApiBaseUrl().replace(/\/$/, '')
 
+const CONVERSATION_HISTORY_CACHE_KEY = 'atsn_conversation_history_cache'
+
+const appendConversationHistoryCache = (entries) => {
+  if (!entries || entries.length === 0) return
+  try {
+    const existing = JSON.parse(localStorage.getItem(CONVERSATION_HISTORY_CACHE_KEY) || '[]')
+    const merged = [...existing, ...entries]
+    localStorage.setItem(CONVERSATION_HISTORY_CACHE_KEY, JSON.stringify(merged))
+  } catch (error) {
+    console.error('Error caching conversation history:', error)
+  }
+}
+
 const ATSNChatbot = ({ externalConversations = null }) => {
   const { user } = useAuth()
   const { showError, showSuccess } = useNotifications()
@@ -112,6 +127,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
   const [selectedSingleDate, setSelectedSingleDate] = useState('')
   const [thinkingPhase, setThinkingPhase] = useState(0) // 0: assigning, 1: contacting, 2: invoking, 3: working
   const [isFirstMessage, setIsFirstMessage] = useState(true) // Track if this is the first message in session
+  const [transferringToAgent, setTransferringToAgent] = useState(null) // Track which agent we're transferring to
+  const [generatingAnimationData, setGeneratingAnimationData] = useState(null)
   const [showMediaUploadModal, setShowMediaUploadModal] = useState(false)
   const [showPublishSuccessModal, setShowPublishSuccessModal] = useState(false)
   const [publishSuccessData, setPublishSuccessData] = useState(null)
@@ -124,14 +141,18 @@ const ATSNChatbot = ({ externalConversations = null }) => {
   const [uploadedMediaUrls, setUploadedMediaUrls] = useState([])
   const [selectedFilesForUpload, setSelectedFilesForUpload] = useState([])
   const [businessName, setBusinessName] = useState('') // Business name from profile
+  const [businessLogo, setBusinessLogo] = useState(null) // Cached business logo (base64 data URL)
+  const [businessLogoError, setBusinessLogoError] = useState(false) // Track if logo failed to load
   const [isUploadingMedia, setIsUploadingMedia] = useState(false)
   const [tooltipAgent, setTooltipAgent] = useState(null)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
+  const [agentProfiles, setAgentProfiles] = useState({}) // Cache for agent profiles
   const [isDarkMode, setIsDarkMode] = useState(getDarkModePreference)
   const [likedMessages, setLikedMessages] = useState(new Set())
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const MAX_INPUT_HEIGHT = 96 // Approx height for three text lines
+  const WELCOME_MAX_INPUT_HEIGHT = 128 // Approx height for four lines on welcome screen
   const lastExternalConversationsRef = useRef(null)
   const hasScrolledToBottomRef = useRef(false)
 
@@ -216,6 +237,57 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
   // Listen for dark mode changes from other components (like SideNavbar)
   useStorageListener('darkMode', setIsDarkMode)
+
+  // Load generating.json Lottie animation
+  useEffect(() => {
+    fetch('/generating.json')
+      .then(response => response.json())
+      .then(data => setGeneratingAnimationData(data))
+      .catch(error => console.error('Error loading generating animation:', error))
+  }, [])
+
+  // Fetch agent profiles with 24-hour cache
+  useEffect(() => {
+    const fetchAgentProfiles = async () => {
+      const CACHE_KEY = 'agent_profiles_cache'
+      const CACHE_TIMESTAMP_KEY = 'agent_profiles_cache_timestamp'
+      const CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+
+      try {
+        // Check cache
+        const cachedData = localStorage.getItem(CACHE_KEY)
+        const cacheTimestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY)
+        const now = Date.now()
+
+        if (cachedData && cacheTimestamp) {
+          const age = now - parseInt(cacheTimestamp, 10)
+          if (age < CACHE_DURATION) {
+            // Use cached data
+            setAgentProfiles(JSON.parse(cachedData))
+            return
+          }
+        }
+
+        // Fetch fresh data
+        const response = await profileAPI.getAgentProfiles()
+        if (response.data) {
+          setAgentProfiles(response.data)
+          // Update cache
+          localStorage.setItem(CACHE_KEY, JSON.stringify(response.data))
+          localStorage.setItem(CACHE_TIMESTAMP_KEY, now.toString())
+        }
+      } catch (error) {
+        console.error('Error fetching agent profiles:', error)
+        // Try to use cached data even if expired on error
+        const cachedData = localStorage.getItem(CACHE_KEY)
+        if (cachedData) {
+          setAgentProfiles(JSON.parse(cachedData))
+        }
+      }
+    }
+
+    fetchAgentProfiles()
+  }, [])
 
   // Handle thinking message phases
   useEffect(() => {
@@ -422,7 +494,76 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       }
     }
 
+    // Load and cache business logo from profile
+    const loadBusinessLogo = async () => {
+      if (!user) return
+
+      try {
+        const cacheKey = `business_logo_${user.id}`
+        const cacheTimestampKey = `business_logo_timestamp_${user.id}`
+        const CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+
+        // Reset error state when loading logo
+        setBusinessLogoError(false)
+
+        // Check cache first
+        const cachedLogo = localStorage.getItem(cacheKey)
+        const cachedTimestamp = localStorage.getItem(cacheTimestampKey)
+        
+        if (cachedLogo && cachedTimestamp) {
+          const timestamp = parseInt(cachedTimestamp, 10)
+          const now = Date.now()
+          
+          // Use cached logo if it's still valid
+          if (now - timestamp < CACHE_DURATION) {
+            setBusinessLogo(cachedLogo)
+            return
+          }
+        }
+
+        // Fetch logo_url from profiles table
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('logo_url')
+          .eq('id', user.id)
+          .single()
+
+        if (error || !profile?.logo_url) {
+          console.log('No logo URL found in profile')
+          return
+        }
+
+        // Download the logo image
+        const response = await fetch(profile.logo_url)
+        if (!response.ok) {
+          console.error('Failed to download logo:', response.status)
+          return
+        }
+
+        const blob = await response.blob()
+        
+        // Convert to base64 data URL
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          const base64Logo = reader.result
+          
+          // Cache the logo
+          localStorage.setItem(cacheKey, base64Logo)
+          localStorage.setItem(cacheTimestampKey, Date.now().toString())
+          
+          setBusinessLogo(base64Logo)
+        }
+        reader.onerror = () => {
+          console.error('Error converting logo to base64')
+        }
+        reader.readAsDataURL(blob)
+      } catch (error) {
+        console.error('Error loading business logo:', error)
+      }
+    }
+
     loadBusinessName()
+    loadBusinessLogo()
   }, [user])
 
 
@@ -730,6 +871,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       if (response.ok) {
         const data = await response.json()
         console.log('Successfully saved cached messages to database')
+        appendConversationHistoryCache(conversationData.messages)
         setMessageCache([])
         setHasUnsavedChanges(false)
         setSaveStatus('saved')
@@ -768,6 +910,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
       if (response.ok) {
         console.log('Successfully saved complete conversation to database')
+        appendConversationHistoryCache(conversationData.messages)
         setMessageCache([])
         setHasUnsavedChanges(false)
         setSaveStatus('saved')
@@ -809,19 +952,22 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
     // Calculate updated conversation history
     const updatedHistory = [...conversationHistory, userMessage]
-
+    
     // Store the message for loading detection
     setLastSentMessage(inputMessage)
 
     // Update conversation history state
     setConversationHistory(updatedHistory)
+    
+    // Reset transferring agent for new message
+    setTransferringToAgent(null)
     setInputMessage('')
     setIsLoading(true)
 
     try {
       // Get token from session
       const token = await getAuthToken()
-
+      
       if (!token) {
         throw new Error('No authentication session found. Please log in again.')
       }
@@ -850,6 +996,11 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       }
 
       const data = await response.json()
+
+      // Set transferring agent as soon as agent_name is retrieved
+      if (data.agent_name) {
+        setTransferringToAgent(data.agent_name)
+      }
 
       // Debug: log the raw response
       console.log('Raw API response:', data.response)
@@ -919,12 +1070,14 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       // Update thinking phase
       setIsFirstMessage(false)
       setThinkingPhase(0)
+      // Clear transferring agent after message is displayed
+      setTransferringToAgent(null)
 
     } catch (error) {
       console.error('Error sending message:', error)
       const errorMessage = error.message || 'Failed to send message. Please try again.'
       showError(errorMessage)
-
+      
       const errorMessageObj = {
         id: Date.now(),
         sender: 'bot',
@@ -935,6 +1088,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
       setMessages(prev => [...prev, errorMessageObj])
       setMessageCache(prev => [...prev, errorMessageObj])
+      // Reset transferring agent on error
+      setTransferringToAgent(null)
     } finally {
       setIsLoading(false)
       setLastSentMessage('')
@@ -1023,12 +1178,12 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     }
   }
 
-  const adjustInputHeight = (target) => {
+  const adjustInputHeight = (target, maxHeight = MAX_INPUT_HEIGHT) => {
     if (!target) return
     target.style.height = 'auto'
-    const newHeight = Math.min(target.scrollHeight, MAX_INPUT_HEIGHT)
+    const newHeight = Math.min(target.scrollHeight, maxHeight)
     target.style.height = `${newHeight}px`
-    target.style.overflowY = target.scrollHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden'
+    target.style.overflowY = target.scrollHeight > maxHeight ? 'auto' : 'hidden'
   }
 
   const resetInputHeight = () => {
@@ -1153,7 +1308,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     }
 
     setShowDeleteModal(true)
-  }
+    }
 
   const confirmDeleteSelected = async () => {
     setShowDeleteModal(false)
@@ -2196,7 +2351,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     setTooltipAgent(agentName)
     setTooltipPosition({
       x: rect.left + rect.width / 2,
-      y: rect.top
+      y: rect.bottom
     })
   }
 
@@ -2736,6 +2891,12 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
   // Get thinking message based on current phase
   const getThinkingMessage = () => {
+    // If agent_name is retrieved, show transferring message
+    if (transferringToAgent) {
+      const agentDisplayName = formatAgentName(transferringToAgent)
+      return `Transferring to ${agentDisplayName}...`
+    }
+
     if (isFirstMessage) {
       switch (thinkingPhase) {
         case 0:
@@ -2919,40 +3080,24 @@ const ATSNChatbot = ({ externalConversations = null }) => {
 
             {/* Input Box in Center */}
             <div className="w-full max-w-lg mx-auto">
-              {/* Save Status Indicator */}
-              {saveStatus !== 'saved' && (
-                <div className={`flex items-center justify-center gap-2 text-xs mb-4 px-3 py-1 rounded-full ${
-                  saveStatus === 'saving'
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                    : saveStatus === 'unsaved'
-                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                    : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
-                }`}>
-                  {saveStatus === 'saving' && <RefreshCw className="w-3 h-3 animate-spin" />}
-                  {saveStatus === 'unsaved' && <Clock className="w-3 h-3" />}
-                  {saveStatus === 'error' && <X className="w-3 h-3" />}
-                  <span>
-                    {saveStatus === 'saving' && 'Saving conversation...'}
-                    {saveStatus === 'unsaved' && 'Unsaved changes'}
-                    {saveStatus === 'error' && 'Save failed'}
-                  </span>
-                </div>
-              )}
-
               <div className="relative">
-                <input
+                <textarea
                   ref={inputRef}
-                  type="text"
+                  rows={1}
                   value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
+                  onChange={(e) => {
+                    setInputMessage(e.target.value)
+                    adjustInputHeight(e.target, WELCOME_MAX_INPUT_HEIGHT)
+                  }}
                   onKeyPress={handleKeyPress}
                   placeholder="Ask me to manage your content or leads..."
-                  className={`w-full px-6 pr-14 py-4 text-base rounded-[20px] backdrop-blur-sm focus:outline-none shadow-lg ${
+                  className={`w-full px-6 pr-14 py-4 text-base rounded-[20px] backdrop-blur-sm focus:outline-none shadow-lg resize-none transition-[height] overflow-hidden ${
                     isDarkMode
                       ? 'bg-gray-700/80 border-0 focus:ring-0 text-gray-100 placeholder-gray-400'
                       : 'bg-white/80 border border-white/20 focus:ring-2 focus:ring-white/30 focus:border-white/50 text-gray-900 placeholder-gray-500'
                   }`}
                   disabled={isLoading}
+                  style={{ maxHeight: `${WELCOME_MAX_INPUT_HEIGHT}px`, overflowY: 'auto' }}
                 />
                 <button
                   onClick={handleSendMessage}
@@ -2978,21 +3123,33 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                 {/* Agent Logos */}
                 <div className="flex justify-center items-center gap-6 mt-4">
                   <div className="flex flex-col items-center space-y-2">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
+                    <div 
+                      className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform duration-200"
+                      onMouseEnter={(e) => handleAgentHover('Emily', e)}
+                      onMouseLeave={handleAgentLeave}
+                    >
                       <img src="/emily_icon.png" alt="Emily" className="w-10 h-10 rounded-full object-cover" />
                     </div>
                     <span className="text-xs font-medium">Emily</span>
                   </div>
 
                   <div className="flex flex-col items-center space-y-2">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center shadow-lg">
+                    <div 
+                      className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform duration-200"
+                      onMouseEnter={(e) => handleAgentHover('Leo', e)}
+                      onMouseLeave={handleAgentLeave}
+                    >
                       <img src="/leo_logo.png" alt="Leo" className="w-10 h-10 rounded-full object-cover" />
                     </div>
                     <span className="text-xs font-medium">Leo</span>
                   </div>
 
                   <div className="flex flex-col items-center space-y-2">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
+                    <div 
+                      className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform duration-200"
+                      onMouseEnter={(e) => handleAgentHover('Chase', e)}
+                      onMouseLeave={handleAgentLeave}
+                    >
                       <img src="/chase_logo.png" alt="Chase" className="w-10 h-10 rounded-full object-cover" />
                     </div>
                     <span className="text-xs font-medium">Chase</span>
@@ -3005,7 +3162,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         ) : (
           /* Messages */
           <div className="space-y-6">
-            {messages.map((message, index) => (
+        {messages.map((message, index) => (
           <div
             key={message.id}
             className={`group flex gap-3 ${message.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
@@ -3016,11 +3173,13 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                 message.agent_name?.toLowerCase() === 'emily' || message.agent_name?.toLowerCase() === 'leo' || message.agent_name?.toLowerCase() === 'chase' || message.agent_name?.toLowerCase() === 'atsn ai'
                   ? 'w-16 h-16'
                   : 'w-8 h-8'
-              } rounded-full flex items-center justify-center flex-shrink-0 ${
+              } rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden ${
                 message.sender === 'bot' ? 'hover:scale-110 transition-transform duration-200 cursor-pointer border-2 border-gray-300' : ''
               } ${
-              message.sender === 'user'
+              message.sender === 'user' && (!businessLogo || businessLogoError)
                 ? 'bg-gradient-to-br from-pink-500 to-rose-500'
+                : message.sender === 'user' && businessLogo && !businessLogoError
+                ? 'bg-white' // White background for transparent logos
                 : message.agent_name?.toLowerCase() === 'leo'
                   ? '' // No background for Leo
                 : message.agent_name?.toLowerCase() === 'chase'
@@ -3035,7 +3194,18 @@ const ATSNChatbot = ({ externalConversations = null }) => {
               onMouseLeave={message.sender === 'bot' ? handleAgentLeave : undefined}
             >
               {message.sender === 'user' ? (
-                <User className="w-4 h-4 text-white" />
+                businessLogo && !businessLogoError ? (
+                  <img 
+                    src={businessLogo} 
+                    alt="Business Logo" 
+                    className="w-full h-full object-cover rounded-full"
+                    onError={() => {
+                      setBusinessLogoError(true)
+                    }}
+                  />
+                ) : (
+                  <User className="w-4 h-4 text-white" />
+                )
               ) : (
                 renderAgentIcon(message.agent_name)
               )}
@@ -3133,19 +3303,19 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                         const hasMarkdown = displayText.includes('#') || displayText.includes('*') || displayText.includes('`') || displayText.includes('[');
                         
                         return hasMarkdown ? (
-                          <div className={`leading-tight pr-16 ${
-                            isDarkMode ? 'prose-invert prose prose-gray' : 'prose'
-                          }`}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <div className={`leading-tight pr-16 ${
+                          isDarkMode ? 'prose-invert prose prose-gray' : 'prose'
+                        }`}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
                               {displayText}
-                            </ReactMarkdown>
-                          </div>
-                        ) : (
-                          <div className={`whitespace-pre-line leading-tight pr-16 ${
-                            isDarkMode ? 'text-white' : ''
-                          }`}>
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div className={`whitespace-pre-line leading-tight pr-16 ${
+                          isDarkMode ? 'text-white' : ''
+                        }`}>
                             {displayText}
-                          </div>
+                        </div>
                         );
                       })()}
                       <div className={`absolute bottom-0 right-0 text-xs ${
@@ -3653,10 +3823,10 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                         {/* Filter Controls */}
                         <div className="w-full mb-4" style={{ transform: 'scale(0.8)', transformOrigin: 'top left' }}>
                           <div className={`rounded-xl shadow-lg border p-4 ${
-                            isDarkMode
-                              ? 'bg-gray-800 border-gray-700 shadow-gray-900/50'
-                              : 'bg-amber-50 border-amber-200'
-                          }`}>
+                          isDarkMode
+                            ? 'bg-gray-800 border-gray-700 shadow-gray-900/50'
+                            : 'bg-amber-50 border-amber-200'
+                        }`}>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                             {/* Search Filter */}
                             <div>
@@ -3792,7 +3962,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                               Clear Filters
                             </button>
                           </div>
-                        </div>
+                          </div>
                         </div>
 
                         <div className={`rounded-xl shadow-lg border overflow-hidden ${
@@ -3930,7 +4100,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                                               </div>
                                               <span
                                                 className={`font-medium truncate text-sm cursor-help ${
-                                                  isDarkMode ? 'text-gray-100' : 'text-gray-900'
+                                                isDarkMode ? 'text-gray-100' : 'text-gray-900'
                                                 }`}
                                                 title=""
                                                 onMouseEnter={(e) => {
@@ -4154,86 +4324,104 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                 </div>
               )} */}
 
-              {/* Thinking text below user messages when loading */}
-              {isLoading && message.sender === 'user' && index === messages.length - 1 && (
-                <div className="mt-2 ml-12">
-                  <span className={`text-sm italic animate-pulse ${isDarkMode ? 'text-white' : 'text-gray-600'}`}>
-                    {getThinkingMessage()}
-                  </span>
-                </div>
-              )}
             </div>
           </div>
         ))}
-            <div ref={messagesEndRef} />
+        
+        {/* Thinking message as plain text on the left */}
+        {isLoading && messages.length > 0 && messages[messages.length - 1].sender === 'user' && (
+          <div className="flex gap-3 flex-row items-center">
+            {/* Lottie animation */}
+            {generatingAnimationData && (
+              <div className="w-72 h-72 flex-shrink-0">
+                <Lottie 
+                  animationData={generatingAnimationData}
+                  loop={true}
+                  autoplay={true}
+                  style={{ width: '100%', height: '100%' }}
+                />
+              </div>
+            )}
+            <div className="flex-1 max-w-[60%] text-left">
+              {/* Thinking message with pulse animation */}
+              <div className={`text-sm italic animate-pulse ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-600'
+              }`}>
+                {getThinkingMessage()}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
       {/* Input - Only show when there are messages */}
         {messages.length > 0 && (
-          <div className={`p-4 border-t ${
-            isDarkMode ? 'border-gray-700' : 'border-gray-200'
+      <div className={`p-4 border-t ${
+        isDarkMode ? 'border-gray-700' : 'border-gray-200'
+      }`}>
+        {/* New Chat Option */}
+        <div className="flex items-center justify-between mb-3">
+          <button
+            onClick={handleReset}
+            className={`flex items-center gap-2 text-sm font-medium transition-colors ${
+              isDarkMode
+                ? 'text-white hover:text-gray-200'
+                : 'text-blue-600 hover:text-blue-700'
+            }`}
+          >
+            <span className="text-lg">+</span>
+            <span>New Chat</span>
+          </button>
+          <div className={`text-xs ${
+            isDarkMode ? 'text-gray-400' : 'text-gray-500'
           }`}>
-            {/* New Chat Option */}
-            <div className="flex items-center justify-between mb-3">
-              <button
-                onClick={handleReset}
-                className={`flex items-center gap-2 text-sm font-medium transition-colors ${
-                  isDarkMode
-                    ? 'text-white hover:text-gray-200'
-                    : 'text-blue-600 hover:text-blue-700'
-                }`}
-              >
-                <span className="text-lg">+</span>
-                <span>New Chat</span>
-              </button>
-              <div className={`text-xs ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                Press Enter to send
-              </div>
-            </div>
+            Press Enter to send
+          </div>
+        </div>
 
 
-          <div className="relative">
+        <div className="relative">
             <textarea
-              ref={inputRef}
+            ref={inputRef}
               rows={1}
-              value={inputMessage}
+            value={inputMessage}
               onChange={(e) => {
                 setInputMessage(e.target.value)
                 adjustInputHeight(e.target)
               }}
-              onKeyPress={handleKeyPress}
-              placeholder="Ask me to manage your content or leads..."
+            onKeyPress={handleKeyPress}
+            placeholder="Ask me to manage your content or leads..."
               className={`w-full px-6 pr-14 py-4 text-base rounded-[10px] backdrop-blur-sm focus:outline-none shadow-lg resize-none transition-[height] overflow-hidden ${
-                isDarkMode
-                  ? 'bg-gray-700/80 border-0 focus:ring-0 text-gray-100 placeholder-gray-400'
-                  : 'bg-white/80 border border-white/20 focus:ring-2 focus:ring-white/30 focus:border-white/50 text-gray-900 placeholder-gray-500'
-              }`}
-              disabled={isLoading}
+              isDarkMode
+                ? 'bg-gray-700/80 border-0 focus:ring-0 text-gray-100 placeholder-gray-400'
+                : 'bg-white/80 border border-white/20 focus:ring-2 focus:ring-white/30 focus:border-white/50 text-gray-900 placeholder-gray-500'
+            }`}
+            disabled={isLoading}
               style={{ maxHeight: `${MAX_INPUT_HEIGHT}px`, overflowY: 'auto' }}
-            />
-            <button
-              onClick={handleSendMessage}
-              disabled={isLoading || !inputMessage.trim()}
+          />
+          <button
+            onClick={handleSendMessage}
+            disabled={isLoading || !inputMessage.trim()}
               className={`absolute right-3 top-1/2 transform -translate-y-1/2 w-7 h-7 transition-all flex items-center justify-center ${
-                isDarkMode
-                  ? 'text-green-400 hover:text-green-300 disabled:text-gray-500'
-                  : 'text-blue-600 hover:text-blue-700 disabled:text-gray-400'
-              } disabled:cursor-not-allowed`}
-            >
-              <Send className="w-5 h-5 transform rotate-45" />
-            </button>
+              isDarkMode
+                ? 'text-green-400 hover:text-green-300 disabled:text-gray-500'
+                : 'text-blue-600 hover:text-blue-700 disabled:text-gray-400'
+            } disabled:cursor-not-allowed`}
+          >
+            <Send className="w-5 h-5 transform rotate-45" />
+          </button>
         </div>
         
-          <div className={`mt-2 text-xs text-center ${
-            isDarkMode ? 'text-gray-400' : 'text-gray-500'
-          }`}>
-            Try: "Show scheduled posts" • "Create lead" • "View analytics"
-          </div>
+        <div className={`mt-2 text-xs text-center ${
+          isDarkMode ? 'text-gray-400' : 'text-gray-500'
+        }`}>
+          Try: "Show scheduled posts" • "Create lead" • "View analytics"
         </div>
+      </div>
         )}
 
       {/* ATSN Content Modal */}
@@ -4786,7 +4974,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
             <form onSubmit={async (e) => {
               e.preventDefault()
               try {
-                const formData = new FormData(e.target)
+              const formData = new FormData(e.target)
 
                 // Update lead status if it changed
                 const newStatus = formData.get('status')
@@ -4802,16 +4990,16 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                   email: formData.get('email'),
                   phone_number: formData.get('phone'),
                   source_platform: formData.get('source_platform')
-                }
+              }
 
                 // Direct API call to update lead details
                 await leadsAPI.updateLead(editLeadData.id, updatedLeadData)
 
                 showSuccess('Lead updated successfully')
 
-                setShowEditLeadModal(false)
-                setEditLeadData(null)
-                setSelectedLeads([])
+              setShowEditLeadModal(false)
+              setEditLeadData(null)
+              setSelectedLeads([])
 
                 // Refresh the current view to reflect the changes
                 if (messages.length > 0) {
@@ -5001,6 +5189,8 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         agentName={tooltipAgent}
         isVisible={!!tooltipAgent}
         position={tooltipPosition}
+        likesCount={tooltipAgent ? (agentProfiles[tooltipAgent.toLowerCase()]?.likes_count || 0) : 0}
+        tasksCount={tooltipAgent ? (agentProfiles[tooltipAgent.toLowerCase()]?.tasks_count || 0) : 0}
         isDarkMode={isDarkMode}
       />
     </div>

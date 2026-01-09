@@ -4203,7 +4203,7 @@ def complete_view_content_payload(state: AgentState) -> AgentState:
                 state.payload["status"] = "published"
             else:
                 state.payload["status"] = None
-
+    
     # Normalize content_type if present
     if state.payload.get("content_type"):
         content_type_val = str(state.payload["content_type"]).lower().strip()
@@ -5025,7 +5025,7 @@ def complete_schedule_content_payload(state: AgentState) -> AgentState:
         state.current_step = "action_execution"
         print(f" Schedule content payload complete - direct content selection with defaults")
         return state
-
+    
     # For draft selection, no additional fields needed - just show drafts
     state.payload_complete = True
     state.current_step = "action_execution"
@@ -5365,7 +5365,7 @@ def complete_delete_leads_payload(state: AgentState) -> AgentState:
         state.current_step = "action_execution"
         print(" Delete leads payload complete")
         return state
-
+    
     # If neither ID nor name is provided, we need clarification
     clarifications = FIELD_CLARIFICATIONS.get("delete_leads", {})
 
@@ -8120,7 +8120,7 @@ def handle_publish_content_search(state: AgentState) -> AgentState:
 def handle_schedule_content(state: AgentState) -> AgentState:
     """Handle content scheduling - direct schedule or show drafts for selection"""
     payload = state.payload
-
+    
     # If content_id is provided directly, schedule that specific content
     if payload.get('content_id') and payload['content_id'].strip():
         return handle_schedule_specific_content(state)
@@ -8356,7 +8356,7 @@ def handle_schedule_draft_selection(state: AgentState) -> AgentState:
             user_context=state.user_query,
             message_type="error"
         )
-        return state
+    return state
 
 
 # ==================== LEAD HANDLERS ====================
@@ -8637,7 +8637,7 @@ def handle_delete_leads(state: AgentState) -> AgentState:
 
     # Set agent name to Chase
     payload['agent_name'] = 'chase'
-
+    
     # Ensure we have user_id
     if not state.user_id:
         state.result = "User authentication required."
@@ -8710,7 +8710,7 @@ def handle_delete_leads(state: AgentState) -> AgentState:
     except Exception as e:
         logger.error(f"Error deleting lead: {e}")
         state.result = f"Error deleting lead: {str(e)}"
-        return state
+    return state
 
 
 def handle_follow_up_leads(state: AgentState) -> AgentState:
@@ -9084,7 +9084,7 @@ class ATSNAgent:
             "needs_connection": getattr(self.state, 'needs_connection', None),  # Whether user needs to connect account
             "connection_platform": getattr(self.state, 'connection_platform', None)  # Platform to connect
         }
-
+        
         # Count completed tasks when payload is complete (similar to conversation saving)
         if (self.state.payload_complete and
             active_user_id and
