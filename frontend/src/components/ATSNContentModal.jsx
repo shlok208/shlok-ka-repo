@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Hash, Edit, Check, X as XIcon, Sparkles, RefreshCw, Copy, ChevronLeft, ChevronRight, Layers } from 'lucide-react'
+import { X, Hash, Edit, Check, X as XIcon, Sparkles, RefreshCw, Copy, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Instagram, Facebook, MessageCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import CarouselImageSelector from './CarouselImageSelector'
 
 // Get API URL
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
@@ -66,11 +67,14 @@ const ATSNContentModal = ({
   const [uploadingUserImage, setUploadingUserImage] = useState(false)
   const [imageUploadError, setImageUploadError] = useState('')
   const [imageSaved, setImageSaved] = useState(false)
+  const [showCarouselImageSelector, setShowCarouselImageSelector] = useState(false)
+  const [carouselImages, setCarouselImages] = useState([])
+  const [selectedCarouselImage, setSelectedCarouselImage] = useState('')
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [uploadedImagePreview, setUploadedImagePreview] = useState('')
   const [showAIResult, setShowAIResult] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(getDarkModePreference)
-  const [carouselIndex, setCarouselIndex] = useState(0)
   const fileInputRef = useRef(null)
 
   // Listen for dark mode changes from other components
@@ -114,39 +118,35 @@ const ATSNContentModal = ({
     }
   }, [content])
 
+  // Detect carousel content and extract carousel images
   useEffect(() => {
-    setCarouselIndex(0)
-  }, [content?.id, content?.carousel_images?.length])
+    if (content) {
+      // Check if this is a carousel post - enhanced detection
+      const isCarousel = content.post_type === 'carousel' ||
+                         content.content_type?.toLowerCase() === 'carousel' ||
+                         content.selected_content_type?.toLowerCase() === 'carousel' ||
+                         (content.metadata && content.metadata.carousel_images && content.metadata.carousel_images.length > 0) ||
+                         (content.carousel_images && content.carousel_images.length > 0) ||
+                         (content.metadata && content.metadata.total_images && content.metadata.total_images > 1)
 
-  const normalizeImages = (rawImages) => {
-    if (!rawImages) return []
-    if (!Array.isArray(rawImages)) return []
-    return rawImages
-      .map((img) => {
-        if (!img) return null
-        if (typeof img === 'string') return img
-        if (typeof img === 'object') return img.url || img.image_url || img.path || null
-        return null
-      })
-      .filter(Boolean)
-  }
+      let carouselImages = []
+      if (isCarousel) {
+        // Check multiple locations for carousel images
+        if (content.carousel_images && Array.isArray(content.carousel_images) && content.carousel_images.length > 0) {
+          carouselImages = content.carousel_images.map(img => typeof img === 'string' ? img : (img.url || img))
+        } else if (content.metadata?.carousel_images && Array.isArray(content.metadata.carousel_images) && content.metadata.carousel_images.length > 0) {
+          carouselImages = content.metadata.carousel_images.map(img => typeof img === 'string' ? img : (img.url || img))
+        } else if (content.metadata?.images && Array.isArray(content.metadata.images) && content.metadata.images.length > 0) {
+          carouselImages = content.metadata.images.map(img => typeof img === 'string' ? img : (img.url || img))
+        } else if (content.images && Array.isArray(content.images) && content.images.length > 0) {
+          // Also check content_images relationship if available
+          carouselImages = content.images.map(img => typeof img === 'object' && img.image_url ? img.image_url : (typeof img === 'string' ? img : img))
+        }
+      }
 
-  const carouselImages = normalizeImages(
-    content?.carousel_images ||
-    content?.metadata?.carousel_images ||
-    content?.images
-  )
-  const hasCarouselImages = carouselImages.length > 0
-
-  const prevCarouselImage = () => {
-    if (!hasCarouselImages) return
-    setCarouselIndex((prev) => (prev - 1 + carouselImages.length) % carouselImages.length)
-  }
-
-  const nextCarouselImage = () => {
-    if (!hasCarouselImages) return
-    setCarouselIndex((prev) => (prev + 1) % carouselImages.length)
-  }
+      setCarouselImages(carouselImages)
+    }
+  }, [content])
 
   // Edit handlers
   const handleEdit = () => {
@@ -269,17 +269,76 @@ const ATSNContentModal = ({
 
   const handleSaveEditedImage = async () => {
     try {
+      // Get authentication token using the same method as SimpleImageEditor
+      const { data: { session } } = await supabase.auth.getSession()
+      const authToken = session?.access_token
+
+      if (!authToken) {
+        throw new Error('Authentication required - please log in again')
+      }
+
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         throw new Error('User not authenticated')
       }
 
+      // For carousel images, ensure the original image exists in content.images for backend validation
+      if (carouselImages && carouselImages.length > 0 && carouselImages.includes(originalImageUrl)) {
+        console.log('Carousel image detected, ensuring content.images validation...', {
+          originalImageUrl,
+          carouselImages,
+          currentContentImages: content.images,
+          contentType: content.content_type,
+          postType: content.post_type,
+          selectedContentType: content.selected_content_type,
+          hasCarouselImages: !!(content.carousel_images && content.carousel_images.length > 0),
+          hasMetadataCarouselImages: !!(content.metadata?.carousel_images && content.metadata.carousel_images.length > 0)
+        })
+
+        // Check if this is carousel content
+        const isCarousel = content.post_type === 'carousel' ||
+                          content.content_type?.toLowerCase() === 'carousel' ||
+                          content.selected_content_type?.toLowerCase() === 'carousel' ||
+                          (content.metadata && content.metadata.carousel_images && content.metadata.carousel_images.length > 0) ||
+                          (content.carousel_images && content.carousel_images.length > 0)
+
+        if (isCarousel) {
+          console.log('This is carousel content, updating database content for validation')
+
+          try {
+            // Update the content in the database with the correct carousel images
+            // This ensures the backend validation will find the original image
+            const updateResponse = await fetch(`${API_BASE_URL}/content/created-content/update/${content.id}`, {
+              method: 'PUT',
+              headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                images: carouselImages, // Send the array of carousel image URLs
+                carousel_images: carouselImages, // Also update carousel_images field
+                content_type: 'carousel' // Ensure content type is set
+              })
+            })
+
+            if (!updateResponse.ok) {
+              const updateError = await updateResponse.text()
+              console.warn('Failed to update content images, but continuing with save:', updateError)
+            } else {
+              console.log('Successfully updated content images in database')
+            }
+          } catch (updateError) {
+            console.warn('Error updating content images, but continuing with save:', updateError)
+          }
+        }
+      }
+
       const response = await fetch(`${API_BASE_URL}/simple-image-editor/save-image`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+          'Authorization': `Bearer ${authToken}`
         },
         body: JSON.stringify({
           user_id: user.id,
@@ -290,12 +349,75 @@ const ATSNContentModal = ({
       })
 
       if (!response.ok) {
-        throw new Error('Failed to save image')
+        const errorText = await response.text();
+        console.error('API Error Response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText,
+          url: `${API_BASE_URL}/simple-image-editor/save-image`
+        });
+        throw new Error(`Failed to save image: ${response.status} ${response.statusText} - ${errorText}`)
       }
 
       const data = await response.json()
 
       if (data.success) {
+        // Update carousel images array if this was a carousel image edit
+        if (carouselImages && carouselImages.length > 0 && carouselImages.includes(originalImageUrl)) {
+          const updatedCarouselImages = carouselImages.map(img =>
+            img === originalImageUrl ? editedImageUrl : img
+          )
+          setCarouselImages(updatedCarouselImages)
+
+          // Update the content object to ensure backend validation passes
+          // Check if this is carousel content and update the appropriate arrays
+          if (content.post_type === 'carousel' ||
+              content.content_type?.toLowerCase() === 'carousel' ||
+              content.selected_content_type?.toLowerCase() === 'carousel' ||
+              (content.metadata && content.metadata.carousel_images && content.metadata.carousel_images.length > 0) ||
+              (content.carousel_images && content.carousel_images.length > 0)) {
+
+            // Update carousel_images array if it exists
+            if (content.carousel_images && Array.isArray(content.carousel_images)) {
+              content.carousel_images = content.carousel_images.map(img =>
+                (typeof img === 'string' ? img : img.url) === originalImageUrl
+                  ? editedImageUrl
+                  : img
+              )
+            }
+
+            // Update metadata carousel_images if present
+            if (content.metadata?.carousel_images && Array.isArray(content.metadata.carousel_images)) {
+              content.metadata.carousel_images = content.metadata.carousel_images.map(img =>
+                (typeof img === 'string' ? img : img.url) === originalImageUrl
+                  ? editedImageUrl
+                  : img
+              )
+            }
+
+            // Update metadata.images if present
+            if (content.metadata?.images && Array.isArray(content.metadata.images)) {
+              content.metadata.images = content.metadata.images.map(img =>
+                (typeof img === 'string' ? img : img.url) === originalImageUrl
+                  ? editedImageUrl
+                  : img
+              )
+            }
+
+            // Ensure content.images contains the updated carousel images for backend validation
+            if (content.images && Array.isArray(content.images)) {
+              content.images = content.images.map(img =>
+                (typeof img === 'object' && img.image_url ? img.image_url : (typeof img === 'string' ? img : img)) === originalImageUrl
+                  ? editedImageUrl
+                  : img
+              )
+            } else {
+              // If content.images doesn't exist or is empty, create it with all carousel images
+              content.images = updatedCarouselImages
+            }
+          }
+        }
+
         // Close edit modal first, then show success modal
         setShowImageEditModal(false)
 
@@ -443,6 +565,19 @@ const ATSNContentModal = ({
     if (showImagePreview) {
       setSelectedImageForEdit(imageUrl)
     }
+  }
+
+  // Carousel slide navigation functions
+  const nextSlide = () => {
+    setCurrentSlideIndex((prev) => (prev + 1) % carouselImages.length)
+  }
+
+  const prevSlide = () => {
+    setCurrentSlideIndex((prev) => (prev - 1 + carouselImages.length) % carouselImages.length)
+  }
+
+  const goToSlide = (index) => {
+    setCurrentSlideIndex(index)
   }
 
   useEffect(() => {
@@ -670,10 +805,29 @@ const ATSNContentModal = ({
           }`}>
             <div className="flex items-center gap-3">
               {getPlatformIcon(content.platform)}
-              <span className={`font-normal ${
+              <span className={`font-semibold text-lg ${
                 isDarkMode ? 'text-gray-100' : 'text-gray-900'
               }`}>
-                {getPlatformDisplayName(content.platform)}
+                {(() => {
+                  const platform = content.platform || 'General';
+                  const status = content.status;
+
+                  let displayStatus = status ? status.charAt(0).toUpperCase() + status.slice(1) : 'No Status';
+
+                  // For scheduled content, show the scheduled date/time
+                  if (status === 'scheduled' && content.scheduled_at) {
+                    try {
+                      const scheduledDate = new Date(content.scheduled_at);
+                      const formattedDate = scheduledDate.toLocaleDateString();
+                      const formattedTime = scheduledDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      displayStatus = `Scheduled: ${formattedDate} ${formattedTime}`;
+                    } catch (error) {
+                      displayStatus = 'Scheduled';
+                    }
+                  }
+
+                  return `${platform} | ${displayStatus}`;
+                })()}
               </span>
             </div>
             <button
@@ -693,83 +847,96 @@ const ATSNContentModal = ({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 min-h-[400px]">
             {/* Left Column - Image (like posts) */}
             <div className="space-y-4 -mx-2">
-              {hasCarouselImages ? (
-                <div className="relative group">
-                  <div className="overflow-hidden rounded-3xl bg-gray-900 aspect-square">
-                    <div
-                      className="flex h-full transition-transform duration-300 ease-in-out"
-                      style={{ transform: `translateX(-${carouselIndex * 100}%)` }}
-                    >
-                      {carouselImages.map((img, index) => (
-                        <div key={index} className="min-w-full h-full flex-shrink-0">
-                  <img
-                            src={img}
-                            alt={`Carousel image ${index + 1}`}
-                            className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.style.display = 'none'
-                    }}
-                  />
-                </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Navigation Arrows */}
-                  {carouselImages.length > 1 && (
-                    <>
-                      <button
-                        onClick={prevCarouselImage}
-                        className="absolute left-1 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white p-2 rounded-full transition-opacity opacity-0 group-hover:opacity-100"
-                        title="Previous carousel image"
+              {carouselImages && carouselImages.length > 1 ? (
+                /* Carousel Slideshow Display */
+                <div className="space-y-4">
+                  <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+                    Carousel Images ({carouselImages.length})
+                  </h3>
+                  <div className="relative group">
+                    {/* Main Image Display */}
+                    <div className="relative overflow-hidden aspect-square bg-gray-100 rounded-lg shadow-lg">
+                      <div
+                        className="flex transition-transform duration-300 ease-in-out h-full"
+                        style={{ transform: `translateX(-${currentSlideIndex * 100}%)` }}
                       >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={nextCarouselImage}
-                        className="absolute right-1 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white p-2 rounded-full transition-opacity opacity-0 group-hover:opacity-100"
-                        title="Next carousel image"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </>
-                  )}
+                        {carouselImages.map((image, index) => (
+                          <div key={index} className="min-w-full h-full flex-shrink-0">
+                            <img
+                              src={image}
+                              alt={`Carousel image ${index + 1}`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = 'none'
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
 
-                  {/* Indicator Dots */}
-                  {carouselImages.length > 1 && (
-                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-2">
-                      {carouselImages.map((_, index) => (
+                      {/* Navigation Arrows */}
+                      {carouselImages.length > 1 && (
+                        <>
+                          <button
+                            onClick={prevSlide}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                            aria-label="Previous image"
+                          >
+                            <ChevronLeft className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={nextSlide}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                            aria-label="Next image"
+                          >
+                            <ChevronRight className="w-5 h-5" />
+                          </button>
+                        </>
+                      )}
+
+                      {/* Edit Button */}
+                      {content.status !== 'published' && (
                         <button
-                          key={index}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setCarouselIndex(index)
+                          onClick={() => {
+                            setSelectedCarouselImage(carouselImages[currentSlideIndex])
+                            setShowCarouselImageSelector(true)
                           }}
-                          className={`rounded-full transition-all duration-300 ${
-                            index === carouselIndex
-                              ? 'bg-white w-8 h-2'
-                              : 'bg-white/60 w-2 h-2'
+                          className={`absolute top-3 right-3 p-2 rounded-lg shadow-lg transition-all duration-200 ${
+                            isDarkMode
+                              ? 'bg-gray-900/90 hover:bg-gray-800 text-white hover:text-gray-200'
+                              : 'bg-black/60 hover:bg-black/80 text-white hover:text-gray-200'
                           }`}
-                          title={`Image ${index + 1}`}
-                        />
-                      ))}
-                    </div>
-                  )}
+                          title="Edit this carousel image"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      )}
 
-                  {/* Edit Image Button */}
-                  <button
-                    onClick={() => handleImageEdit(carouselImages[carouselIndex])}
-                    className={`absolute top-3 right-6 p-2 rounded-lg shadow-lg transition-all duration-200 ${
-                      isDarkMode
-                        ? 'bg-gray-900/90 hover:bg-gray-800 text-white hover:text-gray-200'
-                        : 'bg-black/60 hover:bg-black/80 text-white hover:text-gray-200'
-                    }`}
-                    title="Edit carousel image with AI"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
+                      {/* Image Counter Badge */}
+                      <div className="absolute top-3 left-3 bg-black/50 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
+                        <span>{currentSlideIndex + 1}/{carouselImages.length}</span>
+                      </div>
+                    </div>
+
+                    {/* Slide Indicators */}
+                    {carouselImages.length > 1 && (
+                      <div className="flex justify-center gap-2 mt-4">
+                        {carouselImages.map((_, index) => (
+                          <button
+                            key={index}
+                            onClick={() => goToSlide(index)}
+                            className={`rounded-full transition-all duration-300 ${
+                              index === currentSlideIndex
+                                ? 'bg-blue-500 w-8 h-2 shadow-lg'
+                                : 'bg-gray-300 hover:bg-gray-400 w-2 h-2'
+                            }`}
+                            aria-label={`Go to image ${index + 1}`}
+                            title={`Image ${index + 1} of ${carouselImages.length}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : content.images && content.images.length > 0 ? (
                 <div className="flex justify-center relative group">
@@ -782,19 +949,21 @@ const ATSNContentModal = ({
                     }}
                   />
                   {/* Edit Image Button */}
-                  <button
-                    onClick={() => handleImageEdit(content.images[0])}
-                    className={`absolute top-3 right-6 p-2 rounded-lg shadow-lg transition-all duration-200 ${
-                      isDarkMode
-                        ? 'bg-gray-900/90 hover:bg-gray-800 text-white hover:text-gray-200'
-                        : 'bg-black/60 hover:bg-black/80 text-white hover:text-gray-200'
-                    }`}
-                    title="Edit image with AI"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
+                  {content.status !== 'published' && (
+                    <button
+                      onClick={() => handleImageEdit(content.images[0])}
+                      className={`absolute top-3 right-6 p-2 rounded-lg shadow-lg transition-all duration-200 ${
+                        isDarkMode
+                          ? 'bg-gray-900/90 hover:bg-gray-800 text-white hover:text-gray-200'
+                          : 'bg-black/60 hover:bg-black/80 text-white hover:text-gray-200'
+                      }`}
+                      title="Edit image with AI"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               ) : content.media_url ? (
                 <div className="flex justify-center relative group">
@@ -807,19 +976,48 @@ const ATSNContentModal = ({
                     }}
                   />
                   {/* Edit Image Button */}
-                  <button
-                    onClick={() => handleImageEdit(content.media_url)}
-                    className={`absolute top-3 right-6 p-2 rounded-lg shadow-lg transition-all duration-200 ${
-                      isDarkMode
-                        ? 'bg-gray-900/90 hover:bg-gray-800 text-white hover:text-gray-200'
-                        : 'bg-black/60 hover:bg-black/80 text-white hover:text-gray-200'
-                    }`}
-                    title="Edit image with AI"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
+                  {content.status !== 'published' && (
+                    <button
+                      onClick={() => handleImageEdit(content.media_url)}
+                      className={`absolute top-3 right-6 p-2 rounded-lg shadow-lg transition-all duration-200 ${
+                        isDarkMode
+                          ? 'bg-gray-900/90 hover:bg-gray-800 text-white hover:text-gray-200'
+                          : 'bg-black/60 hover:bg-black/80 text-white hover:text-gray-200'
+                      }`}
+                      title="Edit image with AI"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              ) : content.images && content.images.length > 0 ? (
+                <div className="flex justify-center relative group">
+                  <img
+                    src={content.images[0]}
+                    alt={content.title || "Video thumbnail"}
+                    className="w-full max-h-[32rem] object-contain rounded-lg shadow-lg"
+                    onError={(e) => {
+                      e.target.style.display = 'none'
+                    }}
+                  />
+                  {/* Edit Image Button */}
+                  {content.status !== 'published' && (
+                    <button
+                      onClick={() => handleImageEdit(content.images[0])}
+                      className={`absolute top-3 right-6 p-2 rounded-lg shadow-lg transition-all duration-200 ${
+                        isDarkMode
+                          ? 'bg-gray-900/90 hover:bg-gray-800 text-white hover:text-gray-200'
+                          : 'bg-black/60 hover:bg-black/80 text-white hover:text-gray-200'
+                      }`}
+                      title="Edit image with AI"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -863,37 +1061,41 @@ const ATSNContentModal = ({
                           >
                             📋 Copy
                           </button>
-                          <button
-                            onClick={() => {
-                              setIsEditing(true);
-                              setAiEditType('script');
-                              setEditContentValue(content.short_video_script);
-                              setEditTitleValue(content.title || 'Video Script');
-                            }}
-                            className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                              isDarkMode
-                                ? 'bg-purple-600 hover:bg-purple-500 text-white'
-                                : 'bg-purple-500 hover:bg-purple-600 text-white'
-                            }`}
-                            title="Edit script"
-                          >
-                            ✏️ Edit
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowAIEditModal(true);
-                              setAiEditType('script');
-                              setEditContentValue(content.short_video_script);
-                            }}
-                            className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                              isDarkMode
-                                ? 'bg-green-600 hover:bg-green-500 text-white'
-                                : 'bg-green-500 hover:bg-green-600 text-white'
-                            }`}
-                            title="Edit with AI"
-                          >
-                            🤖 AI Edit
-                          </button>
+                          {content.status !== 'published' && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setIsEditing(true);
+                                  setAiEditType('script');
+                                  setEditContentValue(content.short_video_script);
+                                  setEditTitleValue(content.title || 'Video Script');
+                                }}
+                                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                  isDarkMode
+                                    ? 'bg-purple-600 hover:bg-purple-500 text-white disabled:bg-purple-800'
+                                    : 'bg-purple-500 hover:bg-purple-600 text-white disabled:bg-purple-300'
+                                }`}
+                                title="Edit script"
+                              >
+                                ✏️ Edit
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setShowAIEditModal(true);
+                                  setAiEditType('script');
+                                  setEditContentValue(content.short_video_script);
+                                }}
+                                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                  isDarkMode
+                                    ? 'bg-green-600 hover:bg-green-500 text-white disabled:bg-green-800'
+                                    : 'bg-green-500 hover:bg-green-600 text-white disabled:bg-green-300'
+                                }`}
+                                title="Edit with AI"
+                              >
+                                🤖 AI Edit
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -930,7 +1132,7 @@ const ATSNContentModal = ({
                   </div>
 
                   {/* Edit Button - Top Right */}
-                  {!isEditing && (content.title || content.content) && (
+                  {!isEditing && (content.title || content.content) && content.status !== 'published' && (
                     <button
                       onClick={handleEdit}
                       className={`p-2 rounded-lg transition-colors ${
@@ -955,18 +1157,20 @@ const ATSNContentModal = ({
                         <label className={`block text-sm font-medium ${
                           isDarkMode ? 'text-gray-300' : 'text-gray-700'
                         }`}>Title</label>
-                        <button
-                          onClick={() => handleAIEdit('title')}
-                          disabled={aiEditing}
-                          className={`p-1 rounded transition-colors disabled:opacity-50 ${
-                            isDarkMode
-                              ? 'text-gray-400 hover:text-purple-400 hover:bg-purple-900/20'
-                              : 'text-gray-500 hover:text-purple-600 hover:bg-purple-50'
-                          }`}
-                          title="Enhance with AI"
-                        >
-                          <Sparkles className="w-4 h-4" />
-                        </button>
+                        {content.status !== 'published' && (
+                          <button
+                            onClick={() => handleAIEdit('title')}
+                            disabled={aiEditing}
+                            className={`p-1 rounded transition-colors disabled:opacity-50 ${
+                              isDarkMode
+                                ? 'text-gray-400 hover:text-purple-400 hover:bg-purple-900/20'
+                                : 'text-gray-500 hover:text-purple-600 hover:bg-purple-50'
+                            }`}
+                            title="Enhance with AI"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                       <textarea
                         value={editTitleValue}
@@ -999,18 +1203,20 @@ const ATSNContentModal = ({
                         <label className={`block text-sm font-medium ${
                           isDarkMode ? 'text-gray-300' : 'text-gray-700'
                         }`}>Content</label>
-                        <button
-                          onClick={() => handleAIEdit('content')}
-                          disabled={aiEditing}
-                          className={`p-1 rounded transition-colors disabled:opacity-50 ${
-                            isDarkMode
-                              ? 'text-gray-400 hover:text-purple-400 hover:bg-purple-900/20'
-                              : 'text-gray-500 hover:text-purple-600 hover:bg-purple-50'
-                          }`}
-                          title="Enhance with AI"
-                        >
-                          <Sparkles className="w-4 h-4" />
-                        </button>
+                        {content.status !== 'published' && (
+                          <button
+                            onClick={() => handleAIEdit('content')}
+                            disabled={aiEditing}
+                            className={`p-1 rounded transition-colors disabled:opacity-50 ${
+                              isDarkMode
+                                ? 'text-gray-400 hover:text-purple-400 hover:bg-purple-900/20'
+                                : 'text-gray-500 hover:text-purple-600 hover:bg-purple-50'
+                            }`}
+                            title="Enhance with AI"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                       <textarea
                         value={editContentValue}
@@ -1026,18 +1232,20 @@ const ATSNContentModal = ({
                         <label className={`block text-sm font-medium ${
                           isDarkMode ? 'text-gray-300' : 'text-gray-700'
                         }`}>Hashtags</label>
-                        <button
-                          onClick={() => handleAIEdit('hashtags')}
-                          disabled={aiEditing}
-                          className={`p-1 rounded transition-colors disabled:opacity-50 ${
-                            isDarkMode
-                              ? 'text-gray-400 hover:text-purple-400 hover:bg-purple-900/20'
-                              : 'text-gray-500 hover:text-purple-600 hover:bg-purple-50'
-                          }`}
-                          title="Generate hashtags with AI"
-                        >
-                          <Sparkles className="w-4 h-4" />
-                        </button>
+                        {content.status !== 'published' && (
+                          <button
+                            onClick={() => handleAIEdit('hashtags')}
+                            disabled={aiEditing}
+                            className={`p-1 rounded transition-colors disabled:opacity-50 ${
+                              isDarkMode
+                                ? 'text-gray-400 hover:text-purple-400 hover:bg-purple-900/20'
+                                : 'text-gray-500 hover:text-purple-600 hover:bg-purple-50'
+                            }`}
+                            title="Generate hashtags with AI"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                       <input
                         type="text"
@@ -1375,7 +1583,7 @@ const ATSNContentModal = ({
                     </button>
                   )}
                 </div>
-                </div>
+              </div>
               </div>
             </div>
           </div>
@@ -1788,6 +1996,24 @@ const ATSNContentModal = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Carousel Image Selector Modal */}
+      {showCarouselImageSelector && (
+        <CarouselImageSelector
+          images={carouselImages}
+          selectedImage={selectedCarouselImage}
+          onImageSelect={(image) => {
+            setSelectedCarouselImage(image)
+            setShowCarouselImageSelector(false)
+            handleImageEdit(image)
+          }}
+          onClose={() => {
+            setShowCarouselImageSelector(false)
+            setSelectedCarouselImage('')
+          }}
+          isDarkMode={isDarkMode}
+        />
       )}
 
     </div>

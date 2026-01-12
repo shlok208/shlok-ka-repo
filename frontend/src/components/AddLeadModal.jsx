@@ -526,6 +526,7 @@ const AddLeadModal = ({ isOpen, onClose, onSuccess, isImporting = false, isDarkM
           setShowImportModal(false)
         }}
         isImporting={isImporting}
+        isDarkMode={isDarkMode}
       />
     </div>
   )

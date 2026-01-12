@@ -31,6 +31,13 @@ export default defineConfig(({ mode }) => ({
   },
   define: {
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version)
+  },
+  optimizeDeps: {
+    exclude: ['@tauri-apps/api', '@tauri-apps/api/*']
+  },
+  // Mark Tauri APIs as external during development
+  ssr: {
+    noExternal: ['@tauri-apps/api']
   }
 }))
 

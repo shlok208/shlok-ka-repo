@@ -291,18 +291,13 @@ const navigationItems = [
   }, [user])
 
   return (
-    <div className={`hidden md:block shadow-lg transition-all duration-300 fixed left-0 top-0 h-screen z-50 w-48 xl:w-64 flex flex-col overflow-hidden border-r border-gray-800 ${
+    <div className={`hidden md:block shadow-lg transition-all duration-300 fixed left-0 top-0 h-screen z-50 w-48 xl:w-64 flex flex-col overflow-hidden ${
       isDarkMode ? 'bg-gray-900' : 'bg-white'
     }`} style={{position: 'fixed', zIndex: 50}}>
       {/* Header */}
-      <div className="p-3 lg:p-4">
+      <div className={`p-3 lg:p-4`}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <img
-              src="/logo_.png"
-              alt="ATSN AI Logo"
-              className="w-8 h-8 lg:w-10 lg:h-10 object-contain"
-            />
+          <div className="flex flex-col space-y-1">
             <h1 className={`text-xl lg:text-2xl font-bold ${
               isDarkMode ? 'text-gray-200' : 'text-gray-600'
             }`}>atsn ai</h1>
@@ -412,7 +407,9 @@ const navigationItems = [
       </nav>
 
       {/* User Section */}
-      <div className="p-4 flex-shrink-0 space-y-1">
+      <div className={`p-4 border-t flex-shrink-0 space-y-1 ${
+        isDarkMode ? 'border-gray-700' : 'border-gray-200'
+      }`}>
         {isAdmin && (
           <button
             onClick={() => navigate('/admin')}
@@ -456,7 +453,9 @@ const navigationItems = [
         </div>
 
       {/* Usage Stats Section */}
-      <div className="px-4 py-3">
+      <div className={`px-4 py-3 border-t ${
+        isDarkMode ? 'border-gray-700' : 'border-gray-200'
+      }`}>
         <UsageStats userPlan={userPlan} />
       </div>
 

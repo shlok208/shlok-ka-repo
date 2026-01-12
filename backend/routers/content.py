@@ -7,6 +7,7 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 from pydantic import BaseModel
 import openai
+from .connections import delete_from_social_media
 
 logger = logging.getLogger(__name__)
 
@@ -281,6 +282,15 @@ async def get_created_content(
         content_items = response.data if response.data else []
         print(f"🔍 Found {len(content_items)} created content items")
 
+        # Debug: Print status values (raw from database, no fallbacks)
+        status_counts = {}
+        for item in content_items:
+            raw_status = item.get("status")  # No fallback - show exactly what's in DB
+            status_counts[raw_status] = status_counts.get(raw_status, 0) + 1
+            print(f"📊 Content {item['id'][:8]}: raw_status='{raw_status}'")
+
+        print(f"📈 Raw status distribution: {status_counts}")
+
         # Transform the data to match what the frontend expects
         transformed_items = []
         for item in content_items:
@@ -294,6 +304,7 @@ async def get_created_content(
                 "platform": item.get("platform", "General"),
                 "content_type": item.get("content_type", "post"),
                 "created_at": item.get("created_at"),
+                "status": item.get("status", "draft"),
                 "metadata": item.get("metadata", {}),
                 "archetype": item.get("archetype"),
                 "visual_metaphor": item.get("visual_metaphor"),
@@ -313,6 +324,56 @@ async def get_created_content(
 
     except Exception as e:
         logger.error(f"Error getting created content: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/debug/status")
+async def debug_status_values(current_user: User = Depends(get_current_user)):
+    """Debug endpoint to check RAW status values in created_content table (no fallbacks)"""
+    try:
+        user_id = current_user.id
+
+        # Fetch all content for this user (select all columns to ensure status is included)
+        response = supabase_admin.table("created_content").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+
+        content_items = response.data if response.data else []
+
+        # Group by status (raw values, no processing)
+        status_groups = {}
+        null_status_count = 0
+
+        for item in content_items:
+            raw_status = item.get("status")  # Raw value - no defaults
+            if raw_status is None:
+                null_status_count += 1
+                raw_status = "NULL"
+            elif raw_status == "":
+                raw_status = "EMPTY_STRING"
+
+            if raw_status not in status_groups:
+                status_groups[raw_status] = []
+            status_groups[raw_status].append({
+                "id": item["id"][:8] + "...",
+                "created_at": item.get("created_at")
+            })
+
+        return {
+            "total_items": len(content_items),
+            "null_status_items": null_status_count,
+            "raw_status_distribution": {status: len(items) for status, items in status_groups.items()},
+            "raw_status_details": status_groups,
+            "raw_sample_items": [
+                {
+                    "id": item["id"],
+                    "status": item.get("status"),  # Raw status value
+                    "all_columns": item  # Full raw item data
+                }
+                for item in content_items[:5]  # First 5 items with full details
+            ]
+        }
+
+    except Exception as e:
+        logger.error(f"Error debugging status values: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/by-date")
@@ -471,6 +532,55 @@ async def update_content(
             detail=f"Failed to update content: {str(e)}"
         )
 
+
+@router.put("/update-status/{content_id}")
+async def update_content_status(
+    content_id: str,
+    status_data: ContentStatusUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Update content status by ID"""
+    try:
+        # First verify the content belongs to the user
+        content_response = supabase_admin.table("content_posts").select("*, content_campaigns!inner(*)").eq("id", content_id).eq("content_campaigns.user_id", current_user.id).execute()
+        
+        if not content_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Content not found or access denied"
+            )
+        
+        # Update only the status
+        update_response = supabase_admin.table("content_posts").update({
+            "status": status_data.status
+        }).eq("id", content_id).execute()
+        
+        if not update_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update content status"
+            )
+        
+        updated_content = update_response.data[0]
+        
+        return {
+            "success": True,
+            "message": "Content status updated successfully",
+            "content": {
+                "id": updated_content["id"],
+                "status": updated_content["status"],
+                "updated_at": updated_content["updated_at"]
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update content status: {str(e)}"
+        )
+
 @router.put("/created-content/update/{content_id}")
 async def update_created_content(
     content_id: str,
@@ -533,7 +643,7 @@ async def update_created_content(
                 "updated_at": updated_content["updated_at"]
             }
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -542,52 +652,182 @@ async def update_created_content(
             detail=f"Failed to update content: {str(e)}"
         )
 
-@router.put("/update-status/{content_id}")
-async def update_content_status(
+@router.delete("/created-content/{content_id}")
+async def delete_created_content(
     content_id: str,
-    status_data: ContentStatusUpdate,
     current_user: User = Depends(get_current_user)
 ):
-    """Update content status by ID"""
+    """Delete created content and associated images, plus automatically delete from social media platforms"""
     try:
         # First verify the content belongs to the user
-        content_response = supabase_admin.table("content_posts").select("*, content_campaigns!inner(*)").eq("id", content_id).eq("content_campaigns.user_id", current_user.id).execute()
-        
+        content_response = supabase_admin.table("created_content").select("*").eq("id", content_id).eq("user_id", current_user.id).execute()
+
         if not content_response.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Content not found or access denied"
             )
-        
-        # Update only the status
-        update_response = supabase_admin.table("content_posts").update({
-            "status": status_data.status
-        }).eq("id", content_id).execute()
-        
-        if not update_response.data:
+
+        content = content_response.data[0]
+
+        # Delete from social media platforms first (if the content was posted)
+        social_delete_results = None
+        try:
+            metadata = content.get("metadata", {})
+            if metadata and any(key.endswith("_post_id") for key in metadata.keys()):
+                print(f"🗑️ Created content has social media post IDs, attempting to delete from platforms...")
+                social_delete_results = await delete_from_social_media(metadata, current_user.id)
+            else:
+                print(f"ℹ️ Created content has no social media post IDs, skipping social media deletion")
+        except Exception as social_error:
+            print(f"⚠️ Failed to delete from social media, but continuing with database deletion: {social_error}")
+            # Don't fail the entire operation if social media deletion fails
+            social_delete_results = {"error": str(social_error)}
+
+        # Delete associated images from Supabase storage if they exist
+        try:
+            images = content.get("images", [])
+            if images:
+                for image_url in images:
+                    if image_url and "ai-generated-images" in image_url:
+                        # Extract file path from Supabase storage URL
+                        file_path = image_url.split("ai-generated-images/")[-1]
+                        if file_path:
+                            try:
+                                # Delete from Supabase storage
+                                supabase_admin.storage.from_("ai-generated-images").remove([file_path])
+                                print(f"🗑️ Deleted image from storage: {file_path}")
+                            except Exception as storage_error:
+                                # Continue even if storage deletion fails
+                                print(f"⚠️ Could not delete image {file_path} from storage: {storage_error}")
+                                pass
+        except Exception as image_error:
+            # Continue with content deletion even if image deletion fails
+            print(f"⚠️ Error deleting images: {image_error}")
+            pass
+
+        # Delete the created content
+        delete_response = supabase_admin.table("created_content").delete().eq("id", content_id).execute()
+
+        if not delete_response.data:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to update content status"
+                detail="Failed to delete content"
             )
-        
-        updated_content = update_response.data[0]
-        
+
+        # Prepare response message
+        response_message = "Content and associated images deleted successfully"
+        if social_delete_results:
+            if social_delete_results.get("total_platforms_attempted", 0) > 0:
+                successful = social_delete_results.get("successful_deletions", 0)
+                failed = social_delete_results.get("failed_deletions", 0)
+                total = social_delete_results.get("total_platforms_attempted", 0)
+                response_message += f". Deleted from {successful}/{total} social media platforms"
+                if failed > 0:
+                    response_message += f" ({failed} deletions failed)"
+
         return {
             "success": True,
-            "message": "Content status updated successfully",
-            "content": {
-                "id": updated_content["id"],
-                "status": updated_content["status"],
-                "updated_at": updated_content["updated_at"]
-            }
+            "message": response_message,
+            "deleted_content": {
+                "id": content_id,
+                "title": content.get("title", ""),
+                "platform": content.get("platform", ""),
+                "deleted_at": datetime.now().isoformat()
+            },
+            "social_media_deletion": social_delete_results if social_delete_results else None
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update content status: {str(e)}"
+            detail=f"Failed to delete content: {str(e)}"
+        )
+
+        if not content_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Content not found or access denied"
+            )
+
+        content = content_response.data[0]
+
+        # Delete from social media platforms first (if the content was posted)
+        social_delete_results = None
+        try:
+            metadata = content.get("metadata", {})
+            if metadata and any(key.endswith("_post_id") for key in metadata.keys()):
+                print(f"🗑️ Created content has social media post IDs, attempting to delete from platforms...")
+                social_delete_results = await delete_from_social_media(metadata, current_user.id)
+            else:
+                print(f"ℹ️ Created content has no social media post IDs, skipping social media deletion")
+        except Exception as social_error:
+            print(f"⚠️ Failed to delete from social media, but continuing with database deletion: {social_error}")
+            # Don't fail the entire operation if social media deletion fails
+            social_delete_results = {"error": str(social_error)}
+
+        # Delete associated images from Supabase storage if they exist
+        try:
+            images = content.get("images", [])
+            if images:
+                for image_url in images:
+                    if image_url and "ai-generated-images" in image_url:
+                        # Extract file path from Supabase storage URL
+                        file_path = image_url.split("ai-generated-images/")[-1]
+                        if file_path:
+                            try:
+                                # Delete from Supabase storage
+                                supabase_admin.storage.from_("ai-generated-images").remove([file_path])
+                                print(f"🗑️ Deleted image from storage: {file_path}")
+                            except Exception as storage_error:
+                                # Continue even if storage deletion fails
+                                print(f"⚠️ Could not delete image {file_path} from storage: {storage_error}")
+                                pass
+        except Exception as image_error:
+            # Continue with content deletion even if image deletion fails
+            print(f"⚠️ Error deleting images: {image_error}")
+            pass
+
+        # Delete the created content
+        delete_response = supabase_admin.table("created_content").delete().eq("id", content_id).execute()
+
+        if not delete_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete content"
+            )
+
+        # Prepare response message
+        response_message = "Content and associated images deleted successfully"
+        if social_delete_results:
+            if social_delete_results.get("total_platforms_attempted", 0) > 0:
+                successful = social_delete_results.get("successful_deletions", 0)
+                failed = social_delete_results.get("failed_deletions", 0)
+                total = social_delete_results.get("total_platforms_attempted", 0)
+                response_message += f". Deleted from {successful}/{total} social media platforms"
+                if failed > 0:
+                    response_message += f" ({failed} deletions failed)"
+
+        return {
+            "success": True,
+            "message": response_message,
+            "deleted_content": {
+                "id": content_id,
+                "title": content.get("title", ""),
+                "platform": content.get("platform", ""),
+                "deleted_at": datetime.now().isoformat()
+            },
+            "social_media_deletion": social_delete_results if social_delete_results else None
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete content: {str(e)}"
         )
 
 @router.delete("/{content_id}")
@@ -607,7 +847,21 @@ async def delete_content(
             )
         
         content = content_response.data[0]
-        
+
+        # Delete from social media platforms first (if the content was posted)
+        social_delete_results = None
+        try:
+            metadata = content.get("metadata", {})
+            if metadata and any(key.endswith("_post_id") for key in metadata.keys()):
+                print(f"🗑️ Content has social media post IDs, attempting to delete from platforms...")
+                social_delete_results = await delete_from_social_media(metadata, current_user.id)
+            else:
+                print(f"ℹ️ Content has no social media post IDs, skipping social media deletion")
+        except Exception as social_error:
+            print(f"⚠️ Failed to delete from social media, but continuing with database deletion: {social_error}")
+            # Don't fail the entire operation if social media deletion fails
+            social_delete_results = {"error": str(social_error)}
+
         # Delete associated images first
         try:
             # Get all images associated with this content
@@ -650,15 +904,27 @@ async def delete_content(
             )
         
         
+        # Prepare response message
+        response_message = "Content and associated images deleted successfully"
+        if social_delete_results:
+            if social_delete_results.get("total_platforms_attempted", 0) > 0:
+                successful = social_delete_results.get("successful_deletions", 0)
+                failed = social_delete_results.get("failed_deletions", 0)
+                total = social_delete_results.get("total_platforms_attempted", 0)
+                response_message += f". Deleted from {successful}/{total} social media platforms"
+                if failed > 0:
+                    response_message += f" ({failed} deletions failed)"
+
         return {
             "success": True,
-            "message": "Content and associated images deleted successfully",
+            "message": response_message,
             "deleted_content": {
                 "id": content_id,
                 "title": content.get("title", ""),
                 "platform": content.get("platform", ""),
                 "deleted_at": datetime.now().isoformat()
-            }
+            },
+            "social_media_deletion": social_delete_results if social_delete_results else None
         }
         
     except HTTPException:

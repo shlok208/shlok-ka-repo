@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Play } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from '../contexts/NotificationContext'
+import { contentAPI } from '../services/content'
 import SideNavbar from './SideNavbar'
 import MobileNavigation from './MobileNavigation'
 import ATSNContentCard from './ATSNContentCard'
 import ATSNContentModal from './ATSNContentModal'
 import ReelModal from './ReelModal'
-import DeleteConfirmationModal from './DeleteConfirmationModal'
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'https://agent-emily.onrender.com').replace(/\/$/, '')
 
@@ -61,7 +61,6 @@ import {
 } from 'lucide-react'
 
 import { supabase } from '../lib/supabase'
-import hydrationManager from '../services/hydrationManager'
 
 // Platform icons with real logos
 const getPlatformIcon = (platformName) => {
@@ -135,6 +134,7 @@ function CreatedContentDashboard() {
   const [loading, setLoading] = useState(true)
   const [content, setContent] = useState([])
   const [filteredContent, setFilteredContent] = useState([])
+  const [totalContentCount, setTotalContentCount] = useState(0)
 
   // Filters
   const [filterChannel, setFilterChannel] = useState('all')
@@ -181,45 +181,32 @@ function CreatedContentDashboard() {
         return
       }
 
-      // Use cache-first hydration strategy
-      const result = await hydrationManager.hydrateContent(async () => {
-        const response = await fetch(`${API_BASE_URL}/content/created?limit=20&offset=0`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch content: ${response.status}`)
+      // Get ALL content without pagination to get accurate count
+      const response = await fetch(`${API_BASE_URL}/content/created?limit=10000&offset=0`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
         }
-
-        const data = await response.json()
-        return Array.isArray(data) ? data : []
       })
 
-      console.log(`✅ Loaded ${result.data?.length || 0} posts from ${result.source}`)
-
-      if (result.data && Array.isArray(result.data)) {
-        setContent(result.data)
-        contentRef.current = result.data
+      if (!response.ok) {
+        throw new Error(`Failed to fetch content: ${response.status}`)
       }
 
-      // Listen for background refresh updates
-      const handleRefresh = (event) => {
-        if (event.detail?.posts) {
-          setContent(event.detail.posts)
-          contentRef.current = event.detail.posts
-          console.log('🔄 Content refreshed in background')
-        }
-      }
+      const data = await response.json()
+      const fetchedContent = Array.isArray(data) ? data : []
+      const fetchedContentArray = Array.isArray(data.content) ? data.content : fetchedContent
 
-      window.addEventListener('content-refreshed', handleRefresh)
-      
-      // Cleanup listener on unmount
-      return () => {
-        window.removeEventListener('content-refreshed', handleRefresh)
-      }
+      // Filter out any invalid or deleted items
+      const validContent = fetchedContentArray.filter(item => item && item.id)
+
+      setContent(validContent)
+      contentRef.current = validContent
+
+      // Set total count to the actual number of valid items fetched
+      setTotalContentCount(validContent.length)
+
+      console.log('Total content count set to:', validContent.length, 'Valid items:', validContent.length)
 
     } catch (error) {
       console.error('Error fetching content:', error)
@@ -297,44 +284,44 @@ function CreatedContentDashboard() {
       mediaUrl = contentItem.image_url
     } else if (contentItem.metadata && contentItem.metadata.image_url) {
       mediaUrl = contentItem.metadata.image_url
+    } else if (contentItem.carousel_images && Array.isArray(contentItem.carousel_images) && contentItem.carousel_images.length > 0) {
+      // Check for carousel images
+      mediaUrl = typeof contentItem.carousel_images[0] === 'string' ? contentItem.carousel_images[0] : (contentItem.carousel_images[0].url || contentItem.carousel_images[0])
+    } else if (contentItem.metadata && contentItem.metadata.carousel_images && Array.isArray(contentItem.metadata.carousel_images) && contentItem.metadata.carousel_images.length > 0) {
+      // Check for carousel images in metadata
+      mediaUrl = typeof contentItem.metadata.carousel_images[0] === 'string' ? contentItem.metadata.carousel_images[0] : (contentItem.metadata.carousel_images[0].url || contentItem.metadata.carousel_images[0])
     }
 
     return { mediaUrl, isVideo }
   }
 
   const handleEdit = (contentItem) => {
-    // Check if it's video content and open appropriate modal
-    const isVideoContent = contentItem.content_type === 'short_video or reel' ||
-                          contentItem.content_type === 'reel' ||
-                          contentItem.content_type?.toLowerCase().includes('reel') ||
-                          contentItem.content_type?.toLowerCase().includes('video') ||
-                          contentItem.raw_data?.content_type === 'short_video or reel' ||
-                          contentItem.raw_data?.content_type === 'reel' ||
-                          contentItem.raw_data?.content_type?.toLowerCase().includes('reel') ||
-                          contentItem.raw_data?.content_type?.toLowerCase().includes('video')
+    // Check if this is carousel content - carousel should always open ATSNContentModal
+    const isCarousel = contentItem.post_type === 'carousel' ||
+                      contentItem.content_type?.toLowerCase() === 'carousel' ||
+                      contentItem.selected_content_type?.toLowerCase() === 'carousel' ||
+                      (contentItem.metadata && contentItem.metadata.carousel_images && contentItem.metadata.carousel_images.length > 0) ||
+                      (contentItem.carousel_images && contentItem.carousel_images.length > 0)
+
+    // Check if it's video content and open appropriate modal (but not carousel)
+    const isVideoContent = !isCarousel && (
+      contentItem.content_type === 'short_video or reel' ||
+      contentItem.content_type === 'reel' ||
+      contentItem.content_type?.toLowerCase().includes('reel') ||
+      contentItem.content_type?.toLowerCase().includes('video') ||
+      contentItem.raw_data?.content_type === 'short_video or reel' ||
+      contentItem.raw_data?.content_type === 'reel' ||
+      contentItem.raw_data?.content_type?.toLowerCase().includes('reel') ||
+      contentItem.raw_data?.content_type?.toLowerCase().includes('video')
+    )
 
     if (isVideoContent) {
       // Open ReelModal for video content
       setSelectedContent(contentItem)
       setIsReelModalOpen(true)
     } else {
-      // Check for image editing
-      const { mediaUrl, isVideo } = getMediaInfo(contentItem)
-
-      if (!mediaUrl) {
-        showError('This content does not have an image to edit.')
-        return
-      }
-
-      if (isVideo) {
-        showError('Image editing is only available for image posts.')
-        return
-      }
-
-      // Open ATSNContentModal for image editing
+      // Open ATSNContentModal for content viewing (including carousel)
       setSelectedContent(contentItem)
-      setInitialImageEditorUrl(mediaUrl)
-      setAutoOpenImageEditor(true)
       setIsContentModalOpen(true)
     }
   }
@@ -395,25 +382,33 @@ function CreatedContentDashboard() {
 
     setIsDeleting(true)
     try {
-      const token = await getAuthToken()
+      // Delete content using backend API (includes automatic social media deletion)
+      console.log('Deleting content with ID:', itemToDelete.id, 'Platform:', itemToDelete.platform)
+      const result = await contentAPI.deleteCreatedContent(itemToDelete.id)
 
-      // Delete content from Supabase
-      const { error } = await supabase
-        .from('created_content')
-        .delete()
-        .eq('id', itemToDelete.id)
-        .eq('user_id', user.id) // Security: ensure user can only delete their own content
-
-      if (error) {
-        console.error('Error deleting content:', error)
-        showError(`Failed to delete content: ${error.message}`)
+      if (!result.success) {
+        console.error('Error deleting content:', result.error)
+        showError(`Failed to delete content: ${result.error}`)
         return
       }
 
       // Remove from local state
       setContent(prev => prev.filter(item => item.id !== itemToDelete.id))
 
-      showSuccess('Content deleted successfully')
+      // Refresh content to get accurate count after deletion
+      await fetchContent(false)
+
+      // Show success message with social media deletion info if available
+      const data = result.data
+      let successMessage = 'Content deleted successfully'
+
+      if (data.social_media_deletion && data.social_media_deletion.total_platforms_attempted > 0) {
+        const successful = data.social_media_deletion.successful_deletions || 0
+        const total = data.social_media_deletion.total_platforms_attempted || 0
+        successMessage += `. Also deleted from ${successful}/${total} social media platforms`
+      }
+
+      showSuccess(successMessage)
       setShowDeleteModal(false)
       setItemToDelete(null)
 
@@ -596,8 +591,7 @@ function CreatedContentDashboard() {
       const { error: updateError } = await supabase
         .from('created_content')
         .update({
-          status: 'published',
-          published_at: new Date().toISOString()
+          status: 'published'
         })
         .eq('id', itemToPublish.id)
         .eq('user_id', user.id)
@@ -609,7 +603,7 @@ function CreatedContentDashboard() {
       // Update local state
       setContent(prev => prev.map(item =>
         item.id === itemToPublish.id
-          ? { ...item, status: 'published', published_at: new Date().toISOString() }
+          ? { ...item, status: 'published' }
           : item
       ))
 
@@ -896,15 +890,111 @@ function CreatedContentDashboard() {
     if (!showDeleteModal || !itemToDelete) return null
 
     return (
-      <DeleteConfirmationModal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onConfirm={confirmDelete}
-        title="Delete Content"
-        itemName={itemToDelete.title || 'this content'}
-        itemCount={1}
-        isLoading={isDeleting}
-      />
+      <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowDeleteModal(false)}
+        />
+        <div className={`relative max-w-md w-full rounded-2xl shadow-2xl overflow-hidden ${
+          isDarkMode ? 'bg-gray-800' : 'bg-white'
+        }`}>
+          {/* Header */}
+          <div className={`p-6 border-b ${
+            isDarkMode
+              ? 'border-gray-700 bg-gradient-to-r from-red-900/20 to-red-800/20'
+              : 'border-gray-200 bg-gradient-to-r from-red-50 to-red-100'
+          }`}>
+            <div className="flex items-center justify-center space-x-3">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-r from-red-500 to-red-600 flex items-center justify-center">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div>
+                <h3 className={`text-lg font-normal ${
+                  isDarkMode ? 'text-gray-100' : 'text-gray-900'
+                }`}>
+                  Delete Content
+                </h3>
+              </div>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="p-6">
+            <div className="flex items-start space-x-4">
+              {/* Leo Avatar */}
+              <div className="flex-shrink-0">
+                <img
+                  src="/leo_logo.png"
+                  alt="Leo"
+                  className="w-16 h-16 rounded-full object-cover border-2 border-red-200"
+                  onError={(e) => {
+                    e.target.src = '/default-logo.png'
+                  }}
+                />
+              </div>
+
+              {/* Message */}
+              <div className="flex-1">
+                <div className={`relative p-4 rounded-2xl ${
+                  isDarkMode
+                    ? 'bg-gray-700 border border-gray-600'
+                    : 'bg-red-50 border border-red-200'
+                }`}>
+                  {/* Speech bubble pointer */}
+                  <div className={`absolute left-0 top-4 transform -translate-x-2 w-0 h-0 ${
+                    isDarkMode
+                      ? 'border-t-8 border-t-gray-700 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                      : 'border-t-8 border-t-red-50 border-r-8 border-r-transparent border-b-8 border-b-transparent border-l-8 border-l-transparent'
+                  }`} />
+
+                  <p className={`text-sm leading-relaxed ${
+                    isDarkMode ? 'text-gray-200' : 'text-gray-800'
+                  }`}>
+                    <span className="font-semibold text-red-500">Leo here!</span> ⚠️<br />
+                    Are you sure you want to delete <strong>"{itemToDelete.title || 'this content'}"</strong>?
+                    This action cannot be undone and will permanently remove the content.
+                  </p>
+                </div>
+
+                <div className="mt-4 flex justify-end space-x-3">
+                  <button
+                    onClick={() => setShowDeleteModal(false)}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                      isDarkMode
+                        ? 'text-gray-400 bg-gray-700 hover:bg-gray-600'
+                        : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+                    }`}
+                    disabled={isDeleting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    disabled={isDeleting}
+                    className="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-medium hover:from-red-600 hover:to-red-700 transition-all duration-200 disabled:opacity-50 flex items-center space-x-2"
+                  >
+                    {isDeleting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Deleting...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        <span>Delete</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     )
   }
 
@@ -1022,12 +1112,10 @@ function CreatedContentDashboard() {
         fetchingFreshData={false}
       />
 
-      <div className={`md:ml-48 xl:ml-64 flex flex-col min-h-screen ${
-        isDarkMode ? 'md:bg-gray-800' : 'md:bg-gray-50'
-      }`}>
+      <div className="md:ml-48 xl:ml-64 flex flex-col min-h-screen">
         {/* Header */}
         <div className={`shadow-sm border-b sticky top-0 z-20 ${
-          isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white'
+          isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white'
         }`}>
           <div className="px-4 lg:px-6 py-3 lg:py-4">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -1035,7 +1123,7 @@ function CreatedContentDashboard() {
               <div className="flex items-center gap-4">
                 <div>
                   <h1 className={`text-xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                    <span className="font-bold">Created Content</span> | <span className="font-normal text-sm">{filteredContent.length} of {content.length} items</span>
+                    <span className="font-bold">Created Content</span> | <span className="font-normal text-sm">{filteredContent.length} of {totalContentCount} items</span>
                   </h1>
                 </div>
               </div>
@@ -1275,32 +1363,36 @@ function CreatedContentDashboard() {
 
                       {/* Action Buttons */}
                       <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-2">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleEdit(contentItem); }}
-                          className="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors"
-                          title="Edit content"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleSchedule(contentItem); }}
-                          className="p-2 bg-green-500 hover:bg-green-600 text-white rounded-full transition-colors"
-                          title="Schedule content"
-                        >
-                          <Clock className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handlePublish(contentItem); }}
-                          className="p-2 bg-purple-500 hover:bg-purple-600 text-white rounded-full transition-colors"
-                          title="Publish content"
-                          disabled={isPublishing}
-                        >
-                          {isPublishing ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Send className="w-4 h-4" />
-                          )}
-                        </button>
+                        {contentItem.status !== 'published' && (
+                          <>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleEdit(contentItem); }}
+                              className="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors"
+                              title="Edit content"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleSchedule(contentItem); }}
+                              className="p-2 bg-green-500 hover:bg-green-600 text-white rounded-full transition-colors"
+                              title="Schedule content"
+                            >
+                              <Clock className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handlePublish(contentItem); }}
+                              className="p-2 bg-purple-500 hover:bg-purple-600 text-white rounded-full transition-colors"
+                              title="Publish content"
+                              disabled={isPublishing}
+                            >
+                              {isPublishing ? (
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Send className="w-4 h-4" />
+                              )}
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDelete(contentItem); }}
                           className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
@@ -1319,6 +1411,21 @@ function CreatedContentDashboard() {
                     {/* Platform indicator */}
                     <div className="absolute top-2 right-2 bg-black bg-opacity-50 rounded-full p-1">
                       {getPlatformIcon(contentItem.platform)}
+                    </div>
+
+                    {/* Status indicator */}
+                    <div className="absolute top-2 left-2">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        contentItem.status === 'published'
+                          ? 'bg-green-500 text-white'
+                          : contentItem.status === 'scheduled'
+                          ? 'bg-blue-500 text-white'
+                          : contentItem.status === 'draft'
+                          ? 'bg-yellow-500 text-white'
+                          : 'bg-gray-500 text-white'
+                      }`}>
+                        {contentItem.status ? contentItem.status.charAt(0).toUpperCase() + contentItem.status.slice(1) : 'Draft'}
+                      </span>
                     </div>
                   </div>
                 );

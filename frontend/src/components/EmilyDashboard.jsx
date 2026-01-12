@@ -4,17 +4,9 @@ import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from '../contexts/NotificationContext'
 import { onboardingAPI } from '../services/onboarding'
 import { supabase } from '../lib/supabase'
+import { loadTauriAPI } from '../utils/tauri'
 import SideNavbar from './SideNavbar'
 
-// Tauri imports for desktop app (lazy loaded)
-const loadTauriAPI = async () => {
-  try {
-    const { listen } = await import('@tauri-apps/api/event')
-    return listen
-  } catch (e) {
-    return null // Not in desktop environment
-  }
-}
 
 // Get dark mode state from localStorage or default to light mode
 const getDarkModePreference = () => {

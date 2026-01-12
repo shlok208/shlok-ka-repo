@@ -3318,8 +3318,24 @@ async def post_to_facebook(
 
         print(f"📝 Post data: {post_data}")
 
-        
-        
+        # Get content data from database using content_id
+        content_id = post_data.get('content_id')
+        print(f"🔍 Received content_id: {content_id} (type: {type(content_id)})")
+        content_data = None
+
+        if content_id:
+            try:
+                content_response = supabase_admin.table('created_content').select('*').eq('id', content_id).eq('user_id', current_user.id).execute()
+                if content_response.data and len(content_response.data) > 0:
+                    content_data = content_response.data[0]
+                    print(f"📄 Fetched content data for ID {content_id}: images={content_data.get('images', 'MISSING')}")
+                else:
+                    print(f"❌ No content found for ID {content_id}")
+            except Exception as e:
+                print(f"⚠️ Failed to fetch content data: {e}")
+        else:
+            print(f"❌ No content_id provided in request")
+
         # Get user's Facebook connection
 
         response = supabase_admin.table("platform_connections").select("*").eq("user_id", current_user.id).eq("platform", "facebook").eq("is_active", True).execute()
@@ -3539,21 +3555,28 @@ async def post_to_facebook(
             if response.status_code == 200:
                 result = response.json()
                 print(f"✅ Facebook carousel post successful: {result}")
-                
+
                 # Update content status in both created_content and content_posts tables
                 content_id = post_data.get('content_id')
                 if content_id:
                     published_at = datetime.now().isoformat()
 
-                    # Update created_content table with channel post ID
+                    # Update created_content table with platform-specific post ID in metadata
                     try:
+                        # Get existing metadata first
+                        existing_content = supabase_admin.table("created_content").select("metadata").eq("id", content_id).eq("user_id", current_user.id).execute()
+                        existing_metadata = existing_content.data[0].get("metadata", {}) if existing_content.data else {}
+
+                        # Add the post ID to metadata
+                        existing_metadata["facebook_post_id"] = result.get('id')
+
                         created_content_update = {
                             "status": "published",
-                            "channel_post_id": result.get('id'),
+                            "metadata": existing_metadata,
                             "updated_at": published_at
                         }
                         supabase_admin.table("created_content").update(created_content_update).eq("id", content_id).eq("user_id", current_user.id).execute()
-                        print(f"✅ Updated created_content table with channel_post_id: {result.get('id')}")
+                        print(f"✅ Updated created_content table metadata with facebook_post_id: {result.get('id')}")
                     except Exception as e:
                         print(f"⚠️ Failed to update created_content table: {e}")
 
@@ -3772,15 +3795,22 @@ async def post_to_facebook(
                 if content_id:
                     published_at = datetime.now().isoformat()
 
-                    # Update created_content table with channel post ID
+                    # Update created_content table with platform-specific post ID in metadata
                     try:
+                        # Get existing metadata first
+                        existing_content = supabase_admin.table("created_content").select("metadata").eq("id", content_id).eq("user_id", current_user.id).execute()
+                        existing_metadata = existing_content.data[0].get("metadata", {}) if existing_content.data else {}
+
+                        # Add the post ID to metadata
+                        existing_metadata["facebook_post_id"] = result.get('id')
+
                         created_content_update = {
                             "status": "published",
-                            "channel_post_id": result.get('id'),
+                            "metadata": existing_metadata,
                             "updated_at": published_at
                         }
                         supabase_admin.table("created_content").update(created_content_update).eq("id", content_id).eq("user_id", current_user.id).execute()
-                        print(f"✅ Updated created_content table with channel_post_id: {result.get('id')}")
+                        print(f"✅ Updated created_content table metadata with facebook_post_id: {result.get('id')}")
                     except Exception as e:
                         print(f"⚠️ Failed to update created_content table: {e}")
 
@@ -4561,15 +4591,22 @@ async def post_to_linkedin(
                 if content_id:
                     published_at = datetime.now().isoformat()
 
-                    # Update created_content table with channel post ID
+                    # Update created_content table with platform-specific post ID in metadata
                     try:
+                        # Get existing metadata first
+                        existing_content = supabase_admin.table("created_content").select("metadata").eq("id", content_id).eq("user_id", current_user.id).execute()
+                        existing_metadata = existing_content.data[0].get("metadata", {}) if existing_content.data else {}
+
+                        # Add the post ID to metadata
+                        existing_metadata["linkedin_post_id"] = result.get('id')
+
                         created_content_update = {
                             "status": "published",
-                            "channel_post_id": result.get('id'),
+                            "metadata": existing_metadata,
                             "updated_at": published_at
                         }
                         supabase_admin.table("created_content").update(created_content_update).eq("id", content_id).eq("user_id", current_user.id).execute()
-                        print(f"✅ Updated created_content table with channel_post_id: {result.get('id')}")
+                        print(f"✅ Updated created_content table metadata with linkedin_post_id: {result.get('id')}")
                     except Exception as e:
                         print(f"⚠️ Failed to update created_content table: {e}")
 
@@ -5243,21 +5280,28 @@ async def post_to_instagram(
                 publish_result = publish_response.json()
                 post_id = publish_result.get('id')
                 print(f"✅ Instagram carousel post successful: {post_id}")
-                
+
                 # Update content status in both created_content and content_posts tables
                 content_id = post_data.get('content_id')
                 if content_id:
                     published_at = datetime.now().isoformat()
 
-                    # Update created_content table with channel post ID
+                    # Update created_content table with platform-specific post ID in metadata
                     try:
+                        # Get existing metadata first
+                        existing_content = supabase_admin.table("created_content").select("metadata").eq("id", content_id).eq("user_id", current_user.id).execute()
+                        existing_metadata = existing_content.data[0].get("metadata", {}) if existing_content.data else {}
+
+                        # Add the post ID to metadata
+                        existing_metadata["instagram_post_id"] = post_id
+
                         created_content_update = {
                             "status": "published",
-                            "channel_post_id": post_id,
+                            "metadata": existing_metadata,
                             "updated_at": published_at
                         }
                         supabase_admin.table("created_content").update(created_content_update).eq("id", content_id).eq("user_id", current_user.id).execute()
-                        print(f"✅ Updated created_content table with channel_post_id: {post_id}")
+                        print(f"✅ Updated created_content table metadata with instagram_post_id: {post_id}")
                     except Exception as e:
                         print(f"⚠️ Failed to update created_content table: {e}")
 
@@ -5557,15 +5601,22 @@ async def post_to_instagram(
             if content_id:
                 published_at = datetime.now().isoformat()
 
-                # Update created_content table with channel post ID
+                # Update created_content table with platform-specific post ID in metadata
                 try:
+                    # Get existing metadata first
+                    existing_content = supabase_admin.table("created_content").select("metadata").eq("id", content_id).eq("user_id", current_user.id).execute()
+                    existing_metadata = existing_content.data[0].get("metadata", {}) if existing_content.data else {}
+
+                    # Add the post ID to metadata
+                    existing_metadata["instagram_post_id"] = post_id
+
                     created_content_update = {
                         "status": "published",
-                        "channel_post_id": post_id,
+                        "metadata": existing_metadata,
                         "updated_at": published_at
                     }
                     supabase_admin.table("created_content").update(created_content_update).eq("id", content_id).eq("user_id", current_user.id).execute()
-                    print(f"✅ Updated created_content table with channel_post_id: {post_id}")
+                    print(f"✅ Updated created_content table metadata with instagram_post_id: {post_id}")
                 except Exception as e:
                     print(f"⚠️ Failed to update created_content table: {e}")
 
@@ -6469,4 +6520,267 @@ async def test_wordpress_connection(
             detail=f"Failed to test WordPress connection: {str(e)}"
 
         )
+
+# Social Media Delete Functions
+
+async def delete_from_facebook(post_id: str, connection: dict) -> bool:
+    """Delete a post from Facebook"""
+    try:
+        print(f"🗑️ Deleting Facebook post: {post_id}")
+
+        # Decrypt the access token
+        try:
+            access_token = decrypt_token(connection['access_token_encrypted'])
+        except Exception as e:
+            print(f"❌ Error decrypting Facebook token: {e}")
+            if connection.get('access_token_encrypted', '').startswith('EAAB'):
+                access_token = connection['access_token_encrypted']
+            else:
+                raise Exception("Failed to decrypt access token")
+
+        # Delete the post using Facebook Graph API
+        delete_url = f"https://graph.facebook.com/v18.0/{post_id}"
+        params = {
+            'access_token': access_token
+        }
+
+        print(f"🌐 Deleting from Facebook URL: {delete_url}")
+        response = requests.delete(delete_url, params=params)
+
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('success') == True:
+                print(f"✅ Successfully deleted Facebook post: {post_id}")
+                return True
+            else:
+                print(f"❌ Facebook API returned success=false for post: {post_id}")
+                return False
+        else:
+            print(f"❌ Failed to delete Facebook post {post_id}: {response.status_code} - {response.text}")
+            return False
+
+    except Exception as e:
+        print(f"❌ Error deleting from Facebook: {e}")
+        return False
+
+async def delete_from_instagram(post_id: str, connection: dict) -> bool:
+    """Delete a post from Instagram"""
+    try:
+        print(f"🗑️ Deleting Instagram post: {post_id}")
+
+        # Decrypt the access token
+        try:
+            access_token = decrypt_token(connection['access_token_encrypted'])
+        except Exception as e:
+            print(f"❌ Error decrypting Instagram token: {e}")
+            if connection.get('access_token_encrypted', '').startswith('EAAB'):
+                access_token = connection['access_token_encrypted']
+            else:
+                raise Exception("Failed to decrypt access token")
+
+        # Delete the post using Instagram Graph API
+        delete_url = f"https://graph.facebook.com/v18.0/{post_id}"
+        params = {
+            'access_token': access_token
+        }
+
+        print(f"🌐 Deleting from Instagram URL: {delete_url}")
+        response = requests.delete(delete_url, params=params)
+
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('success') == True:
+                print(f"✅ Successfully deleted Instagram post: {post_id}")
+                return True
+            else:
+                print(f"❌ Instagram API returned success=false for post: {post_id}")
+                return False
+        else:
+            print(f"❌ Failed to delete Instagram post {post_id}: {response.status_code} - {response.text}")
+            return False
+
+    except Exception as e:
+        print(f"❌ Error deleting from Instagram: {e}")
+        return False
+
+async def delete_from_linkedin(post_id: str, connection: dict) -> bool:
+    """Delete a post from LinkedIn"""
+    try:
+        print(f"🗑️ Deleting LinkedIn post: {post_id}")
+
+        # Decrypt the access token
+        try:
+            access_token = decrypt_token(connection['access_token_encrypted'])
+        except Exception as e:
+            print(f"❌ Error decrypting LinkedIn token: {e}")
+            raise Exception("Failed to decrypt access token")
+
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'X-Restli-Protocol-Version': '2.0.0'
+        }
+
+        # Extract the share ID from URN format if needed
+        # URN format: urn:li:share:123456789 -> extract 123456789
+        if post_id.startswith('urn:li:share:'):
+            share_id = post_id.split(':')[-1]  # Extract the last part after the last colon
+        else:
+            share_id = post_id
+
+        # Delete the post using LinkedIn API
+        delete_url = f"https://api.linkedin.com/v2/shares/{share_id}"
+
+        print(f"🌐 Deleting from LinkedIn URL: {delete_url}")
+        response = requests.delete(delete_url, headers=headers)
+
+        if response.status_code == 204:
+            print(f"✅ Successfully deleted LinkedIn post: {post_id}")
+            return True
+        else:
+            print(f"❌ Failed to delete LinkedIn post {post_id}: {response.status_code} - {response.text}")
+            return False
+
+    except Exception as e:
+        print(f"❌ Error deleting from LinkedIn: {e}")
+        return False
+
+async def delete_from_twitter(post_id: str, connection: dict) -> bool:
+    """Delete a post from Twitter"""
+    try:
+        print(f"🗑️ Deleting Twitter post: {post_id}")
+
+        # Decrypt the access token
+        try:
+            access_token = decrypt_token(connection['access_token_encrypted'])
+        except Exception as e:
+            print(f"❌ Error decrypting Twitter token: {e}")
+            raise Exception("Failed to decrypt access token")
+
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
+
+        # Delete the tweet using Twitter API v2
+        delete_url = f"https://api.twitter.com/2/tweets/{post_id}"
+
+        print(f"🌐 Deleting from Twitter URL: {delete_url}")
+        response = requests.delete(delete_url, headers=headers)
+
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('data') and result['data'].get('deleted') == True:
+                print(f"✅ Successfully deleted Twitter post: {post_id}")
+                return True
+            else:
+                print(f"❌ Twitter API returned deleted=false for post: {post_id}")
+                return False
+        else:
+            print(f"❌ Failed to delete Twitter post {post_id}: {response.status_code} - {response.text}")
+            return False
+
+    except Exception as e:
+        print(f"❌ Error deleting from Twitter: {e}")
+        return False
+
+async def delete_from_social_media(content_metadata: dict, user_id: str) -> dict:
+    """Delete content from all connected social media platforms where it was posted"""
+    results = {
+        "total_platforms_attempted": 0,
+        "successful_deletions": 0,
+        "failed_deletions": 0,
+        "details": []
+    }
+
+    try:
+        # Get all active connections for the user
+        response = supabase_admin.table("platform_connections").select("*").eq("user_id", user_id).eq("is_active", True).execute()
+        connections = response.data if response.data else []
+
+        print(f"🔗 Found {len(connections)} active connections for user {user_id}")
+        for conn in connections:
+            print(f"   - {conn.get('platform', 'unknown')} (active: {conn.get('is_active', False)})")
+
+        # Check each platform for post IDs in metadata
+        platform_post_ids = {
+            "facebook": content_metadata.get("facebook_post_id"),
+            "instagram": content_metadata.get("instagram_post_id"),
+            "linkedin": content_metadata.get("linkedin_post_id"),
+            "twitter": content_metadata.get("twitter_post_id")
+        }
+
+        print(f"📋 Post IDs found in metadata: {platform_post_ids}")
+
+        for platform, post_id in platform_post_ids.items():
+            if not post_id:
+                print(f"⏭️ Skipping {platform} - no post ID")
+                continue
+
+            # Find the connection for this platform
+            platform_connection = None
+            for conn in connections:
+                if conn.get('platform', '').lower() == platform:
+                    platform_connection = conn
+                    break
+
+            if not platform_connection:
+                print(f"⚠️ No active {platform} connection found for post deletion")
+                results["details"].append({
+                    "platform": platform,
+                    "post_id": post_id,
+                    "status": "failed",
+                    "reason": "No active connection found"
+                })
+                results["failed_deletions"] += 1
+                continue
+
+            results["total_platforms_attempted"] += 1
+
+            # Call the appropriate delete function
+            try:
+                if platform == "facebook":
+                    success = await delete_from_facebook(post_id, platform_connection)
+                elif platform == "instagram":
+                    success = await delete_from_instagram(post_id, platform_connection)
+                elif platform == "linkedin":
+                    success = await delete_from_linkedin(post_id, platform_connection)
+                elif platform == "twitter":
+                    success = await delete_from_twitter(post_id, platform_connection)
+                else:
+                    print(f"⚠️ Unsupported platform for deletion: {platform}")
+                    success = False
+
+                if success:
+                    results["successful_deletions"] += 1
+                    results["details"].append({
+                        "platform": platform,
+                        "post_id": post_id,
+                        "status": "success"
+                    })
+                else:
+                    results["failed_deletions"] += 1
+                    results["details"].append({
+                        "platform": platform,
+                        "post_id": post_id,
+                        "status": "failed",
+                        "reason": "API deletion failed"
+                    })
+
+            except Exception as e:
+                print(f"❌ Error deleting from {platform}: {e}")
+                results["failed_deletions"] += 1
+                results["details"].append({
+                    "platform": platform,
+                    "post_id": post_id,
+                    "status": "failed",
+                    "reason": str(e)
+                })
+
+        print(f"📊 Social media deletion results: {results}")
+        return results
+
+    except Exception as e:
+        print(f"❌ Error in delete_from_social_media: {e}")
+        return results
 

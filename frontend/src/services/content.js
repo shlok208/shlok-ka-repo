@@ -250,39 +250,29 @@ class ContentAPI {
     }
   }
 
-  // Get post contents from post_contents table
-  async getPostContents(limit = 50, offset = 0, platform = null, status = null) {
+  // Delete created content (with automatic social media deletion)
+  async deleteCreatedContent(contentId) {
     try {
       const authToken = await this.getAuthToken()
-      console.log('Fetching post contents with token:', authToken ? 'present' : 'missing')
-      
-      let url = buildApiUrl(`/content/post-contents?limit=${limit}&offset=${offset}`)
-      if (platform) url += `&platform=${platform}`
-      if (status) url += `&post_status=${status}`
 
-      const response = await fetch(url, {
-        method: 'GET',
+      const response = await fetch(buildApiUrl(`/content/created-content/${contentId}`), {
+        method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         }
       })
 
-      console.log('Post contents response status:', response.status)
-      
       if (!response.ok) {
         const errorText = await response.text()
-        console.error('Post contents API error:', errorText)
-        throw new Error(`HTTP error! status: ${response.status}`)
+        throw new Error(`HTTP error! status: ${response.status}, ${errorText}`)
       }
 
-      const result = await response.json()
-      console.log('Post contents data:', result)
-      
-      return { data: result.data || [], count: result.count, error: null }
+      const data = await response.json()
+      return { success: true, data }
     } catch (error) {
-      console.error('Error fetching post contents:', error)
-      return { data: null, error: error.message }
+      console.error('Error deleting created content:', error)
+      return { success: false, error: error.message }
     }
   }
 
