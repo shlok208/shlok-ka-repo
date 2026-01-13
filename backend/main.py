@@ -26,7 +26,7 @@ from routers.google_connections import router as google_router
 from routers.ads import router as ads_router
 from routers.blogs import router as blogs_router
 from routers.platform_connections import router as platform_connections_router
-# Custom content router removed
+# Custom content router removed (placeholder link kept for reference)
 from routers.custom_blog import router as custom_blog_router
 from routers.simple_image_editor import router as simple_image_editor_router
 from routers.template_editor import router as template_editor_router
