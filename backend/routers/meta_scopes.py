@@ -17,7 +17,6 @@ BASE_META_OAUTH_SCOPES: List[str] = [
     "pages_read_engagement",
     "instagram_content_publish",
     "pages_manage_posts",
-    "read_insights",
 ]
 
 OPTIONAL_META_OAUTH_SCOPES: List[str] = []

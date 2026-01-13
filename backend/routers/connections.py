@@ -1600,9 +1600,9 @@ def generate_oauth_url(platform: str, state: str) -> str:
         scope_string = get_meta_scope_string()
         
         # Build OAuth URL with config_id if available
-        # Updated scopes to include read_insights for comprehensive analytics access
+        # Removed read_insights scope (requires advanced access approval)
         # Added pages_read_user_content and pages_manage_metadata for reading page posts
-        oauth_url = f"{base_url}?client_id={client_id}&redirect_uri={redirect_uri}&state={state}&scope=pages_manage_posts,pages_read_engagement,pages_show_list,pages_read_user_content,pages_manage_metadata,ads_read,ads_management,business_management,read_insights"
+        oauth_url = f"{base_url}?client_id={client_id}&redirect_uri={redirect_uri}&state={state}&scope=pages_manage_posts,pages_read_engagement,pages_show_list,pages_read_user_content,pages_manage_metadata,ads_read,ads_management,business_management"
         
         if facebook_config_id:
             oauth_url += f"&config_id={facebook_config_id}"
