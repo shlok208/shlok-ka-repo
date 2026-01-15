@@ -297,7 +297,12 @@ const navigationItems = [
       {/* Header */}
       <div className={`p-3 lg:p-4`}>
         <div className="flex items-center justify-between">
-          <div className="flex flex-col space-y-1">
+          <div className="flex items-center space-x-3">
+            <img
+              src="/logo_.png"
+              alt="ATSN AI Logo"
+              className="w-8 h-8 lg:w-10 lg:h-10 object-contain"
+            />
             <h1 className={`text-xl lg:text-2xl font-bold ${
               isDarkMode ? 'text-gray-200' : 'text-gray-600'
             }`}>atsn ai</h1>
