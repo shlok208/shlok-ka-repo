@@ -96,6 +96,42 @@ class ContentAPI {
     }
   }
 
+  // Get post contents from post_contents table
+  async getPostContents(limit = 50, offset = 0, platform = null, postStatus = null) {
+    try {
+      const authToken = await this.getAuthToken()
+      console.log('Fetching post contents with token:', authToken ? 'present' : 'missing')
+
+      let url = `/content/post-contents?limit=${limit}&offset=${offset}`
+      if (platform) url += `&platform=${platform}`
+      if (postStatus) url += `&post_status=${postStatus}`
+
+      const response = await fetch(buildApiUrl(url), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        }
+      })
+
+      console.log('Post contents response status:', response.status)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Post contents API error:', errorText)
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log('Post contents data:', data)
+
+      return { data: data.data || [], count: data.count, error: null }
+    } catch (error) {
+      console.error('Error fetching post contents:', error)
+      return { data: null, error: error.message }
+    }
+  }
+
   // Get content by specific date
   async getContentByDate(date) {
     try {
