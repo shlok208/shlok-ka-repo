@@ -116,7 +116,7 @@ const UsageStats = ({ userPlan }) => {
         {/* Tasks Usage */}
         <div>
           <div className="flex justify-between text-xs mb-1">
-            <span className="text-gray-600 dark:text-gray-400">Tasks Completed</span>
+            <span className="text-gray-600 dark:text-gray-400">Tasks</span>
             <span className="text-gray-500 dark:text-gray-100 font-medium">
               {usage.tasks_used}/{usage.tasks_limit === -1 ? '∞' : formatLimit(usage.tasks_limit)}
             </span>
@@ -139,7 +139,7 @@ const UsageStats = ({ userPlan }) => {
         {/* Images Usage */}
         <div>
           <div className="flex justify-between text-xs mb-1">
-            <span className="text-gray-600 dark:text-gray-400">Posts Generated</span>
+            <span className="text-gray-600 dark:text-gray-400">Posts</span>
             <span className="text-gray-500 dark:text-gray-100 font-medium">
               {usage.images_used}/{usage.images_limit === -1 ? '∞' : formatLimit(usage.images_limit)}
             </span>
