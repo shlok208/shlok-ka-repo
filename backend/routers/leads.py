@@ -1405,16 +1405,29 @@ Return a JSON object with:
         logger.error(f"Error importing CSV: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to import CSV: {str(e)}")
 
-@router.get("", response_model=List[LeadResponse])
+@router.get("")
 async def get_leads(
     status: Optional[str] = Query(None),
     source_platform: Optional[str] = Query(None),
-    limit: int = Query(50, le=100),
+    limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all leads for current user"""
+    """Get all leads for current user with pagination"""
     try:
+        # Build base query for counting
+        count_query = supabase_admin.table("leads").select("*", count="exact").eq("user_id", current_user["id"])
+        
+        if status:
+            count_query = count_query.eq("status", status)
+        if source_platform:
+            count_query = count_query.eq("source_platform", source_platform)
+        
+        # Get total count
+        count_result = count_query.execute()
+        total_count = count_result.count if hasattr(count_result, 'count') else 0
+        
+        # Build query for fetching leads
         query = supabase_admin.table("leads").select("*").eq("user_id", current_user["id"])
         
         if status:
@@ -1451,7 +1464,14 @@ async def get_leads(
             for lead in leads:
                 lead["last_remark"] = last_remarks.get(lead["id"])
         
-        return leads
+        # Return paginated response
+        return {
+            "leads": leads,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + limit) < total_count
+        }
         
     except Exception as e:
         logger.error(f"Error getting leads: {e}")

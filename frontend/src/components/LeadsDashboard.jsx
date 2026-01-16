@@ -139,9 +139,20 @@ const LeadsDashboard = () => {
   const leadsRef = useRef([])
   const lastFetchTimeRef = useRef(null)
 
-  const fetchLeads = useCallback(async (showLoading = true) => {
+  // Infinite scroll state
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+  const [loadedCount, setLoadedCount] = useState(0)
+  const [total, setTotal] = useState(0)
+  const pageSize = 50 // Load 50 leads at a time
+
+  // Ref for intersection observer
+  const loadMoreRef = useRef(null)
+
+  const fetchLeads = useCallback(async (showLoading = true, append = false) => {
     try {
       if (showLoading) setLoading(true)
+      if (append) setLoadingMore(true)
 
       const params = {}
       if (filterStatus !== 'all') {
@@ -150,37 +161,74 @@ const LeadsDashboard = () => {
       if (filterPlatform !== 'all') {
         params.source_platform = filterPlatform
       }
-      params.limit = 100
-      params.offset = 0
+      params.limit = pageSize
+      params.offset = append ? loadedCount : 0
 
       const response = await leadsAPI.getLeads(params)
-      const fetchedLeads = response.data || []
 
-      // Check for new leads using refs to avoid dependency issues
-      const previousLeads = leadsRef.current
-      const previousFetchTime = lastFetchTimeRef.current
+      // Handle both old format (array) and new format (object with leads array)
+      let fetchedLeads = []
+      let totalCount = 0
+      let hasMoreData = false
 
-      if (previousFetchTime && previousLeads.length > 0) {
-        const newLeads = fetchedLeads.filter(newLead => {
-          const newLeadTime = new Date(newLead.created_at)
-          return newLeadTime > previousFetchTime && !previousLeads.find(l => l.id === newLead.id)
-        })
+      if (Array.isArray(response.data)) {
+        // Old format - backward compatibility (just an array of leads)
+        fetchedLeads = response.data
+        totalCount = fetchedLeads.length
+        hasMoreData = fetchedLeads.length === pageSize
+      } else if (response.data && response.data.leads) {
+        // New format with pagination metadata
+        fetchedLeads = response.data.leads || []
+        totalCount = response.data.total || fetchedLeads.length
+        hasMoreData = response.data.has_more !== undefined ? response.data.has_more : fetchedLeads.length === pageSize
+      } else {
+        fetchedLeads = []
+        totalCount = 0
+        hasMoreData = false
+      }
 
-        if (newLeads.length > 0) {
-          showInfo(
-            'New Lead!',
-            `${newLeads.length} new lead${newLeads.length > 1 ? 's' : ''} received`,
-            {
-              type: 'lead',
-              leadIds: newLeads.map(l => l.id)
-            }
-          )
+      // Check for new leads using refs to avoid dependency issues (only on first load)
+      if (!append && loadedCount === 0) {
+        const previousLeads = leadsRef.current
+        const previousFetchTime = lastFetchTimeRef.current
+
+        if (previousFetchTime && previousLeads.length > 0) {
+          const newLeads = fetchedLeads.filter(newLead => {
+            const newLeadTime = new Date(newLead.created_at)
+            return newLeadTime > previousFetchTime && !previousLeads.find(l => l.id === newLead.id)
+          })
+
+          if (newLeads.length > 0) {
+            showInfo(
+              'New Lead!',
+              `${newLeads.length} new lead${newLeads.length > 1 ? 's' : ''} received`,
+              {
+                type: 'lead',
+                leadIds: newLeads.map(l => l.id)
+              }
+            )
+          }
         }
       }
 
       // Update state and refs
-      setLeads(fetchedLeads)
-      leadsRef.current = fetchedLeads
+      if (append) {
+        setLeads(prev => [...prev, ...fetchedLeads])
+        setLoadedCount(prev => prev + fetchedLeads.length)
+      } else {
+        setLeads(fetchedLeads)
+        setLoadedCount(fetchedLeads.length)
+      }
+
+      setTotal(totalCount)
+      // Use backend's has_more flag if available, otherwise check if we got a full page
+      const shouldHaveMore = hasMoreData && fetchedLeads.length >= pageSize
+      setHasMore(shouldHaveMore)
+
+      console.log(`FetchLeads: append=${append}, fetched=${fetchedLeads.length}, total=${totalCount}, hasMoreData=${hasMoreData}, shouldHaveMore=${shouldHaveMore}`)
+
+      leadsRef.current = append ? [...leadsRef.current, ...fetchedLeads] : fetchedLeads
+
       const now = new Date()
       setLastFetchTime(now)
       lastFetchTimeRef.current = now
@@ -190,8 +238,9 @@ const LeadsDashboard = () => {
       showError('Error', 'Failed to fetch leads. Please try again.')
     } finally {
       if (showLoading) setLoading(false)
+      if (append) setLoadingMore(false)
     }
-  }, [filterStatus, filterPlatform, showError, showInfo])
+  }, [filterStatus, filterPlatform, loadedCount, pageSize, showError, showInfo])
 
   // Clear leads data on logout
   useEffect(() => {
@@ -202,6 +251,9 @@ const LeadsDashboard = () => {
       setShowDetailModal(false)
       setSelectedLeadIds(new Set())
       setSelectionMode(false)
+      setLoadedCount(0)
+      setHasMore(true)
+      setLoadingMore(false)
     }
   }, [user])
 
@@ -226,12 +278,49 @@ const LeadsDashboard = () => {
     }
   }, [])
 
+  // Reset loaded count when filters change
+  useEffect(() => {
+    if (user) {
+      setLoadedCount(0)
+      setHasMore(true)
+    }
+  }, [user, filterStatus, filterPlatform])
+
   // Initial fetch and refetch when filters change
   useEffect(() => {
     if (user) {
       fetchLeads()
     }
-  }, [user, filterStatus, filterPlatform, fetchLeads])
+  }, [user, filterStatus, filterPlatform]) // Removed fetchLeads from dependencies
+
+  // Intersection observer for infinite scrolling
+  useEffect(() => {
+    let isLoading = false // Prevent multiple simultaneous loads
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading && loadedCount > 0 && !isLoading) {
+          console.log('IntersectionObserver: Loading more leads...')
+          isLoading = true
+          fetchLeads(false, true).finally(() => {
+            isLoading = false
+          })
+        }
+      },
+      { threshold: 0.1, rootMargin: '100px' }
+    )
+
+    const currentRef = loadMoreRef.current
+    if (currentRef) {
+      observer.observe(currentRef)
+    }
+
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef)
+      }
+    }
+  }, [hasMore, loadingMore, loading, loadedCount]) // Removed fetchLeads, added loadedCount
 
   // Handle leadId from URL query parameter (for opening lead from chatbot link)
   useEffect(() => {
@@ -1050,6 +1139,41 @@ const LeadsDashboard = () => {
           )}
         </div>
       </div>
+
+      {/* Infinite scroll loading indicator */}
+      {loadingMore && (
+        <div className="flex items-center justify-center py-6">
+          <div className={`flex items-center space-x-2 text-sm ${
+            isDarkMode ? 'text-gray-400' : 'text-gray-600'
+          }`}>
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+            <span>Loading more leads...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Infinite scroll trigger element */}
+      {hasMore && !loadingMore && loadedCount > 0 && (
+        <div
+          ref={loadMoreRef}
+          className="h-10 flex items-center justify-center"
+        >
+          <div className={`text-xs ${
+            isDarkMode ? 'text-gray-500' : 'text-gray-400'
+          }`}>
+            Scroll for more leads ({loadedCount} of {total})
+          </div>
+        </div>
+      )}
+
+      {/* End of list indicator */}
+      {!hasMore && loadedCount > 0 && (
+        <div className={`text-center py-6 text-sm ${
+          isDarkMode ? 'text-gray-400' : 'text-gray-600'
+        }`}>
+          You've reached the end - {loadedCount} of {total} leads loaded
+        </div>
+      )}
 
       {/* Lead Detail Modal */}
       {showDetailModal && selectedLead && (
