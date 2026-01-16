@@ -187,6 +187,8 @@ function EmilyDashboard() {
   const [isDarkMode, setIsDarkMode] = useState(getDarkModePreference)
   const [overdueLeadsCount, setOverdueLeadsCount] = useState(0)
   const [overdueLeadsLoading, setOverdueLeadsLoading] = useState(true)
+  const [todayCalendarEntries, setTodayCalendarEntries] = useState([])
+  const [calendarEntriesLoading, setCalendarEntriesLoading] = useState(true)
 
   // Today's conversations only (no historical data)
 
@@ -331,12 +333,115 @@ function EmilyDashboard() {
     }
   }, [isPanelOpen, user])
 
+  // Fetch today's calendar entries
+  const fetchTodayCalendarEntries = async (forceRefresh = false) => {
+    if (!user) return
+
+    const CACHE_KEY = `today_calendar_entries_${user.id}`
+    const CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+    try {
+      // Check if we have cached data from today
+      if (!forceRefresh) {
+        const cachedData = localStorage.getItem(CACHE_KEY)
+        if (cachedData) {
+          const { entries, timestamp, date } = JSON.parse(cachedData)
+          const cacheAge = Date.now() - timestamp
+          const today = new Date().toDateString()
+          const cacheDate = new Date(date).toDateString()
+
+          // Use cached data if it's from today and less than 24 hours old
+          if (cacheDate === today && cacheAge < CACHE_EXPIRATION_MS) {
+            console.log('Using cached today calendar entries:', entries)
+            setTodayCalendarEntries(entries)
+            setCalendarEntriesLoading(false)
+            return
+          }
+        }
+      }
+
+      setCalendarEntriesLoading(true)
+      const token = await supabase.auth.getSession().then(res => res.data.session?.access_token)
+      
+      if (!token) return
+
+      // Get today's date in YYYY-MM-DD format
+      const today = new Date()
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
+      // Fetch all calendars for the user
+      const calendarsResponse = await fetch(`${API_BASE_URL}/calendars`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (calendarsResponse.ok) {
+        const calendars = await calendarsResponse.json()
+        
+        // Fetch entries for each calendar and filter for today
+        let todayEntries = []
+        for (const calendar of calendars) {
+          const entriesResponse = await fetch(`${API_BASE_URL}/calendars/${calendar.id}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+          
+          if (entriesResponse.ok) {
+            const calendarData = await entriesResponse.json()
+            const entries = calendarData.entries || []
+            
+            // Filter for today's entries
+            const todaysEntries = entries.filter(entry => {
+              const entryDate = new Date(entry.entry_date)
+              const entryDateStr = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, '0')}-${String(entryDate.getDate()).padStart(2, '0')}`
+              return entryDateStr === todayStr
+            })
+            
+            todayEntries = [...todayEntries, ...todaysEntries]
+          }
+        }
+        
+        // Cache the data
+        const cacheData = {
+          entries: todayEntries,
+          timestamp: Date.now(),
+          date: today.toISOString()
+        }
+        localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
+        
+        console.log('Today calendar entries:', todayEntries)
+        setTodayCalendarEntries(todayEntries)
+      }
+    } catch (error) {
+      console.error('Error fetching today calendar entries:', error)
+      setTodayCalendarEntries([])
+    } finally {
+      setCalendarEntriesLoading(false)
+    }
+  }
+
   // Fetch overdue leads count periodically (cached for 24 hours)
   useEffect(() => {
     if (user) {
       fetchOverdueLeadsCount()
       // Refresh every 24 hours
       const interval = setInterval(() => fetchOverdueLeadsCount(true), 24 * 60 * 60 * 1000)
+      return () => clearInterval(interval)
+    }
+  }, [user])
+
+  // Fetch today's calendar entries
+  useEffect(() => {
+    if (user) {
+      fetchTodayCalendarEntries()
+      // Refresh every 24 hours
+      const interval = setInterval(() => fetchTodayCalendarEntries(true), 24 * 60 * 60 * 1000)
       return () => clearInterval(interval)
     }
   }, [user])
@@ -661,6 +766,66 @@ function EmilyDashboard() {
                               {overdueLeadsCount === 1 ? 'Lead has' : 'Leads have'} overdue follow-ups
                             </p>
                           )}
+                        </div>
+                      )}
+
+                      {/* Today's Calendar Entries - Only show after loading */}
+                      {!calendarEntriesLoading && (
+                        <div className="mt-3">
+                          <div
+                            className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                              isDarkMode
+                                ? 'bg-gray-800 border-gray-600 hover:bg-gray-700'
+                                : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                            }`}
+                            onClick={() => navigate('/calendars')}
+                            title="Click to view calendar"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <span className={`text-sm font-bold ${
+                                todayCalendarEntries.length > 0
+                                  ? 'text-yellow-600'
+                                  : isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                              }`}>
+                                {todayCalendarEntries.length}
+                              </span>
+                              <span className={`text-sm font-medium ${
+                                isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                              }`}>
+                                : Suggested content for today
+                              </span>
+                            </div>
+                            {todayCalendarEntries.length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {todayCalendarEntries.slice(0, 3).map((entry, idx) => (
+                                  <div
+                                    key={idx}
+                                    className={`text-xs p-2 rounded ${
+                                      isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
+                                    }`}
+                                  >
+                                    <div className={`font-medium ${
+                                      isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                                    }`}>
+                                      {entry.topic}
+                                    </div>
+                                    <div className={`text-xs mt-0.5 ${
+                                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                                    }`}>
+                                      {entry.content_type?.replace('_', ' ')} • {entry.platform}
+                                    </div>
+                                  </div>
+                                ))}
+                                {todayCalendarEntries.length > 3 && (
+                                  <div className={`text-xs ${
+                                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                                  }`}>
+                                    +{todayCalendarEntries.length - 3} more
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

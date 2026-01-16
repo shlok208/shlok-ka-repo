@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from '../contexts/NotificationContext'
 import { supabase } from '../lib/supabase'
-import { Send, ArrowRight, User, Bot, RefreshCw, MessageCircle, Clock, AlertCircle, Trash2, Square, CheckSquare, Edit, Share, Calendar, Save, Copy, Upload, Video, Mail, Phone, Heart, X } from 'lucide-react'
+import { Send, ArrowRight, User, Bot, RefreshCw, MessageCircle, Clock, AlertCircle, Trash2, Square, CheckSquare, Edit, Share, Calendar, Save, Copy, Upload, Video, Mail, Phone, Heart, X, Download } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import ContentCard from './ContentCard'
@@ -110,9 +110,21 @@ const ATSNChatbot = ({ externalConversations = null }) => {
   const [showPublishSuccessModal, setShowPublishSuccessModal] = useState(false)
   const [publishSuccessData, setPublishSuccessData] = useState(null)
 
-  // Conversation caching system
+  // Daily conversation caching system
   const [messageCache, setMessageCache] = useState([])
-  const [sessionStartTime, setSessionStartTime] = useState(null)
+  const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]) // YYYY-MM-DD format
+
+  // Get cache key for current day
+  const getDailyCacheKey = (userId) => `conversation_cache_${userId}_${currentDate}`
+
+  // Save messages to daily localStorage cache
+  const saveMessagesToCache = (messages) => {
+    if (user && messages.length > 0) {
+      const cacheKey = getDailyCacheKey(user.id)
+      localStorage.setItem(cacheKey, JSON.stringify(messages))
+      console.log(`Saved ${messages.length} messages to daily cache for ${currentDate}`)
+    }
+  }
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [saveStatus, setSaveStatus] = useState('saved') // 'saved', 'saving', 'unsaved', 'error'
   const [uploadedMediaUrls, setUploadedMediaUrls] = useState([])
@@ -381,12 +393,42 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     // Don't show automatic welcome message - only show when "New Chat" is clicked
   }
 
-  // Initialize session tracking and handle external conversations
+  // Initialize daily caching and handle external conversations
   useEffect(() => {
-    // Track session start time for caching
-    if (user && !sessionStartTime) {
-      setSessionStartTime(new Date().toISOString())
+    // Load cached messages for current day
+    if (user) {
+      const cacheKey = getDailyCacheKey(user.id)
+      const cachedMessages = localStorage.getItem(cacheKey)
+      if (cachedMessages) {
+        try {
+          const parsedMessages = JSON.parse(cachedMessages)
+          setMessages(parsedMessages)
+          console.log(`Loaded ${parsedMessages.length} cached messages for ${currentDate}`)
+        } catch (error) {
+          console.error('Error loading cached messages:', error)
+          localStorage.removeItem(cacheKey)
+        }
+      }
     }
+
+    // Check for date changes and clear old cache
+    const checkDateChange = () => {
+      const today = new Date().toISOString().split('T')[0]
+      if (today !== currentDate) {
+        console.log(`Date changed from ${currentDate} to ${today}, clearing old cache`)
+        // Clear old cache
+        if (user) {
+          const oldCacheKey = getDailyCacheKey(user.id)
+          localStorage.removeItem(oldCacheKey)
+        }
+        setCurrentDate(today)
+        setMessages([]) // Clear messages for new day
+        setMessageCache([])
+      }
+    }
+
+    // Check date change every minute
+    const dateCheckInterval = setInterval(checkDateChange, 60000)
 
     // Load business name from profile
     const loadBusinessName = async () => {
@@ -416,7 +458,9 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     }
 
     loadBusinessName()
-  }, [user])
+
+    return () => clearInterval(dateCheckInterval)
+  }, [user, currentDate])
 
 
   // Initialize session tracking and handle external conversations
@@ -443,7 +487,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       setTimeout(() => scrollToBottom(), 100)
     }
     // Note: Automatic conversation loading is disabled for better performance
-  }, [user, externalConversations, chatReset, resetTimestamp, sessionStartTime])
+  }, [user, externalConversations, chatReset, resetTimestamp, currentDate])
 
   // Reset scroll flag when chat is reset
   useEffect(() => {
@@ -707,7 +751,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       if (!token) return
 
       const conversationData = {
-        session_id: `session-${user.id}-${sessionStartTime}`,
+        session_id: `session-${user.id}-${currentDate}`,
         messages: messageCache,
       }
 
@@ -746,7 +790,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       if (!token) return
 
       const conversationData = {
-        session_id: `session-${user.id}-${sessionStartTime}`,
+        session_id: `session-${user.id}-${currentDate}`,
         messages: messageCache
       }
 
@@ -796,7 +840,11 @@ const ATSNChatbot = ({ externalConversations = null }) => {
     setMessages(prev => [...prev, userMessageObj])
 
     // Cache the message
-    setMessageCache(prev => [...prev, userMessageObj])
+    setMessageCache(prev => {
+      const newCache = [...prev, userMessageObj]
+      saveMessagesToCache([...messages, userMessageObj])
+      return newCache
+    })
     setHasUnsavedChanges(true)
     setSaveStatus('unsaved')
 
@@ -828,7 +876,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         body: JSON.stringify({
           message: userMessage,
           conversation_history: updatedHistory,
-          session_id: `session-${user.id}-${sessionStartTime}`,
+          session_id: `session-${user.id}-${currentDate}`,
           agent_status: agentStatus,
           thinking_phase: thinkingPhase,
           is_first_message: isFirstMessage
@@ -875,6 +923,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         content_items: data.content_items || null,
         lead_id: data.lead_id || null,
         lead_items: data.lead_items || null,
+        calendar_entries: data.calendar_entries || null,
         agent_name: data.agent_name || 'emily',
         clarification_options: data.clarification_options || [],
         clarification_data: data.clarification_data,
@@ -883,10 +932,36 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       }
 
       // Add bot response to UI
-      setMessages(prev => [...prev, botMessageObj])
+      setMessages(prev => {
+        const newMessages = [...prev, botMessageObj]
+        saveMessagesToCache(newMessages)
+        return newMessages
+      })
 
       // Cache the bot message
-      setMessageCache(prev => [...prev, botMessageObj])
+      setMessageCache(prev => {
+        const newCache = [...prev, botMessageObj]
+        saveMessagesToCache([...messages, botMessageObj])
+        return newCache
+      })
+
+      // Trigger calendar refresh if calendar was generated
+      if (data.calendar_entries && data.calendar_entries.length > 0) {
+        console.log('Calendar generated, triggering refresh event')
+        // Dispatch custom event to notify CalendarDashboard to refresh
+        window.dispatchEvent(new CustomEvent('calendarRegenerated', {
+          detail: { calendar_id: data.calendar_id }
+        }))
+        
+        // Invalidate ALL calendar caches
+        if (user?.id) {
+          const todayCacheKey = `today_calendar_entries_${user.id}`
+          const calendarDataCacheKey = `calendar_data_${user.id}`
+          localStorage.removeItem(todayCacheKey)
+          localStorage.removeItem(calendarDataCacheKey)
+          console.log('✅ Invalidated all calendar caches (today entries + full calendar data)')
+        }
+      }
 
       // Auto-open upload modal if waiting for upload
       if (data.waiting_for_upload) {
@@ -926,7 +1001,11 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         error: true
       }
 
-      setMessages(prev => [...prev, errorMessageObj])
+      setMessages(prev => {
+        const newMessages = [...prev, errorMessageObj]
+        saveMessagesToCache(newMessages)
+        return newMessages
+      })
       setMessageCache(prev => [...prev, errorMessageObj])
     } finally {
       setIsLoading(false)
@@ -1010,6 +1089,13 @@ const ATSNChatbot = ({ externalConversations = null }) => {
       // Clear all messages to show welcome screen
       setMessages([])
       setMessageCache([]) // Clear message cache for new conversation
+
+      // Clear daily localStorage cache
+      if (user) {
+        const cacheKey = getDailyCacheKey(user.id)
+        localStorage.removeItem(cacheKey)
+        console.log(`Cleared daily cache for ${currentDate}`)
+      }
     } catch (error) {
       console.error('Error resetting:', error)
       showError(error.message || 'Failed to start new chat')
@@ -1876,12 +1962,31 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         content_items: data.content_items || null,
         lead_id: data.lead_id || null,
         lead_items: data.lead_items || null,
+        calendar_entries: data.calendar_entries || null,
         agent_name: data.agent_name || 'emily',
         clarification_options: data.clarification_options || [],
         clarification_data: data.clarification_data,
         needs_connection: data.needs_connection || false,
         connection_platform: data.connection_platform || null
       }])
+
+      // Trigger calendar refresh if calendar was generated
+      if (data.calendar_entries && data.calendar_entries.length > 0) {
+        console.log('Calendar generated, triggering refresh event')
+        // Dispatch custom event to notify CalendarDashboard to refresh
+        window.dispatchEvent(new CustomEvent('calendarRegenerated', {
+          detail: { calendar_id: data.calendar_id }
+        }))
+        
+        // Invalidate ALL calendar caches
+        if (user?.id) {
+          const todayCacheKey = `today_calendar_entries_${user.id}`
+          const calendarDataCacheKey = `calendar_data_${user.id}`
+          localStorage.removeItem(todayCacheKey)
+          localStorage.removeItem(calendarDataCacheKey)
+          console.log('✅ Invalidated all calendar caches (today entries + full calendar data)')
+        }
+      }
 
       // Auto-open upload modal if waiting for upload
       if (data.waiting_for_upload) {
@@ -1989,6 +2094,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         content_items: data.content_items || null,
         lead_id: data.lead_id || null,
         lead_items: data.lead_items || null,
+        calendar_entries: data.calendar_entries || null,
         agent_name: data.agent_name || 'emily',
         clarification_options: data.clarification_options || [],
         clarification_data: data.clarification_data,
@@ -2103,6 +2209,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         content_items: data.content_items || null,
         lead_id: data.lead_id || null,
         lead_items: data.lead_items || null,
+        calendar_entries: data.calendar_entries || null,
         agent_name: data.agent_name || 'emily',
         clarification_options: data.clarification_options || [],
         clarification_data: data.clarification_data,
@@ -2868,105 +2975,10 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         className="flex-1 overflow-y-auto scrollbar-hide p-6"
         onClick={handleChatAreaClick}
       >
-        {messages.length === 0 ? (
-          /* Welcome Screen */
-          <div className="flex flex-col items-center justify-center h-full space-y-8">
-            {/* Title */}
-              <div className={`text-3xl md:text-4xl font-normal ${
-                isDarkMode ? 'text-gray-100' : 'text-gray-900'
-              }`}>
-                {businessName ? `${businessName}'s workplace` : "atsn ai's workplace"}
-              </div>
-
-            {/* Input Box in Center */}
-            <div className="w-full max-w-lg mx-auto">
-              {/* Save Status Indicator */}
-              {saveStatus !== 'saved' && (
-                <div className={`flex items-center justify-center gap-2 text-xs mb-4 px-3 py-1 rounded-full ${
-                  saveStatus === 'saving'
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                    : saveStatus === 'unsaved'
-                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                    : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
-                }`}>
-                  {saveStatus === 'saving' && <RefreshCw className="w-3 h-3 animate-spin" />}
-                  {saveStatus === 'unsaved' && <Clock className="w-3 h-3" />}
-                  {saveStatus === 'error' && <X className="w-3 h-3" />}
-                  <span>
-                    {saveStatus === 'saving' && 'Saving conversation...'}
-                    {saveStatus === 'unsaved' && 'Unsaved changes'}
-                    {saveStatus === 'error' && 'Save failed'}
-                  </span>
-                </div>
-              )}
-
-              <div className="relative">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Ask me to manage your content or leads..."
-                  className={`w-full px-6 pr-14 py-4 text-base rounded-[20px] backdrop-blur-sm focus:outline-none shadow-lg ${
-                    isDarkMode
-                      ? 'bg-gray-700/80 border-0 focus:ring-0 text-gray-100 placeholder-gray-400'
-                      : 'bg-white/80 border border-white/20 focus:ring-2 focus:ring-white/30 focus:border-white/50 text-gray-900 placeholder-gray-500'
-                  }`}
-                  disabled={isLoading}
-                />
-                <button
-                  onClick={handleSendMessage}
-                  disabled={isLoading || !inputMessage.trim()}
-                  className={`absolute right-3 top-1/2 transform -translate-y-1/2 w-7 h-7 transition-all flex items-center justify-center ${
-                    isDarkMode
-                      ? 'text-green-400 hover:text-green-300 disabled:text-gray-500'
-                      : 'text-blue-600 hover:text-blue-700 disabled:text-gray-400'
-                  } disabled:cursor-not-allowed`}
-                >
-                  <Send className="w-5 h-5 transform rotate-45" />
-                </button>
-              </div>
-
-              {/* Instructions */}
-              <div className={`mt-6 text-center space-y-4 ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-600'
-              }`}>
-                <div className="text-sm font-medium">
-                  What would you like to do? Our agents are ready to work
-                </div>
-
-                {/* Agent Logos */}
-                <div className="flex justify-center items-center gap-6 mt-4">
-                  <div className="flex flex-col items-center space-y-2">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
-                      <img src="/emily_icon.png" alt="Emily" className="w-10 h-10 rounded-full object-cover" />
-                    </div>
-                    <span className="text-xs font-medium">Emily</span>
-                  </div>
-
-                  <div className="flex flex-col items-center space-y-2">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center shadow-lg">
-                      <img src="/leo_logo.png" alt="Leo" className="w-10 h-10 rounded-full object-cover" />
-                    </div>
-                    <span className="text-xs font-medium">Leo</span>
-                  </div>
-
-                  <div className="flex flex-col items-center space-y-2">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
-                      <img src="/chase_logo.png" alt="Chase" className="w-10 h-10 rounded-full object-cover" />
-                    </div>
-                    <span className="text-xs font-medium">Chase</span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        ) : (
-          /* Messages */
-          <div className="space-y-6">
-            {messages.map((message, index) => (
+        {/* Chat Messages */}
+          <div className="flex flex-col h-full">
+            <div className="flex-1 space-y-6">
+              {messages.map((message, index) => (
           <div
             key={message.id}
             className={`group flex gap-3 ${message.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
@@ -4070,6 +4082,199 @@ const ATSNChatbot = ({ externalConversations = null }) => {
                       </div>
                     )}
 
+                    {/* Render calendar table for create_calendar */}
+                    {message.calendar_entries && message.calendar_entries.length > 0 && (
+                      <div className="mt-4">
+                        {/* Calendar Header */}
+                        <div className={`rounded-xl shadow-lg border p-4 mb-4 ${
+                          isDarkMode
+                            ? 'bg-gray-800 border-gray-700 shadow-gray-900/50'
+                            : 'bg-blue-50 border-blue-200'
+                        }`}>
+                          <div className="flex items-center gap-3 mb-3">
+                            <Calendar className="w-6 h-6 text-blue-600" />
+                            <h3 className={`text-lg font-semibold ${
+                              isDarkMode ? 'text-blue-300' : 'text-blue-800'
+                            }`}>
+                              📅 Your Content Calendar
+                            </h3>
+                          </div>
+
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <span className={`font-medium ${
+                                isDarkMode ? 'text-blue-300' : 'text-blue-700'
+                              }`}>Platform:</span>
+                              <span className={`ml-2 ${
+                                isDarkMode ? 'text-gray-200' : 'text-gray-800'
+                              }`}>
+                                {message.calendar_entries[0]?.platform_emoji} {message.calendar_entries[0]?.platform?.charAt(0).toUpperCase() + message.calendar_entries[0]?.platform?.slice(1)}
+                              </span>
+                            </div>
+                            <div>
+                              <span className={`font-medium ${
+                                isDarkMode ? 'text-blue-300' : 'text-blue-700'
+                              }`}>Total Posts:</span>
+                              <span className={`ml-2 ${
+                                isDarkMode ? 'text-gray-200' : 'text-gray-800'
+                              }`}>{message.calendar_entries.length}</span>
+                            </div>
+                            <div>
+                              <span className={`font-medium ${
+                                isDarkMode ? 'text-blue-300' : 'text-blue-700'
+                              }`}>Frequency:</span>
+                              <span className={`ml-2 ${
+                                isDarkMode ? 'text-gray-200' : 'text-gray-800'
+                              }`}>
+                                {message.intent === 'create_calendar' && message.result ?
+                                  message.result.split('**Posting Frequency:**')[1]?.split('**')[0]?.trim() || 'Weekly'
+                                  : 'Weekly'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className={`font-medium ${
+                                isDarkMode ? 'text-blue-300' : 'text-blue-700'
+                              }`}>Status:</span>
+                              <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
+                                isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-800'
+                              }`}>Ready to Schedule</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Calendar Table */}
+                        <div className={`rounded-xl shadow-lg border overflow-hidden ${
+                          isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+                        }`}>
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead className={`${
+                                isDarkMode ? 'bg-gray-700' : 'bg-gray-50'
+                              }`}>
+                                <tr>
+                                  <th className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                                    isDarkMode ? 'text-gray-300' : 'text-gray-500'
+                                  }`}>Date</th>
+                                  <th className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                                    isDarkMode ? 'text-gray-300' : 'text-gray-500'
+                                  }`}>Content Type</th>
+                                  <th className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                                    isDarkMode ? 'text-gray-300' : 'text-gray-500'
+                                  }`}>Topic</th>
+                                  <th className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                                    isDarkMode ? 'text-gray-300' : 'text-gray-500'
+                                  }`}>Theme</th>
+                                  <th className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                                    isDarkMode ? 'text-gray-300' : 'text-gray-500'
+                                  }`}>RL Settings</th>
+                                </tr>
+                              </thead>
+                              <tbody className={`divide-y ${
+                                isDarkMode ? 'divide-gray-700' : 'divide-gray-200'
+                              }`}>
+                                {message.calendar_entries.map((calendarItem, index) => (
+                                  <tr key={calendarItem.entry_id || `calendar-${index}`} className={`${
+                                    isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
+                                  } transition-colors`}>
+                                    <td className={`px-4 py-3 whitespace-nowrap text-sm font-medium ${
+                                      isDarkMode ? 'text-gray-200' : 'text-gray-900'
+                                    }`}>
+                                      {calendarItem.date_display || new Date(calendarItem.entry_date).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric'
+                                      })}
+                                    </td>
+                                    <td className={`px-4 py-3 whitespace-nowrap text-sm ${
+                                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                                    }`}>
+                                      <div className="flex items-center gap-2">
+                                        <span>{calendarItem.content_type_emoji}</span>
+                                        <span>{calendarItem.content_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                                      </div>
+                                    </td>
+                                    <td className={`px-4 py-3 text-sm ${
+                                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                                    }`}>
+                                      <div className="max-w-xs truncate" title={calendarItem.topic}>
+                                        {calendarItem.topic}
+                                      </div>
+                                    </td>
+                                    <td className={`px-4 py-3 whitespace-nowrap text-sm ${
+                                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                                    }`}>
+                                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                        calendarItem.content_theme === 'educational' ? (isDarkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-800') :
+                                        calendarItem.content_theme === 'promotional' ? (isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-800') :
+                                        calendarItem.content_theme === 'engagement' ? (isDarkMode ? 'bg-purple-900 text-purple-300' : 'bg-purple-100 text-purple-800') :
+                                        calendarItem.content_theme === 'entertainment' ? (isDarkMode ? 'bg-pink-900 text-pink-300' : 'bg-pink-100 text-pink-800') :
+                                        (isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-800')
+                                      }`}>
+                                        {calendarItem.content_theme.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                      </span>
+                                    </td>
+                                    <td className={`px-4 py-3 text-xs ${
+                                      isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                                    }`}>
+                                      <div className="space-y-1">
+                                        {calendarItem.hook_type && (
+                                          <div>Hook: {calendarItem.hook_type}</div>
+                                        )}
+                                        {calendarItem.tone && (
+                                          <div>Tone: {calendarItem.tone}</div>
+                                        )}
+                                        {calendarItem.creativity && (
+                                          <div>Creativity: {calendarItem.creativity}</div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Calendar Actions */}
+                        <div className={`mt-4 flex flex-wrap items-center gap-3 p-4 backdrop-blur-md border rounded-xl shadow-lg ${
+                          isDarkMode
+                            ? 'bg-gray-800/90 border-gray-700'
+                            : 'bg-white/90 border-gray-200'
+                        }`}>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                // Placeholder for schedule all functionality
+                                console.log('Schedule all calendar entries');
+                              }}
+                              className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${
+                                isDarkMode
+                                  ? 'bg-blue-700 hover:bg-blue-600 text-white border-blue-600 hover:border-blue-500'
+                                  : 'bg-blue-600 hover:bg-blue-700 text-white border-blue-500 hover:border-blue-600'
+                              }`}
+                            >
+                              <Calendar className="w-4 h-4" />
+                              Schedule All Posts
+                            </button>
+                            <button
+                              onClick={() => {
+                                // Placeholder for export functionality
+                                console.log('Export calendar');
+                              }}
+                              className={`px-4 py-3 rounded-xl border transition-all duration-200 text-sm font-normal shadow-sm hover:shadow-md transform hover:scale-105 flex items-center gap-2 ${
+                                isDarkMode
+                                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-600 hover:border-gray-500'
+                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800 hover:text-gray-900 border-gray-300 hover:border-gray-400'
+                              }`}
+                            >
+                              <Download className="w-4 h-4" />
+                              Export Calendar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Lead Action Buttons */}
                     {message.lead_id && fetchedLeads[message.lead_id] && (
                       <div className={`mt-4 flex flex-wrap items-center gap-3 p-4 backdrop-blur-md border rounded-xl shadow-lg ${
@@ -4161,34 +4366,30 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         ))}
             <div ref={messagesEndRef} />
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Input - Only show when there are messages */}
-        {messages.length > 0 && (
-          <div className={`p-4 border-t ${
-            isDarkMode ? 'border-gray-700' : 'border-gray-200'
-          }`}>
-            {/* New Chat Option */}
-            <div className="flex items-center justify-between mb-3">
-              <button
-                onClick={handleReset}
-                className={`flex items-center gap-2 text-sm font-medium transition-colors ${
-                  isDarkMode
-                    ? 'text-white hover:text-gray-200'
-                    : 'text-blue-600 hover:text-blue-700'
-                }`}
-              >
-                <span className="text-lg">+</span>
-                <span>New Chat</span>
-              </button>
-              <div className={`text-xs ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                Press Enter to send
-              </div>
+      {/* Input Area - Always Visible in Chat */}
+        <div className="flex-shrink-0 p-4">
+          {/* New Chat Option */}
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={handleReset}
+              className={`flex items-center gap-2 text-sm font-medium transition-colors ${
+                isDarkMode
+                  ? 'text-white hover:text-gray-200'
+                  : 'text-blue-600 hover:text-blue-700'
+              }`}
+            >
+              <span className="text-lg">+</span>
+              <span>New Chat</span>
+            </button>
+            <div className={`text-xs ${
+              isDarkMode ? 'text-gray-400' : 'text-gray-500'
+            }`}>
+              Press Enter to send
             </div>
-
+          </div>
 
           <div className="relative">
             <input
@@ -4198,7 +4399,7 @@ const ATSNChatbot = ({ externalConversations = null }) => {
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Ask me to manage your content or leads..."
-              className={`w-full px-6 pr-14 py-4 text-base rounded-[10px] backdrop-blur-sm focus:outline-none shadow-lg ${
+              className={`w-full px-6 pr-14 py-4 text-base rounded-[20px] backdrop-blur-sm focus:outline-none shadow-lg ${
                 isDarkMode
                   ? 'bg-gray-700/80 border-0 focus:ring-0 text-gray-100 placeholder-gray-400'
                   : 'bg-white/80 border border-white/20 focus:ring-2 focus:ring-white/30 focus:border-white/50 text-gray-900 placeholder-gray-500'
@@ -4216,15 +4417,15 @@ const ATSNChatbot = ({ externalConversations = null }) => {
             >
               <Send className="w-5 h-5 transform rotate-45" />
             </button>
-        </div>
-        
+          </div>
+
           <div className={`mt-2 text-xs text-center ${
             isDarkMode ? 'text-gray-400' : 'text-gray-500'
           }`}>
             Try: "Show scheduled posts" • "Create lead" • "View analytics"
           </div>
         </div>
-        )}
+      )}
 
       {/* ATSN Content Modal */}
       {showContentModal && selectedContentForModal && (

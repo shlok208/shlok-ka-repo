@@ -61,6 +61,7 @@ class ChatResponse(BaseModel):
     lead_id: Optional[str] = None  # Single lead ID (UUID) for operations on specific lead
     content_items: Optional[List[dict]] = None  # Structured content data for frontend card rendering
     lead_items: Optional[List[dict]] = None  # Structured lead data for frontend card rendering
+    calendar_entries: Optional[List[dict]] = None  # Structured calendar data for frontend table rendering
     needs_connection: Optional[bool] = None  # Whether user needs to connect account
     connection_platform: Optional[str] = None  # Platform to connect
     agent_name: Optional[str] = None  # Agent name for displaying appropriate icon
@@ -231,6 +232,7 @@ async def chat(
             lead_id=response.get('lead_id'),  # Single lead ID (UUID)
             content_items=response.get('content_items'),  # Structured content data for frontend cards
             lead_items=response.get('lead_items'),  # Structured lead data for frontend cards
+            calendar_entries=response.get('calendar_entries'),  # Structured calendar data for frontend table
             needs_connection=response.get('needs_connection'),  # Whether user needs to connect account
             connection_platform=response.get('connection_platform'),  # Platform to connect
             agent_name=agent_name
@@ -246,7 +248,8 @@ async def chat(
             "clarification_question": response.get('clarification_question'),
             "clarification_options": response.get('clarification_options'),
             "content_items": response.get('content_items'),
-            "lead_items": response.get('lead_items')
+            "lead_items": response.get('lead_items'),
+            "calendar_entries": response.get('calendar_entries')
             }
         daily_cache.add_message_to_session(user_id, session_id, bot_message_data)
         
@@ -387,7 +390,8 @@ async def get_atsn_conversations(
                     "clarification_question": msg.get("clarification_question"),
                     "clarification_options": msg.get("clarification_options"),
                     "content_items": msg.get("content_items"),
-                    "lead_items": msg.get("lead_items")
+                    "lead_items": msg.get("lead_items"),
+                    "calendar_entries": msg.get("calendar_entries")
                 }
                 formatted_messages.append(formatted_msg)
 
@@ -495,7 +499,8 @@ async def incremental_save_conversation(
                 "clarification_question": msg.get("clarification_question"),
                 "clarification_options": msg.get("clarification_options"),
                 "content_items": msg.get("content_items"),
-                "lead_items": msg.get("lead_items")
+                "lead_items": msg.get("lead_items"),
+                "calendar_entries": msg.get("calendar_entries")
             }
             messages_to_insert.append(message_data)
 
@@ -572,7 +577,8 @@ async def save_complete_conversation(
                 "clarification_question": msg.get("clarification_question"),
                 "clarification_options": msg.get("clarification_options"),
                 "content_items": msg.get("content_items"),
-                "lead_items": msg.get("lead_items")
+                "lead_items": msg.get("lead_items"),
+                "calendar_entries": msg.get("calendar_entries")
             }
             messages_to_insert.append(message_data)
 

@@ -21,7 +21,8 @@ import {
   Lightbulb,
   Pen,
   TrendingUp,
-  Shield
+  Shield,
+  Calendar
 } from 'lucide-react'
 
 const SideNavbar = () => {
@@ -205,6 +206,11 @@ const navigationItems = [
     name: 'Leads',
     href: '/leads',
     icon: UserPlus
+  },
+  {
+    name: 'Calendars',
+    href: '/calendars',
+    icon: Calendar
   }
 ]
 

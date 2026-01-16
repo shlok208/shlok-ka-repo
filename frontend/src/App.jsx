@@ -10,6 +10,7 @@ import SocialMediaDashboard from './components/SocialMediaDashboard'
 import AnalyticsDashboard from './components/AnalyticsDashboard'
 import LeadsDashboard from './components/LeadsDashboard'
 import CreatedContentDashboard from './components/CreatedContentDashboard'
+import CalendarDashboard from './components/CalendarDashboard'
 import ATSNDashboard from './components/ATSNDashboard'
 import PostSuggestionsDashboard from './components/PostSuggestionsDashboard'
 import Onboarding from './components/Onboarding'
@@ -233,6 +234,14 @@ function AppContent() {
           element={
             <ProtectedRoute>
               <LeadsDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/calendars"
+          element={
+            <ProtectedRoute>
+              <CalendarDashboard />
             </ProtectedRoute>
           }
         />
