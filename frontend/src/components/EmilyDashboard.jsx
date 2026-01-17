@@ -220,20 +220,20 @@ function EmilyDashboard() {
   const fetchOverdueLeadsCount = async (forceRefresh = false) => {
     if (!user) return
 
-    const CACHE_KEY = `overdue_leads_count_${user.id}`
+    const CACHE_KEY = `leads_data_${user.id}`
     const CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000 // 24 hours
 
     try {
-      // Check if we have cached data from today
+      // Check if we have cached leads data
       if (!forceRefresh) {
         const cachedData = localStorage.getItem(CACHE_KEY)
         if (cachedData) {
-          const { count, timestamp } = JSON.parse(cachedData)
+          const { leads, count, timestamp } = JSON.parse(cachedData)
           const cacheAge = Date.now() - timestamp
 
           // Use cached data if it's less than 24 hours old
-          if (cacheAge < CACHE_EXPIRATION_MS) {
-            console.log('Using cached overdue leads count:', count)
+          if (cacheAge < CACHE_EXPIRATION_MS && leads && Array.isArray(leads)) {
+            console.log('Using cached leads data:', leads.length, 'leads, overdue count:', count)
             setOverdueLeadsCount(count)
             setOverdueLeadsLoading(false)
             return
@@ -251,11 +251,11 @@ function EmilyDashboard() {
 
       while (true) {
         const response = await leadsAPI.getLeads({ limit, offset })
-        
+
         // Handle both old format (array) and new format (object with leads array)
         let leads = []
         let hasMore = false
-        
+
         if (Array.isArray(response.data)) {
           // Old format - backward compatibility
           leads = response.data
@@ -269,10 +269,10 @@ function EmilyDashboard() {
         if (leads.length === 0) break // No more leads
 
         allLeads = [...allLeads, ...leads]
-        
+
         // Use has_more flag if available, otherwise check if we got a full page
         if (!hasMore) break
-        
+
         offset += limit
 
         // Safety check to prevent infinite loops
@@ -305,8 +305,9 @@ function EmilyDashboard() {
         return isOverdue
       }).length
 
-      // Cache the result with current timestamp
+      // Cache the full leads data and count with current timestamp
       const cacheData = {
+        leads: allLeads,
         count: overdueCount,
         timestamp: Date.now()
       }

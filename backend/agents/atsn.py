@@ -2462,7 +2462,7 @@ If the query doesn't match any specific task, return "general_talks"."""
             state.current_step = "end"
             # Ensure result is never None
             if not state.result:
-                state.result = "Hello! How can I help you today?"
+                state.result = "How can I help you today?"
         # For intents that don't need payload, skip payload construction
         elif intent == "general_talks":
             state.current_step = "action_execution"
@@ -4584,16 +4584,18 @@ def handle_greeting(state: AgentState) -> AgentState:
         except Exception as e:
             logger.warning(f"Could not fetch profile for greeting: {e}")
     
-    # Generate personalized greeting with LLM
-    prompt = f"""Generate a warm, brief greeting (under 40 words) for {user_name} who runs {business_type}.
+    # Generate personalized response with LLM (no greeting at start)
+    prompt = f"""Generate a brief, helpful response (under 40 words) for {user_name} who runs {business_type}.
 
 Include:
-1. A friendly greeting
-2. ONE quick social media tip/trending topic for their business type
-3. Ask what they'd like to work on
+1. ONE quick social media tip/trending topic for their business type
+2. Ask what they'd like to work on
 
-Keep it conversational, helpful, and under 40 words total.
-DO NOT use any emojis.
+CRITICAL RULES:
+- DO NOT start with ANY greetings like "Hello", "Hi", "Hey there", "Good morning", etc.
+- Start directly with the helpful content
+- Keep it conversational, helpful, and under 40 words total
+- DO NOT use any emojis
 
 Greeting:"""
 
@@ -4610,14 +4612,14 @@ Greeting:"""
         
     except Exception as e:
         logger.error(f"Greeting LLM failed: {str(e)}")
-        # Fallback greeting
-        state.result = f"""Hello {user_name}! Ready to boost {business_type}?
+        # Fallback response
+        state.result = f"""Ready to boost {business_type}?
 
 Tip: Video content drives 3x more engagement right now!"""
     
     # Final safeguard - ensure result is never None or empty
     if not state.result or not state.result.strip():
-        state.result = "Hello! I'm your ATSN Agent. How can I help you with content or leads today?"
+        state.result = "I'm your ATSN Agent. How can I help you with content or leads today?"
     
     return state
 
@@ -5829,30 +5831,7 @@ class ATSNAgent:
             self.state.payload['media_file'] = media_urls[0]  # Use first URL
             logger.info(f"Media URLs set in payload: {media_urls}")
 
-        # Special handling: If media was uploaded, override intent classification
-        if (self.state.payload.get('media_file') and
-            user_query.strip() in ['[MEDIA_UPLOAD]', '']):
-            logger.info("Media uploaded detected - overriding intent to create_content")
-            # Set intent to create_content and prepare for confirmation
-            self.state.intent = 'create_content'
-            self.state.payload.update({
-                'channel': 'Social Media',
-                'platform': 'Instagram',  # Default platform
-                'content_type': 'static_post',
-                'content_description': 'Create engaging social media content using my uploaded image',
-                'media': 'Upload',  # Indicate this is uploaded media
-            })
-
-            # Ask for confirmation instead of auto-completing
-            self.state.result = "I see you've uploaded an image! Would you like me to create engaging social media content using this image?"
-            self.state.clarification_question = "I see you've uploaded an image! Would you like me to create engaging social media content using this image?"
-            self.state.clarification_options = [
-                {"label": "Yes, create content", "value": "yes"},
-                {"label": "No, cancel", "value": "no"}
-            ]
-            self.state.waiting_for_user = True
-            self.state.current_step = "waiting_for_confirmation"
-            self.state.payload_complete = False
+        # No special handling for media uploads - let them go through normal payload construction
 
             # Return formatted response for confirmation
             clarification_options = []
@@ -5883,6 +5862,14 @@ class ATSNAgent:
                 "needs_connection": getattr(self.state, 'needs_connection', None),
                 "connection_platform": getattr(self.state, 'connection_platform', None)
             }
+
+        # Special case: If media was uploaded and we have a pending create_content intent, continue with content creation
+        if (self.state.payload.get('media_file') and
+            self.state.intent == 'create_content' and
+            getattr(self.state, 'waiting_for_upload', False)):
+            logger.info("Media uploaded for pending create_content - resetting upload flag, graph will continue to execute_action")
+            # Reset upload flag - graph will continue to execute_action where handle_create_content will run
+            self.state.waiting_for_upload = False
 
         # Handle content selection from temp_content_options (for scheduling)
         if (hasattr(self.state, 'temp_content_options') and

@@ -45,7 +45,7 @@ Return ONLY the JSON object, nothing else."""
 FIELD_CLARIFICATIONS = {
     "create_content": {
         "channel": {
-            "question": "Hello! Let's create some content together.\n\nWhich channel would you like to focus on?",
+            "question": "Let's create some content together.\n\nWhich channel would you like to focus on?",
             "options": [
                 {"label": "Social Media", "value": "Social Media"},
                 {"label": "Blog", "value": "Blog"}
@@ -70,7 +70,7 @@ FIELD_CLARIFICATIONS = {
                 {"label": "Blog Post", "value": "blog"}
             ]
         },
-        "content_description": {
+        "content_idea": {
             "question": "Great! Describe what you want to create. What should the content be about? (Tell me your main idea or topic in a few sentences)",
             "options": []
         },
@@ -83,7 +83,7 @@ FIELD_CLARIFICATIONS = {
             ]
         },
         "content_idea": {
-            "question": "Love it! Tell me more about what you have in mind. What's the main idea or topic you want to cover? (Aim for at least 10 words to give me a good sense of what you're looking for)",
+            "question": "Love it! Tell me more about what you have in mind. What's the main idea or topic you want to cover?",
             "options": []
         },
         "Post_type": {
@@ -205,10 +205,8 @@ media:
 
 content_idea:
 - Must be the main topic/subject explicitly stated by the user
-- Must be a complete, detailed description (minimum 10 words)
 - Must clearly explain what the content is about
-- Short phrases like "marketing tips" or "our product" are NOT sufficient
-- Count the words - if under 10, set to null
+- Can be a short phrase or detailed description
 
 CLASSIFICATION (ONLY when content_idea exists and is sufficiently detailed):
 
@@ -224,7 +222,7 @@ Image_type:
 
 VALIDATION CHECKLIST:
 □ Is every field either properly extracted or null?
-□ Does content_idea have at least 10 words?
+□ Does content_idea exist and make sense?
 □ Is platform an exact match from allowed values?
 □ Is content_type based on explicit user wording?
 □ Are classifications truly supported by the content_idea?
@@ -240,7 +238,7 @@ Return a JSON object with exactly this structure:
     "platform": "Instagram" | "Facebook" | "LinkedIn" | "YouTube" | null,
     "content_type": "static_post" | "carousel" | "short_video or reel" | "long_video" | "blog" | null,
     "media": "Generate" | "Upload" | "without media" | null,
-    "content_idea": "string with at least 10 words" | null,
+    "content_idea": "string" | null,
     "Post_type": "one of the allowed post types" | null,
     "Image_type": "one of the allowed image types" | null
 }}
@@ -255,6 +253,7 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation.
 
 def complete_create_content_payload(state) -> Any:
     """Complete create_content payload"""
+
 
     # Import required functions
     from .atsn import (
@@ -278,9 +277,9 @@ def complete_create_content_payload(state) -> Any:
                     other_fields_complete = False
                     break
         elif field == "content_idea":
-            # Special handling for content_idea - check word count
+            # Check if content_idea exists
             content_idea = state.payload.get("content_idea", "")
-            if not content_idea or len(content_idea.split()) < 10:
+            if not content_idea:
                 other_fields_complete = False
                 break
         else:
@@ -296,9 +295,9 @@ def complete_create_content_payload(state) -> Any:
                 if field not in state.payload or state.payload.get(field) is None or not state.payload.get(field):
                     required_fields.append(field)
         elif field == "content_idea":
-            # Special handling for content_idea - check word count
+            # Check if content_idea exists
             content_idea = state.payload.get("content_idea", "")
-            if not content_idea or len(content_idea.split()) < 10:
+            if not content_idea:
                 required_fields.append(field)
         elif field == "media":
             # Only ask for media if all other fields are complete
@@ -318,134 +317,80 @@ def complete_create_content_payload(state) -> Any:
         print("✅ Create content payload complete")
         return state
 
-    next_field = required_fields[0]
-    clarification_data = clarifications.get(next_field, {})
+    # Use LLM to generate a natural conversational message for all missing fields
+    try:
+        # Create a mapping of field names to user-friendly labels
+        field_labels = {
+            "channel": "channel (Social Media or Blog)",
+            "platform": "platform (like Instagram, Facebook, LinkedIn, YouTube)",
+            "content_type": "content type (like static post, carousel, video)",
+            "media": "whether to generate images or upload your own",
+            "content_idea": "content description or topic",
+            "Image_type": "image style preference"
+        }
 
-    # Calculate remaining questions count
-    remaining_questions = len(required_fields)
+        missing_labels = [field_labels.get(field, field.replace('_', ' ')) for field in required_fields]
 
-    if isinstance(clarification_data, dict):
-        base_question = clarification_data.get("question", f"Please provide: {next_field.replace('_', ' ')}")
+        # Create prompt for LLM to generate natural conversational message
+        prompt = f"""Generate a single natural conversational message (under 50 words) asking a user for the following missing information to create content:
 
-        # Question count will be included in the enhanced_base_question for personalization
+Missing information: {', '.join(missing_labels)}
 
-        # Special handling for channel options when content_type is a post type
-        if next_field == "channel":
-            content_type = state.payload.get("content_type")
-            print(f"DEBUG: Channel clarification - content_type is: {content_type}")
-            post_types = ["static_post", "carousel"]
-            if content_type in post_types:
-                # Filter channel options to only show Social Media for posts
-                original_options = clarification_data.get("options", [])
-                filtered_options = [
-                    option for option in original_options
-                    if option.get("value") in ["Social Media"]
-                ]
-        # Special handling for content_type options when platform is Instagram
-        elif next_field == "content_type":
-            platform = state.payload.get("platform")
-            print(f"DEBUG: Content type clarification - platform is: {platform}")
-            if platform == "Instagram":
-                # Filter out "Blog Post" for Instagram
-                original_options = clarification_data.get("options", [])
-                filtered_options = [
-                    option for option in original_options
-                    if option.get("value") != "blog"
-                ]
-                state.clarification_options = filtered_options
-                # Add question count to the base question that was already modified above
-                state.clarification_question = base_question
-                state.waiting_for_user = True
-                state.result = f"{base_question}\n\nPlease choose one of the options below:"
-                return state
-        # Special handling for media options when platform is Instagram
-        elif next_field == "media":
-            platform = state.payload.get("platform")
-            print(f"DEBUG: Media clarification - platform is: {platform}")
-            if platform == "Instagram":
-                # Filter out "Without media" for Instagram - Instagram requires visual content
-                original_options = clarification_data.get("options", [])
-                filtered_options = [
-                    option for option in original_options
-                    if option.get("value") != "Without media"
-                ]
-                state.clarification_options = filtered_options
-                # Add question count to the base question that was already modified above
-                state.clarification_question = base_question
-                state.waiting_for_user = True
-                state.result = f"{base_question}\n\nPlease choose one of the options below:"
-                return state
-                clarification_data = clarification_data.copy()
-                clarification_data["options"] = filtered_options
-                print(f"DEBUG: Filtered channel options to: {[opt.get('value') for opt in filtered_options]}")
+CRITICAL RULES:
+- DO NOT start with ANY greetings like "Hello", "Hi", "Hey there", "Good morning", etc.
+- Start directly with the helpful content
+- Be friendly and conversational
+- Ask for ALL missing information in one message
+- Be under 50 words
+- Sound like a helpful assistant
 
-        # Special handling for platform options when channel is "Social Media"
-        if next_field == "platform":
-            channel = state.payload.get("channel")
-            print(f"DEBUG: Platform clarification - channel is: {channel}")
-            if channel == "Social Media":
-                # Filter platform options to only show social media platforms for Social Media channel
-                original_options = clarification_data.get("options", [])
-                filtered_options = [
-                    option for option in original_options
-                    if option.get("value") in ["Instagram", "Facebook", "LinkedIn", "YouTube"]
-                ]
-                clarification_data = clarification_data.copy()
-                clarification_data["options"] = filtered_options
-                print(f"DEBUG: Filtered platform options to: {[opt.get('value') for opt in filtered_options]}")
+Example: "I can help you create content! Just let me know what platform and the idea you want to convey with that content."
 
-        # Special handling for content_idea validation
-        if next_field == "content_idea":
-            existing_content = state.payload.get("content_idea", "")
-            if existing_content and len(existing_content.split()) < 10:
-                base_question = f"Your content idea is too short (needs at least 10 words). {base_question}"
+Return only the message, nothing else."""
 
-        # For Post_type and Image_type, get contextual LLM suggestion
-        if next_field in ["Post_type", "Image_type"]:
-            all_options = clarification_data.get("full_options", [])
-            if all_options:
-                contextual_suggestion = get_contextual_suggestion(
-                    field_type=next_field,
-                    conversation_context=state.user_query or "",
-                    all_options=all_options
-                )
-                base_question = f"{base_question} Based on what you've told me, how about '{contextual_suggestion}'? Or tell me your own preference!"
-
-        # Add remaining questions count to the question for personalization
-        question_count_context = f"I will ask you just {remaining_questions} more question{'s' if remaining_questions > 1 else ''} for further understanding."
-        enhanced_base_question = f"{question_count_context}\n\n{base_question}"
-
-        # Generate personalized question using LLM
-        logger.info(f"Calling LLM for clarification question. Base: '{enhanced_base_question}', User context length: {len(state.user_query or '')}")
-        personalized_question = generate_clarifying_question(
-            base_question=enhanced_base_question,
-            user_context=state.user_query,
-            user_input=state.user_query.split('\n')[-1] if state.user_query else ""
+        # Call LLM to generate the message
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful content creation assistant. Generate natural conversational messages. NEVER start with greetings like 'Hello', 'Hi', 'Hey there', etc."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=100,
+            temperature=0.7
         )
-        logger.info(f"LLM returned: '{personalized_question}'")
 
-        state.clarification_question = personalized_question
-        state.clarification_options = clarification_data.get("options", [])
-        # Only add "Please choose one of the options below:" if there are actually options
-        if state.clarification_options and len(state.clarification_options) > 0:
-            state.result = f"{personalized_question}\n\nPlease choose one of the options below:"
-        else:
-            state.result = personalized_question
-    else:
-        # Backward compatibility for string clarifications
-        question_text = clarification_data or f"Please provide: {next_field.replace('_', ' ')}"
-        # Add remaining questions count to the question
-        question_count_context = f"I will ask you just {remaining_questions} more question{'s' if remaining_questions > 1 else ''} for further understanding."
-        state.clarification_question = f"{question_count_context}\n\n{question_text}"
+        natural_message = response.choices[0].message.content.strip()
+
+        # Ensure message is under 50 words
+        word_count = len(natural_message.split())
+        if word_count > 50:
+            # Truncate if too long
+            words = natural_message.split()[:45]
+            natural_message = ' '.join(words) + '...'
+
+        logger.info(f"🤖 LLM generated natural message: '{natural_message}' (asking for: {', '.join(missing_labels)})")
+
+        state.clarification_question = natural_message
+        state.clarification_options = []  # No structured options for natural conversation
+        state.result = natural_message
+        state.waiting_for_user = True
+        state.current_step = "waiting_for_clarification"
+
+        print(f"❓ Natural clarification: {natural_message}")
+        return state
+
+    except Exception as e:
+        logger.error(f"Failed to generate natural message: {e}")
+        # Fallback to basic question
+        next_field = required_fields[0]
+        missing_fields_text = ', '.join([field.replace('_', ' ') for field in required_fields])
+        fallback_message = f"I need some more information to create your content. Please provide: {missing_fields_text}"
+        state.clarification_question = fallback_message
         state.clarification_options = []
-        # Don't add "Please choose one of the options below:" when there are no options
-        state.result = state.clarification_question
-
-    state.waiting_for_user = True
-    state.current_step = "waiting_for_clarification"
-    print(f"❓ Clarification needed for create_content: {state.clarification_question}")
-
-    return state
+        state.result = fallback_message
+        state.waiting_for_user = True
+        state.current_step = "waiting_for_clarification"
+        return state
 
 
 async def handle_create_content(state) -> Any:
@@ -544,8 +489,8 @@ async def handle_create_content(state) -> Any:
         content_type = payload.get('content_type', '')
 
         if content_type == 'static_post':
-            # Use content_description as the primary topic, fallback to content_idea
-            topic = payload.get('content_description') or payload.get('content_idea', '')
+            # Get the content topic/idea
+            topic = payload.get('content_idea', '')
             platform = payload.get('platform', 'Instagram').lower()
 
             # Check if user wants to upload their own image
@@ -568,7 +513,7 @@ async def handle_create_content(state) -> Any:
                     # Step 1: Analyze image with LLM to generate title, caption, and hashtags
                     logger.info("🔍 Analyzing image with LLM for content generation")
 
-                    content_description = payload.get('content_description', topic)
+                    content_description = topic
                     image_analysis_prompt = f"""
                     Analyze this image and create engaging social media content for {platform}.
 
@@ -622,7 +567,7 @@ async def handle_create_content(state) -> Any:
                                 import re
                                 hashtags = re.findall(r'#\w+', hashtags_text)
 
-                        content_desc = payload.get('content_description', topic)
+                        content_desc = topic
                         if not title:
                             title = f"Post about {content_desc[:50]}"
                         if not caption:
@@ -637,7 +582,7 @@ async def handle_create_content(state) -> Any:
                     except Exception as e:
                         logger.error(f"❌ Failed to analyze image: {e}")
                         # Fallback content
-                        content_desc = payload.get('content_description', topic)
+                        content_desc = topic
                         title = f"Post about {content_desc[:50]}"
                         caption = f"Great content about {content_desc}!"
                         hashtags = ['#content']
@@ -1058,172 +1003,11 @@ Include timing estimates for each section."""
             generated_content = f"Generated {content_type} for {payload.get('platform', 'platform')}"
             content_data['content'] = generated_content
 
-        # Handle media generation based on payload.media
-        logger.info(f"Media type: {payload.get('media')}")
-        if payload.get('media') == 'Generate' and not payload.get('media_url'):
-            # Generate image using Gemini with the generated content and business context
-            try:
-                # First, generate enhanced image prompt using AI
-                content_for_image = content_data.get('content') or ""
-                if not content_for_image and content_type == 'static_post':
-                    content_for_image = (
-                        generated_content
-                        or payload.get('content')
-                        or payload.get('content_idea')
-                        or ""
-                    )
-                generated_post = {
-                    'title': title,
-                    'content': content_for_image
-                }
+        # RL Agent handles all media generation - no additional generation needed
+        logger.info(f"Media handled by RL Agent: {payload.get('media')}")
+        # Remove duplicate image generation - RL Agent already generates images
 
-                enhanced_prompt_data = await generate_image_enhancer_prompt(
-                    generated_post, payload, business_context, parsed_trends, profile_assets, state.user_query
-                )
-
-                # Build final image generation prompt using the enhanced prompt
-                current_datetime = datetime.now()
-                current_date = current_datetime.strftime("%Y-%m-%d")
-                current_time = current_datetime.strftime("%H:%M:%S UTC")
-
-                # Use the enhanced prompt as the base
-                base_prompt = enhanced_prompt_data.get('image_prompt', f"Create a professional image for: {title}")
-                visual_style = enhanced_prompt_data.get('visual_style', 'photorealistic')
-                aspect_ratio = enhanced_prompt_data.get('aspect_ratio', '1:1')
-                negative_prompt = enhanced_prompt_data.get('negative_prompt', 'text, logos, watermarks')
-
-                # Build color instructions and location context using helper functions
-                color_instructions = build_brand_color_instructions(profile_assets, business_context)
-                location_context = build_location_context(business_context)
-
-                image_prompt = f"""{base_prompt}
-
-VISUAL REQUIREMENTS:
-- Style: {visual_style}
-- Aspect Ratio: {aspect_ratio}
-- Business: {business_context.get('business_name', 'Business')}
-- Industry: {business_context.get('industry', 'General')}
-- Target Audience: {business_context.get('target_audience', 'General audience')}
-{color_instructions}
-
-{location_context}
-
-AVOID: {negative_prompt}
-
-Create a high-quality, professional image optimized for Instagram that reflects current design trends for {current_date}."""
-
-                # Log the complete image generation prompt
-                logger.info(f"🎨 Complete image generation prompt being sent to Gemini:")
-                logger.info("=" * 80)
-                logger.info(image_prompt)
-                logger.info("=" * 80)
-
-                # Check if logo is available and prepare to send it to Gemini
-                logo_data = None
-                if profile_assets and profile_assets.get('logo'):
-                    logo_url = profile_assets.get('logo')
-                    logger.info(f"📎 Including logo in image generation: {logo_url}")
-                    try:
-                        import httpx
-                        async with httpx.AsyncClient(follow_redirects=True) as client:
-                            logo_response = await client.get(logo_url)
-                            logo_response.raise_for_status()
-                            logo_data = logo_response.content
-                        logger.info(f"✅ Logo downloaded successfully: {len(logo_data)} bytes")
-                    except Exception as e:
-                        logger.warning(f"Failed to download logo: {e}")
-                        logo_data = None
-
-                # Generate image with Gemini
-                logger.info(f"🎨 Generating image with Gemini for platform: {payload.get('platform')} at {current_datetime.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-                logger.info(f"   Using enhanced prompt with {visual_style} style and {aspect_ratio} aspect ratio")
-                logger.info(f"   Logo included: {logo_data is not None}")
-
-                gemini_image_model = 'gemini-2.5-flash-image'
-
-                # Prepare contents for Gemini API
-                contents = [image_prompt]  # Text prompt is always first
-
-                # Add logo as reference image if available
-                if logo_data:
-                    import base64
-                    contents.append({
-                        "inline_data": {
-                            "mime_type": "image/png",  # Assume PNG for transparency
-                            "data": base64.b64encode(logo_data).decode('utf-8')
-                        }
-                    })
-
-                image_response = genai.GenerativeModel(gemini_image_model).generate_content(
-                    contents=contents
-                )
-                logger.info(f"Gemini response received, has candidates: {bool(image_response.candidates)}")
-
-                # Extract image data
-                if image_response.candidates and len(image_response.candidates) > 0:
-                    candidate = image_response.candidates[0]
-                    if candidate.content.parts:
-                        for part in candidate.content.parts:
-                            if part.inline_data is not None and part.inline_data.data:
-                                try:
-                                    # Get image data as bytes
-                                    image_data = part.inline_data.data
-                                    if not isinstance(image_data, bytes):
-                                        import base64
-                                        image_data = base64.b64decode(image_data)
-
-                                    # Generate unique filename
-                                    import uuid
-                                    filename = f"generated/{uuid.uuid4()}.png"
-                                    file_path = filename
-
-                                    logger.info(f"📤 Uploading generated image to content-images bucket: {file_path}")
-
-                                    # Upload to ai-generated-images bucket in generated folder
-                                    storage_response = supabase.storage.from_("ai-generated-images").upload(
-                                        file_path,
-                                        image_data,
-                                        file_options={"content-type": "image/png", "upsert": "false"}
-                                    )
-
-                                    if hasattr(storage_response, 'error') and storage_response.error:
-                                        logger.error(f"Storage upload error: {storage_response.error}")
-                                        generated_image_url = None
-                                    else:
-                                        # Get public URL
-                                        generated_image_url = supabase.storage.from_("ai-generated-images").get_public_url(file_path)
-                                        logger.info(f"✅ Image uploaded successfully: {generated_image_url}")
-
-                                        if generated_image_url and isinstance(generated_image_url, str):
-                                            content_data['images'] = [generated_image_url]
-
-                                            # ✅ Increment image count after successful generation and storage
-                                            try:
-                                                # Read current image count and increment
-                                                current_images = supabase.table('profiles').select('images_generated_this_month').eq('id', state.user_id).execute()
-                                                if current_images.data and len(current_images.data) > 0:
-                                                    current_image_count = current_images.data[0]['images_generated_this_month'] or 0
-                                                    supabase.table('profiles').update({
-                                                        'images_generated_this_month': current_image_count + 1
-                                                    }).eq('id', state.user_id).execute()
-                                                    logger.info(f"Incremented image count for user {state.user_id} after successful generation (from {current_image_count} to {current_image_count + 1})")
-                                            except Exception as counter_error:
-                                                logger.error(f"Error incrementing image count after generation: {counter_error}")
-                                        else:
-                                            logger.error(f"Invalid public URL returned: {generated_image_url}")
-                                            generated_image_url = None
-
-                                except Exception as upload_error:
-                                    logger.error(f"Error uploading image to storage: {upload_error}")
-                                    generated_image_url = None
-
-                                break
-
-            except Exception as e:
-                logger.error(f"Image generation failed: {e}")
-                generated_image_url = None
-
-        elif payload.get('media') == 'Upload':
+        if payload.get('media') == 'Upload':
             # Set flag for upload requirement
             if not payload.get('media_file'):
                 # No file uploaded yet, set upload flag

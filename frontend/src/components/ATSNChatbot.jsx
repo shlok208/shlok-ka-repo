@@ -938,6 +938,9 @@ const ATSNChatbot = ({ externalConversations = null }) => {
         return newMessages
       })
 
+      // Update conversation history with bot response
+      setConversationHistory(prev => [...prev, botMessageObj.text])
+
       // Cache the bot message
       setMessageCache(prev => {
         const newCache = [...prev, botMessageObj]

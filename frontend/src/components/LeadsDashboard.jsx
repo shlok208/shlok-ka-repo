@@ -132,7 +132,6 @@ const LeadsDashboard = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   const [lastFetchTime, setLastFetchTime] = useState(null)
-  const [pollingInterval, setPollingInterval] = useState(null)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedLeadIds, setSelectedLeadIds] = useState(new Set())
   const [deletingBulk, setDeletingBulk] = useState(false)
@@ -140,20 +139,47 @@ const LeadsDashboard = () => {
   const leadsRef = useRef([])
   const lastFetchTimeRef = useRef(null)
 
-  // Infinite scroll state
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
-  const [loadedCount, setLoadedCount] = useState(0)
+  // Leads data state
   const [total, setTotal] = useState(0)
   const pageSize = 50 // Load 50 leads at a time
 
   // Ref for intersection observer
-  const loadMoreRef = useRef(null)
 
-  const fetchLeads = useCallback(async (showLoading = true, append = false) => {
+  const fetchLeads = useCallback(async (showLoading = true, forceRefresh = false) => {
+    if (!user) return
+
+    const CACHE_KEY = `leads_dashboard_${user.id}_${filterStatus}_${filterPlatform}`
+    const CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000 // 24 hours
+
     try {
+      // Check if we have cached data (unless force refresh)
+      if (!forceRefresh) {
+        const cachedData = localStorage.getItem(CACHE_KEY)
+        if (cachedData) {
+          const { leads: cachedLeads, total: cachedTotal, timestamp } = JSON.parse(cachedData)
+          const cacheAge = Date.now() - timestamp
+
+          // Use cached data if it's less than 24 hours old
+          if (cacheAge < CACHE_EXPIRATION_MS && Array.isArray(cachedLeads)) {
+            console.log('Using cached leads data:', cachedLeads.length, 'leads')
+
+            setLeads(cachedLeads)
+            setTotal(cachedTotal || cachedLeads.length)
+
+            // Update refs
+            leadsRef.current = cachedLeads
+            const now = new Date()
+            setLastFetchTime(now)
+            lastFetchTimeRef.current = now
+
+            if (showLoading) setLoading(false)
+            return
+          }
+        }
+      }
+
+      // No valid cache or force refresh - fetch all leads at once
       if (showLoading) setLoading(true)
-      if (append) setLoadingMore(true)
 
       const params = {}
       if (filterStatus !== 'all') {
@@ -162,86 +188,99 @@ const LeadsDashboard = () => {
       if (filterPlatform !== 'all') {
         params.source_platform = filterPlatform
       }
-      params.limit = pageSize
-      params.offset = append ? loadedCount : 0
 
-      const response = await leadsAPI.getLeads(params)
+      // Fetch ALL leads at once (no pagination for dashboard)
+      let allLeads = []
+      let offset = 0
+      const limit = 200 // Backend max limit is 200
 
-      // Handle both old format (array) and new format (object with leads array)
-      let fetchedLeads = []
-      let totalCount = 0
-      let hasMoreData = false
+      while (true) {
+        params.limit = limit
+        params.offset = offset
 
-      if (Array.isArray(response.data)) {
-        // Old format - backward compatibility (just an array of leads)
-        fetchedLeads = response.data
-        totalCount = fetchedLeads.length
-        hasMoreData = fetchedLeads.length === pageSize
-      } else if (response.data && response.data.leads) {
-        // New format with pagination metadata
-        fetchedLeads = response.data.leads || []
-        totalCount = response.data.total || fetchedLeads.length
-        hasMoreData = response.data.has_more !== undefined ? response.data.has_more : fetchedLeads.length === pageSize
-      } else {
-        fetchedLeads = []
-        totalCount = 0
-        hasMoreData = false
+        const response = await leadsAPI.getLeads(params)
+
+        // Handle both old format (array) and new format (object with leads array)
+        let fetchedLeads = []
+        let hasMoreData = false
+
+        if (Array.isArray(response.data)) {
+          // Old format - backward compatibility (just an array of leads)
+          fetchedLeads = response.data
+          hasMoreData = fetchedLeads.length === limit
+        } else if (response.data && response.data.leads) {
+          // New format with pagination metadata
+          fetchedLeads = response.data.leads || []
+          hasMoreData = response.data.has_more !== undefined ? response.data.has_more : fetchedLeads.length === limit
+        }
+
+        allLeads = [...allLeads, ...fetchedLeads]
+
+        if (!hasMoreData || fetchedLeads.length === 0) break
+        offset += limit
+
+        // Safety check to prevent infinite loops
+        if (offset > 50000) break
       }
 
-      // Check for new leads using refs to avoid dependency issues (only on first load)
-      if (!append && loadedCount === 0) {
-        const previousLeads = leadsRef.current
-        const previousFetchTime = lastFetchTimeRef.current
+      console.log('Fetched all leads for dashboard:', allLeads.length)
 
-        if (previousFetchTime && previousLeads.length > 0) {
-          const newLeads = fetchedLeads.filter(newLead => {
-            const newLeadTime = new Date(newLead.created_at)
-            return newLeadTime > previousFetchTime && !previousLeads.find(l => l.id === newLead.id)
-          })
+      // Check for new leads using refs to avoid dependency issues
+      const previousLeads = leadsRef.current
+      const previousFetchTime = lastFetchTimeRef.current
 
-          if (newLeads.length > 0) {
-            showInfo(
-              'New Lead!',
-              `${newLeads.length} new lead${newLeads.length > 1 ? 's' : ''} received`,
-              {
-                type: 'lead',
-                leadIds: newLeads.map(l => l.id)
-              }
-            )
-          }
+      if (previousFetchTime && previousLeads.length > 0) {
+        const newLeads = allLeads.filter(newLead => {
+          const newLeadTime = new Date(newLead.created_at)
+          return newLeadTime > previousFetchTime && !previousLeads.find(l => l.id === newLead.id)
+        })
+
+        if (newLeads.length > 0) {
+          showInfo(
+            'New Lead!',
+            `${newLeads.length} new lead${newLeads.length > 1 ? 's' : ''} received`,
+            {
+              type: 'lead',
+              leadIds: newLeads.map(l => l.id)
+            }
+          )
         }
       }
 
-      // Update state and refs
-      if (append) {
-        setLeads(prev => [...prev, ...fetchedLeads])
-        setLoadedCount(prev => prev + fetchedLeads.length)
-      } else {
-        setLeads(fetchedLeads)
-        setLoadedCount(fetchedLeads.length)
-      }
+      // Update state
+      setLeads(allLeads)
+      setTotal(allLeads.length)
 
-      setTotal(totalCount)
-      // Use backend's has_more flag if available, otherwise check if we got a full page
-      const shouldHaveMore = hasMoreData && fetchedLeads.length >= pageSize
-      setHasMore(shouldHaveMore)
-
-      console.log(`FetchLeads: append=${append}, fetched=${fetchedLeads.length}, total=${totalCount}, hasMoreData=${hasMoreData}, shouldHaveMore=${shouldHaveMore}`)
-
-      leadsRef.current = append ? [...leadsRef.current, ...fetchedLeads] : fetchedLeads
-
+      // Update refs
+      leadsRef.current = allLeads
       const now = new Date()
       setLastFetchTime(now)
       lastFetchTimeRef.current = now
 
+      // Cache the complete leads data
+      const cacheData = {
+        leads: allLeads,
+        total: allLeads.length,
+        timestamp: Date.now()
+      }
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
+
+      console.log('Cached all leads data for dashboard')
+
     } catch (error) {
       console.error('Error fetching leads:', error)
-      showError('Error', 'Failed to fetch leads. Please try again.')
+      console.error('Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url
+      })
+      showError('Error', `Failed to fetch leads: ${error.message}`)
     } finally {
       if (showLoading) setLoading(false)
-      if (append) setLoadingMore(false)
     }
-  }, [filterStatus, filterPlatform, loadedCount, pageSize, showError, showInfo])
+  }, [user, filterStatus, filterPlatform, showError, showInfo])
 
   // Clear leads data on logout
   useEffect(() => {
@@ -252,19 +291,9 @@ const LeadsDashboard = () => {
       setShowDetailModal(false)
       setSelectedLeadIds(new Set())
       setSelectionMode(false)
-      setLoadedCount(0)
-      setHasMore(true)
-      setLoadingMore(false)
     }
   }, [user])
 
-  // Clear polling interval on logout
-  useEffect(() => {
-    if (!user && pollingInterval) {
-      clearInterval(pollingInterval)
-      setPollingInterval(null)
-    }
-  }, [user, pollingInterval])
 
   // Check for URL parameters to apply filters
   useEffect(() => {
@@ -279,13 +308,6 @@ const LeadsDashboard = () => {
     }
   }, [])
 
-  // Reset loaded count when filters change
-  useEffect(() => {
-    if (user) {
-      setLoadedCount(0)
-      setHasMore(true)
-    }
-  }, [user, filterStatus, filterPlatform])
 
   // Initial fetch and refetch when filters change
   useEffect(() => {
@@ -294,34 +316,7 @@ const LeadsDashboard = () => {
     }
   }, [user, filterStatus, filterPlatform]) // Removed fetchLeads from dependencies
 
-  // Intersection observer for infinite scrolling
-  useEffect(() => {
-    let isLoading = false // Prevent multiple simultaneous loads
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading && loadedCount > 0 && !isLoading) {
-          console.log('IntersectionObserver: Loading more leads...')
-          isLoading = true
-          fetchLeads(false, true).finally(() => {
-            isLoading = false
-          })
-        }
-      },
-      { threshold: 0.1, rootMargin: '100px' }
-    )
-
-    const currentRef = loadMoreRef.current
-    if (currentRef) {
-      observer.observe(currentRef)
-    }
-
-    return () => {
-      if (currentRef) {
-        observer.unobserve(currentRef)
-      }
-    }
-  }, [hasMore, loadingMore, loading, loadedCount]) // Removed fetchLeads, added loadedCount
+  // No more infinite scrolling - all leads loaded at once and cached
 
   // Handle leadId from URL query parameter (for opening lead from chatbot link)
   useEffect(() => {
@@ -357,20 +352,7 @@ const LeadsDashboard = () => {
     }
   }, [showFilterDropdown])
 
-  // Set up polling for new leads
-  useEffect(() => {
-    if (!user) return
-
-    const interval = setInterval(() => {
-      fetchLeads(false) // Don't show loading spinner for polling
-    }, 30000) // Poll every 30 seconds
-
-    setPollingInterval(interval)
-
-    return () => {
-      clearInterval(interval)
-    }
-  }, [user, fetchLeads])
+  // No polling needed - data cached for 24 hours and refreshed on demand
 
   const handleLeadClick = (lead) => {
     setSelectedLead(lead)
@@ -540,7 +522,7 @@ const LeadsDashboard = () => {
   }
 
   const handleRefresh = () => {
-    fetchLeads()
+    fetchLeads(true, true) // showLoading=true, forceRefresh=true
     showSuccess('Refreshed', 'Leads list updated')
   }
 
@@ -1172,38 +1154,12 @@ const LeadsDashboard = () => {
         </div>
       </div>
 
-      {/* Infinite scroll loading indicator */}
-      {loadingMore && (
-        <div className="flex items-center justify-center py-6">
-          <div className={`flex items-center space-x-2 text-sm ${
-            isDarkMode ? 'text-gray-400' : 'text-gray-600'
-          }`}>
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-            <span>Loading more leads...</span>
-          </div>
-        </div>
-      )}
-
-      {/* Infinite scroll trigger element */}
-      {hasMore && !loadingMore && loadedCount > 0 && (
-        <div
-          ref={loadMoreRef}
-          className="h-10 flex items-center justify-center"
-        >
-          <div className={`text-xs ${
-            isDarkMode ? 'text-gray-500' : 'text-gray-400'
-          }`}>
-            Scroll for more leads ({loadedCount} of {total})
-          </div>
-        </div>
-      )}
-
-      {/* End of list indicator */}
-      {!hasMore && loadedCount > 0 && (
-        <div className={`text-center py-6 text-sm ${
+      {/* Total leads indicator */}
+      {leads.length > 0 && (
+        <div className={`text-center py-4 text-sm ${
           isDarkMode ? 'text-gray-400' : 'text-gray-600'
         }`}>
-          You've reached the end - {loadedCount} of {total} leads loaded
+          Total leads: {leads.length}
         </div>
       )}
 

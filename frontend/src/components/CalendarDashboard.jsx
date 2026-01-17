@@ -315,7 +315,7 @@ const CalendarDashboard = () => {
           }`}>
             {/* Calendar Header */}
             <div className="flex items-center justify-between mb-6">
-              <h2 className={`text-3xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              <h2 className={`text-3xl font-normal ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                   {monthYear}
                 </h2>
                 <div className="flex gap-2">
