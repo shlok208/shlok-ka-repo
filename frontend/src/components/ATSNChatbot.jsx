@@ -135,10 +135,12 @@ const ATSNChatbot = ({ externalConversations = null, onMinimize = null }) => {
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
   const [isDarkMode, setIsDarkMode] = useState(getDarkModePreference)
   const [likedMessages, setLikedMessages] = useState(new Set())
+  const [agentProfiles, setAgentProfiles] = useState({}) // Agent profiles with likes and tasks data
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const lastExternalConversationsRef = useRef(null)
   const hasScrolledToBottomRef = useRef(false)
+  const processingLikeRef = useRef(new Set()) // Track messages currently being processed
 
   // Apply dark mode class to document element
   useEffect(() => {
@@ -511,6 +513,33 @@ const ATSNChatbot = ({ externalConversations = null, onMinimize = null }) => {
     }
   }, [messages.length])
 
+  // Fetch agent profiles data
+  useEffect(() => {
+    const fetchAgentProfiles = async () => {
+      try {
+        const token = await getAuthToken()
+        if (!token) return
+
+        const response = await fetch(`${API_BASE_URL}/profile/agents/profiles`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (response.ok) {
+          const profiles = await response.json()
+          setAgentProfiles(profiles)
+        } else {
+          console.error('Failed to fetch agent profiles:', response.statusText)
+        }
+      } catch (error) {
+        console.error('Error fetching agent profiles:', error)
+      }
+    }
+
+    fetchAgentProfiles()
+  }, [])
 
   // Load today's conversations (similar to Chatbot.jsx)
   const loadTodayConversations = async () => {
@@ -702,31 +731,51 @@ const ATSNChatbot = ({ externalConversations = null, onMinimize = null }) => {
   }
 
   const handleLikeMessage = async (message) => {
-    const isCurrentlyLiked = likedMessages.has(message.id)
+    // If message is already liked, do nothing (one-time like only)
+    if (likedMessages.has(message.id)) {
+      return
+    }
+
+    // Prevent duplicate rapid clicks
+    if (processingLikeRef.current.has(message.id)) {
+      return
+    }
+
+    // Mark this message as being processed
+    processingLikeRef.current.add(message.id)
 
     // Update local state immediately for better UX
     setLikedMessages(prev => {
       const newSet = new Set(prev)
-      if (isCurrentlyLiked) {
-        newSet.delete(message.id)
-        showSuccess('Message unliked')
-      } else {
-        newSet.add(message.id)
-        showSuccess('Message liked')
-      }
+      newSet.add(message.id)
       return newSet
     })
 
-    // If liking (not unliking) and message has an agent_name, increment likes count
-    if (!isCurrentlyLiked && message.agent_name) {
+    // Show success message
+    showSuccess('Message liked')
+
+    // Clear processing ref after a short delay
+    setTimeout(() => {
+      processingLikeRef.current.delete(message.id)
+    }, 300)
+
+    // If message has an agent_name, increment likes count
+    if (message.agent_name) {
       try {
         const token = await getAuthToken()
         if (!token) {
           console.error('No auth token available')
+          // Revert the like state if no token
+          setLikedMessages(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(message.id)
+            return newSet
+          })
+          processingLikeRef.current.delete(message.id)
           return
         }
 
-        const response = await fetch(`${API_BASE_URL}/agents/${message.agent_name}/like`, {
+        const response = await fetch(`${API_BASE_URL}/profile/agents/${message.agent_name}/like`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -734,12 +783,38 @@ const ATSNChatbot = ({ externalConversations = null, onMinimize = null }) => {
           }
         })
 
-        if (!response.ok) {
-          console.error('Failed to increment likes count')
-          // Optionally revert the local state if API call fails
+        if (response.ok) {
+          const data = await response.json()
+          
+          // Update agentProfiles state with the new likes count in real-time
+          if (data.success && data.new_likes_count !== undefined) {
+            const agentNameKey = message.agent_name.toLowerCase()
+            setAgentProfiles(prev => ({
+              ...prev,
+              [agentNameKey]: {
+                likes_count: data.new_likes_count,
+                tasks_completed_count: prev[agentNameKey]?.tasks_completed_count || 0
+              }
+            }))
+          }
+        } else {
+          const errorText = await response.text()
+          console.error('Failed to increment likes count:', response.status, errorText)
+          // Revert the like state if API call fails
+          setLikedMessages(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(message.id)
+            return newSet
+          })
         }
       } catch (error) {
         console.error('Error incrementing likes count:', error)
+        // Revert the like state if error occurs
+        setLikedMessages(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(message.id)
+          return newSet
+        })
       }
     }
   }
@@ -3137,10 +3212,10 @@ const ATSNChatbot = ({ externalConversations = null, onMinimize = null }) => {
                         </button>
                         <button
                           onClick={() => handleLikeMessage(message)}
-                          className={`p-1 rounded transition-colors ${
+                          className={`p-1 rounded transition-colors cursor-pointer ${
                             isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
                           }`}
-                          title={likedMessages.has(message.id) ? "Unlike message" : "Like message"}
+                          title={likedMessages.has(message.id) ? "Already liked" : "Like message"}
                         >
                           <Heart className={`w-3 h-3 ${
                             likedMessages.has(message.id)
@@ -5091,6 +5166,8 @@ const ATSNChatbot = ({ externalConversations = null, onMinimize = null }) => {
         isVisible={!!tooltipAgent}
         position={tooltipPosition}
         isDarkMode={isDarkMode}
+        likesCount={agentProfiles[tooltipAgent?.toLowerCase()]?.likes_count || 0}
+        tasksCount={agentProfiles[tooltipAgent?.toLowerCase()]?.tasks_completed_count || 0}
       />
     </div>
   )
