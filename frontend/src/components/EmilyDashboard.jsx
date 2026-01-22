@@ -51,6 +51,8 @@ import ContentCard from './ContentCard'
 import AgentCards from './AgentCards'
 import NewPostModal from './NewPostModal'
 import AddLeadModal from './AddLeadModal'
+import ContentCreateIndicator from './ContentCreateIndicator'
+import ATSNContentModal from './ATSNContentModal'
 import { Sparkles, TrendingUp, Target, BarChart3, FileText, PanelRight, PanelLeft, X, ChevronRight, RefreshCw, Send } from 'lucide-react'
 
 // Voice Orb Component with animated border (spring-like animation)
@@ -201,6 +203,10 @@ function EmilyDashboard() {
   const [showChatbot, setShowChatbot] = useState(false)
   const [showNewPostModal, setShowNewPostModal] = useState(false)
   const [showAddLeadModal, setShowAddLeadModal] = useState(false)
+  const [showContentCreateIndicator, setShowContentCreateIndicator] = useState(false)
+  const [contentCreationStep, setContentCreationStep] = useState(0)
+  const [showGeneratedContentModal, setShowGeneratedContentModal] = useState(false)
+  const [generatedContent, setGeneratedContent] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
 
   // Today's conversations only (no historical data)
@@ -272,6 +278,17 @@ function EmilyDashboard() {
       }
 
       setIsLoading(true)
+      setShowContentCreateIndicator(true)
+      setContentCreationStep(0)
+      setShowNewPostModal(false)
+
+      // Step 1: Analyzing content
+      setContentCreationStep(0)
+      await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate processing time
+
+      // Step 2: Generating text content
+      setContentCreationStep(1)
+      await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate processing time
 
       // Send the form data to the new content creation endpoint
       const response = await fetch(`${API_BASE_URL}/create-content`, {
@@ -288,15 +305,47 @@ function EmilyDashboard() {
         throw new Error(errorData.detail || errorData.error || 'Failed to create post')
       }
 
+      // Step 3: Creating visuals (if applicable)
+      setContentCreationStep(2)
+
       const result = await response.json()
 
       if (result.success) {
-        // Success - show success message and refresh content if needed
-        showSuccess('Content Created!', 'Your new content has been created successfully.')
-        setShowNewPostModal(false)
+        // Step 4: Finalizing
+        setContentCreationStep(3)
+        await new Promise(resolve => setTimeout(resolve, 1500)) // Allow time to see final step
 
-        // Optionally refresh any content lists or navigate to content view
-        // You could add logic here to refresh the content dashboard or navigate to the created content
+        // Fetch the newly created content from Supabase
+        try {
+          const contentId = result.content_id
+          const token = localStorage.getItem('authToken')
+
+          // Fetch the content from Supabase
+          const contentResponse = await fetch(`${API_BASE_URL}/content/created-content/${contentId}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+
+          if (contentResponse.ok) {
+            const contentData = await contentResponse.json()
+            setGeneratedContent(contentData)
+            setShowGeneratedContentModal(true)
+          } else {
+            // Fallback to response data if fetch fails
+            setGeneratedContent(result.content_data || {})
+            setShowGeneratedContentModal(true)
+          }
+        } catch (error) {
+          console.error('Error fetching content from Supabase:', error)
+          // Fallback to response data
+          setGeneratedContent(result.content_data || {})
+          setShowGeneratedContentModal(true)
+        }
+
+        // Success - show success message
+        showSuccess('Content Created!', 'Your new content has been created successfully.')
 
       } else {
         throw new Error(result.error || 'Failed to create content')
@@ -307,6 +356,8 @@ function EmilyDashboard() {
       showError('Creation Failed', error.message || 'There was an error creating your post. Please try again.')
     } finally {
       setIsLoading(false)
+      setShowContentCreateIndicator(false)
+      setContentCreationStep(0)
     }
   }
 
@@ -1413,6 +1464,24 @@ function EmilyDashboard() {
         isImporting={false}
         isDarkMode={isDarkMode}
       />
+
+      {/* Content Creation Indicator */}
+      <ContentCreateIndicator
+        isOpen={showContentCreateIndicator}
+        isDarkMode={isDarkMode}
+        currentStep={contentCreationStep}
+      />
+
+      {/* Generated Content Modal */}
+      {showGeneratedContentModal && generatedContent && (
+        <ATSNContentModal
+          content={generatedContent}
+          onClose={() => {
+            setShowGeneratedContentModal(false)
+            setGeneratedContent(null)
+          }}
+        />
+      )}
     </div>
   )
 }
