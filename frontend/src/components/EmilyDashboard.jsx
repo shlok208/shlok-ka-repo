@@ -1145,7 +1145,7 @@ function EmilyDashboard() {
       {!showChatbot && (
         <div className="fixed bottom-20 left-0 right-0 z-10 p-4">
           <div className="max-w-4xl mx-auto">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="flex justify-center gap-4 mb-4 flex-wrap">
               <div
                 onClick={() => setShowNewPostModal(true)}
                 className={`p-4 rounded-xl border transition-all cursor-pointer hover:shadow-lg ${
@@ -1172,31 +1172,6 @@ function EmilyDashboard() {
                           </div>
                         </div>
 
-                          <div
-                onClick={() => navigate('/content')}
-                className={`p-4 rounded-xl border transition-all cursor-pointer hover:shadow-lg ${
-                              isDarkMode
-                    ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
-                    : 'bg-white border-gray-200 hover:bg-gray-50'
-                            }`}
-                          >
-                <div className="flex flex-col items-center text-center space-y-2">
-                  <div className={`p-3 rounded-lg ${
-                    isDarkMode ? 'bg-green-900/50' : 'bg-green-100'
-                  }`}>
-                    <svg className={`w-6 h-6 ${
-                      isDarkMode ? 'text-green-400' : 'text-green-600'
-                    }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                  </div>
-                              <span className={`text-sm font-medium ${
-                                isDarkMode ? 'text-gray-200' : 'text-gray-700'
-                              }`}>
-                    Upload a new post
-                              </span>
-                    </div>
-              </div>
 
               <div
                 onClick={() => setShowAddLeadModal(true)}
