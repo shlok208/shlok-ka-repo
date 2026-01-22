@@ -924,6 +924,61 @@ const ATSNChatbot = ({ externalConversations = null, onMinimize = null }) => {
       saveMessagesToCache([...messages, userMessageObj])
       return newCache
     })
+
+    // Also save to shared conversation cache for EmilyDashboard
+    if (user) {
+      const CACHE_KEY = `today_conversations_${user.id}`
+      const today = new Date().toDateString()
+      let cachedConversations = []
+      let cacheExists = false
+
+      // Try to get existing cache
+      const cachedData = localStorage.getItem(CACHE_KEY)
+      if (cachedData) {
+        try {
+          const parsed = JSON.parse(cachedData)
+          const cacheDate = new Date(parsed.date).toDateString()
+
+          // Only use cache if it's from today
+          if (cacheDate === today) {
+            cachedConversations = parsed.conversations || []
+            cacheExists = true
+          }
+        } catch (error) {
+          console.error('Error parsing conversation cache:', error)
+        }
+      }
+
+      // Create or update today's conversation with the new user message
+      let todayConversation = cachedConversations.find(conv =>
+        new Date(conv.created_at).toDateString() === today
+      )
+
+      if (!todayConversation) {
+        // Create new conversation for today
+        todayConversation = {
+          id: Date.now(),
+          created_at: new Date().toISOString(),
+          primary_agent_name: 'ATSN',
+          messages: []
+        }
+        cachedConversations.unshift(todayConversation) // Add to beginning
+      }
+
+      // Add user message to the conversation
+      todayConversation.messages.push(userMessageObj)
+
+      // Update cache
+      const updatedCacheData = {
+        conversations: cachedConversations,
+        timestamp: Date.now(),
+        date: new Date().toISOString()
+      }
+      localStorage.setItem(CACHE_KEY, JSON.stringify(updatedCacheData))
+
+      console.log('Added user message to shared conversation cache')
+    }
+
     setHasUnsavedChanges(true)
     setSaveStatus('unsaved')
 
@@ -1032,6 +1087,58 @@ const ATSNChatbot = ({ externalConversations = null, onMinimize = null }) => {
         saveMessagesToCache([...messages, botMessageObj])
         return newCache
       })
+
+      // Also save bot message to shared conversation cache for EmilyDashboard
+      if (user) {
+        const CACHE_KEY = `today_conversations_${user.id}`
+        const today = new Date().toDateString()
+        let cachedConversations = []
+
+        // Try to get existing cache
+        const cachedData = localStorage.getItem(CACHE_KEY)
+        if (cachedData) {
+          try {
+            const parsed = JSON.parse(cachedData)
+            const cacheDate = new Date(parsed.date).toDateString()
+
+            // Only use cache if it's from today
+            if (cacheDate === today) {
+              cachedConversations = parsed.conversations || []
+            }
+          } catch (error) {
+            console.error('Error parsing conversation cache for bot message:', error)
+          }
+        }
+
+        // Find or create today's conversation
+        let todayConversation = cachedConversations.find(conv =>
+          new Date(conv.created_at).toDateString() === today
+        )
+
+        if (!todayConversation) {
+          // Create new conversation for today
+          todayConversation = {
+            id: Date.now(),
+            created_at: new Date().toISOString(),
+            primary_agent_name: 'ATSN',
+            messages: []
+          }
+          cachedConversations.unshift(todayConversation) // Add to beginning
+        }
+
+        // Add bot message to the conversation
+        todayConversation.messages.push(botMessageObj)
+
+        // Update cache
+        const updatedCacheData = {
+          conversations: cachedConversations,
+          timestamp: Date.now(),
+          date: new Date().toISOString()
+        }
+        localStorage.setItem(CACHE_KEY, JSON.stringify(updatedCacheData))
+
+        console.log('Added bot message to shared conversation cache')
+      }
 
       // Trigger calendar refresh if calendar was generated
       if (data.calendar_entries && data.calendar_entries.length > 0) {

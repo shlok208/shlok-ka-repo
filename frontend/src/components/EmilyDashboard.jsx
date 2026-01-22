@@ -214,6 +214,19 @@ function EmilyDashboard() {
   // Listen for dark mode changes from other components (like SideNavbar)
   useStorageListener('darkMode', setIsDarkMode)
 
+  // Listen for conversation cache updates from ATSNChatbot
+  useEffect(() => {
+    const handleConversationCacheUpdate = (e) => {
+      if (e.key && e.key.startsWith('today_conversations_') && user) {
+        // Reload conversations if the cache was updated
+        fetchTodayConversations()
+      }
+    }
+
+    window.addEventListener('storage', handleConversationCacheUpdate)
+    return () => window.removeEventListener('storage', handleConversationCacheUpdate)
+  }, [user])
+
   // Listen for Tauri app updates (desktop only)
   useEffect(() => {
     const setupTauriListener = async () => {
@@ -243,7 +256,8 @@ function EmilyDashboard() {
         `today_calendar_entries_${user?.id}`,
         `upcoming_calendar_count_${user?.id}`,
         `scheduled_posts_count_${user?.id}`,
-        `todays_new_leads_count_${user?.id}`
+        `todays_new_leads_count_${user?.id}`,
+        `today_conversations_${user?.id}`
       ]
 
       cacheKeys.forEach(key => {
@@ -257,7 +271,8 @@ function EmilyDashboard() {
           fetchTodayCalendarEntries(true),
           fetchUpcomingCalendarCount(true),
           fetchScheduledPostsCount(true),
-          fetchTodaysNewLeadsCount(true)
+          fetchTodaysNewLeadsCount(true),
+          fetchTodayConversations(true)
         ])
       }
 
@@ -472,6 +487,20 @@ function EmilyDashboard() {
   useEffect(() => {
     if (isPanelOpen && user) {
       fetchTodayConversations()
+      // Set up daily cache flush at midnight
+      const now = new Date()
+      const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0)
+      const timeUntilMidnight = tomorrow.getTime() - now.getTime()
+
+      const midnightTimer = setTimeout(() => {
+        console.log('Midnight reached - clearing conversation cache')
+        const CACHE_KEY = `today_conversations_${user.id}`
+        localStorage.removeItem(CACHE_KEY)
+        // Refresh conversations for the new day
+        fetchTodayConversations(true)
+      }, timeUntilMidnight)
+
+      return () => clearTimeout(midnightTimer)
     }
   }, [isPanelOpen, user])
 
@@ -860,9 +889,34 @@ function EmilyDashboard() {
     return session?.access_token
   }
 
-  const fetchTodayConversations = async () => {
+  const fetchTodayConversations = async (forceRefresh = false) => {
+    if (!user) return
+
+    const CACHE_KEY = `today_conversations_${user.id}`
+    const CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000 // 24 hours
+
     setLoadingConversations(true)
     try {
+      // Check if we have cached data from today
+      if (!forceRefresh) {
+        const cachedData = localStorage.getItem(CACHE_KEY)
+        if (cachedData) {
+          const { conversations: cachedConversations, timestamp, date } = JSON.parse(cachedData)
+          const cacheAge = Date.now() - timestamp
+          const today = new Date().toDateString()
+          const cacheDate = new Date(date).toDateString()
+
+          // Use cached data if it's from today and less than 24 hours old
+          if (cacheDate === today && cacheAge < CACHE_EXPIRATION_MS) {
+            console.log('Using cached today conversations:', cachedConversations.length, 'conversations')
+            setConversations(cachedConversations)
+            setLoadingConversations(false)
+            return
+          }
+        }
+      }
+
+      // Fetch fresh data from API
       const authToken = await getAuthToken()
       if (!authToken) {
         console.error('No auth token available')
@@ -870,7 +924,7 @@ function EmilyDashboard() {
         return
       }
 
-      // Fetch only today's conversations from daily cache
+      console.log('Fetching fresh today conversations from API')
       const response = await fetch(`${API_BASE_URL}/atsn/conversations`, {
         method: 'GET',
         headers: {
@@ -902,7 +956,20 @@ function EmilyDashboard() {
           }
           return conv;
         });
+
+        // Cache the conversations with current timestamp and date
+        const cacheData = {
+          conversations: cleanedConversations,
+          timestamp: Date.now(),
+          date: new Date().toISOString()
+        }
+        localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
+
+        console.log('Cached fresh conversations:', cleanedConversations.length, 'conversations')
         setConversations(cleanedConversations)
+      } else {
+        console.error('Failed to fetch conversations:', response.statusText)
+        setConversations([])
       }
     } catch (error) {
       console.error('Error fetching today conversations:', error)
@@ -1250,31 +1317,6 @@ function EmilyDashboard() {
                                     </div>
                                   </div>
 
-              <div
-                onClick={() => navigate('/analytics')}
-                className={`p-4 rounded-xl border transition-all cursor-pointer hover:shadow-lg ${
-                  isDarkMode
-                    ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
-                    : 'bg-white border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex flex-col items-center text-center space-y-2">
-                  <div className={`p-3 rounded-lg ${
-                    isDarkMode ? 'bg-orange-900/50' : 'bg-orange-100'
-                  }`}>
-                    <svg className={`w-6 h-6 ${
-                      isDarkMode ? 'text-orange-400' : 'text-orange-600'
-                    }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                  <span className={`text-sm font-medium ${
-                    isDarkMode ? 'text-gray-200' : 'text-gray-700'
-                  }`}>
-                    Quick Analytics
-                  </span>
-          </div>
-                          </div>
                         </div>
                     </div>
                   </div>
