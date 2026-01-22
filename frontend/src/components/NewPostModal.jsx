@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Upload, File, Video, Image as ImageIcon, Trash2 } from 'lucide-react'
 
 const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
+
   const [formData, setFormData] = useState({
     channel: '',
     platform: '',
@@ -14,6 +15,8 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
 
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploadedFiles, setUploadedFiles] = useState([])
+  const [uploadProgress, setUploadProgress] = useState({})
 
   // Reset form when modal opens
   useEffect(() => {
@@ -28,6 +31,8 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
         Image_type: ''
       })
       setErrors({})
+      setUploadedFiles([])
+      setUploadProgress({})
     }
   }, [isOpen])
 
@@ -43,6 +48,11 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
         newData.content_type = ''
       } else if (field === 'media') {
         newData.Image_type = ''
+        // Clear uploaded files when changing media option
+        if (value !== 'Upload') {
+          setUploadedFiles([])
+          setUploadProgress({})
+        }
       }
 
       return newData
@@ -57,6 +67,130 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
     }
   }
 
+  const uploadFileImmediately = async (fileObj) => {
+    try {
+      const formDataUpload = new FormData()
+      formDataUpload.append('file', fileObj.file)
+
+      const token = localStorage.getItem('authToken')
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/upload-file`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formDataUpload
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Upload failed response:', response.status, errorText)
+        throw new Error(`Upload failed: ${response.status} - ${errorText}`)
+      }
+
+      const result = await response.json()
+
+      // Update file with uploaded URL
+      setUploadedFiles(prev => prev.map(f =>
+        f.id === fileObj.id ? { ...f, url: result.url, uploading: false } : f
+      ))
+
+      return result.url
+    } catch (error) {
+      console.error(`Failed to upload ${fileObj.name}:`, error)
+      setUploadedFiles(prev => prev.map(f =>
+        f.id === fileObj.id ? { ...f, uploading: false, error: true } : f
+      ))
+      throw error
+    }
+  }
+
+  const handleFileSelect = async (event) => {
+    const files = Array.from(event.target.files)
+
+    // Validate files
+    const maxSize = 300 * 1024 * 1024 // 300MB in bytes
+    const allowedTypes = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+      'video/mp4', 'video/avi', 'video/mov', 'video/wmv', 'video/flv', 'video/webm', 'video/mkv'
+    ]
+
+    const validFiles = []
+    const errors = []
+
+    files.forEach((file, index) => {
+      if (file.size > maxSize) {
+        errors.push(`${file.name}: File size must be less than 300MB`)
+        return
+      }
+
+      if (!allowedTypes.includes(file.type)) {
+        errors.push(`${file.name}: Invalid file type. Only images and videos are allowed`)
+        return
+      }
+
+      validFiles.push({
+        file,
+        id: Date.now() + index,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        url: URL.createObjectURL(file), // For preview
+        uploading: true,
+        error: false
+      })
+    })
+
+    if (errors.length > 0) {
+      setErrors(prev => ({ ...prev, files: errors }))
+      return
+    }
+
+    // Add valid files to state first
+    setUploadedFiles(prev => [...prev, ...validFiles])
+    setErrors(prev => ({ ...prev, files: null }))
+
+    // Upload files immediately
+    for (const fileObj of validFiles) {
+      try {
+        await uploadFileImmediately(fileObj)
+      } catch (error) {
+        // Error already handled in uploadFileImmediately
+      }
+    }
+
+    // Clear the input
+    event.target.value = ''
+  }
+
+  const removeFile = (fileId) => {
+    setUploadedFiles(prev => {
+      const updated = prev.filter(file => file.id !== fileId)
+      // Clean up object URL to prevent memory leaks
+      const removedFile = prev.find(file => file.id === fileId)
+      if (removedFile) {
+        URL.revokeObjectURL(removedFile.url)
+      }
+      return updated
+    })
+  }
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
+  const getFileIcon = (fileType) => {
+    if (fileType.startsWith('image/')) {
+      return <ImageIcon className="w-8 h-8 text-blue-500" />
+    } else if (fileType.startsWith('video/')) {
+      return <Video className="w-8 h-8 text-red-500" />
+    }
+    return <File className="w-8 h-8 text-gray-500" />
+  }
+
   const validateForm = () => {
     const newErrors = {}
 
@@ -67,8 +201,6 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
 
     if (!formData.content_idea.trim()) {
       newErrors.content_idea = 'Please provide a content idea'
-    } else if (formData.content_idea.trim().split(/\s+/).length < 10) {
-      newErrors.content_idea = 'Content idea must be at least 10 words'
     }
 
     if (!formData.Post_type) newErrors.Post_type = 'Please select a post type'
@@ -76,6 +208,23 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
     // Image_type is required only when media is "Generate"
     if (formData.media === 'Generate' && !formData.Image_type) {
       newErrors.Image_type = 'Please select an image type'
+    }
+
+    // Files are required when media is "Upload"
+    if (formData.media === 'Upload') {
+      if (uploadedFiles.length === 0) {
+        newErrors.files = 'Please upload at least one file'
+      } else {
+        // Check if any files are still uploading or have errors
+        const uploadingFiles = uploadedFiles.filter(f => f.uploading)
+        const errorFiles = uploadedFiles.filter(f => f.error)
+
+        if (uploadingFiles.length > 0) {
+          newErrors.files = 'Please wait for all files to finish uploading'
+        } else if (errorFiles.length > 0) {
+          newErrors.files = 'Some files failed to upload. Please remove them and try again'
+        }
+      }
     }
 
     setErrors(newErrors)
@@ -90,6 +239,16 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
     setIsSubmitting(true)
 
     try {
+      // Get uploaded file URLs (files are already uploaded when selected)
+      const uploadedFileUrls = uploadedFiles
+        .filter(file => file.url && !file.error) // Only include successfully uploaded files
+        .map(file => ({
+          url: file.url,
+          name: file.name,
+          type: file.type,
+          size: file.size
+        }))
+
       // Convert form data to payload format expected by backend
       const payload = {
         channel: formData.channel,
@@ -98,7 +257,8 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
         media: formData.media,
         content_idea: formData.content_idea.trim(),
         Post_type: formData.Post_type,
-        ...(formData.media === 'Generate' && { Image_type: formData.Image_type })
+        ...(formData.media === 'Generate' && { Image_type: formData.Image_type }),
+        ...(uploadedFileUrls.length > 0 && { uploaded_files: uploadedFileUrls })
       }
 
       await onSubmit(payload)
@@ -109,6 +269,52 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const uploadFilesToServer = async (files) => {
+    const uploadedUrls = []
+
+    for (const fileObj of files) {
+      try {
+        setUploadProgress(prev => ({ ...prev, [fileObj.id]: 0 }))
+
+        const formDataUpload = new FormData()
+        formDataUpload.append('file', fileObj.file)
+
+        const token = localStorage.getItem('authToken')
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/upload-file`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formDataUpload
+        })
+
+        if (!response.ok) {
+          throw new Error(`Upload failed: ${response.statusText}`)
+        }
+
+        const result = await response.json()
+        uploadedUrls.push({
+          url: result.url,
+          name: fileObj.name,
+          type: fileObj.type,
+          size: fileObj.size
+        })
+
+        setUploadProgress(prev => ({ ...prev, [fileObj.id]: 100 }))
+
+      } catch (error) {
+        console.error(`Failed to upload ${fileObj.name}:`, error)
+        setErrors(prev => ({
+          ...prev,
+          submit: `Failed to upload ${fileObj.name}. Please try again.`
+        }))
+        throw error
+      }
+    }
+
+    return uploadedUrls
   }
 
   const channelOptions = [
@@ -212,7 +418,7 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
       />
 
       {/* Modal */}
-      <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${
+      <div className={`relative w-full max-w-2xl max-h-[95vh] overflow-y-auto rounded-2xl shadow-2xl ${
         isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
       }`}>
         {/* Header */}
@@ -352,7 +558,7 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
             <label className={`block text-sm font-medium mb-3 ${
               isDarkMode ? 'text-gray-200' : 'text-gray-700'
             }`}>
-              Content Idea * (minimum 10 words)
+              Content Idea *
             </label>
             <textarea
               value={formData.content_idea}
@@ -400,30 +606,170 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
           </div>
 
           {/* Image Type Selection - Only show when media is Generate */}
+          {formData.media === 'Generate' && (
+            <div className="col-span-1 md:col-span-2">
+              <label className={`block text-sm font-medium mb-3 ${
+                isDarkMode ? 'text-gray-200' : 'text-gray-700'
+              }`}>
+                Image Type *
+              </label>
+              <select
+                value={formData.Image_type}
+                onChange={(e) => handleInputChange('Image_type', e.target.value)}
+                className={`w-full px-4 py-3 rounded-lg border transition-colors ${
+                  isDarkMode
+                    ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500'
+                    : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+                } focus:outline-none focus:ring-2 focus:ring-blue-500/20`}
+              >
+                <option value="">Select an image style...</option>
+                {imageTypeOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              {errors.Image_type && <p className="mt-1 text-sm text-red-500">{errors.Image_type}</p>}
+            </div>
+          )}
+
+          {/* File Upload Section */}
           <div className="col-span-1 md:col-span-2">
-            <label className={`block text-sm font-medium mb-3 ${
-              isDarkMode ? 'text-gray-200' : 'text-gray-700'
-            }`}>
-              Image Type {formData.media === 'Generate' ? '*' : ''}
-            </label>
-            <select
-              value={formData.Image_type}
-              onChange={(e) => handleInputChange('Image_type', e.target.value)}
-              disabled={formData.media !== 'Generate'}
-              className={`w-full px-4 py-3 rounded-lg border transition-colors ${
-                isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500 disabled:bg-gray-800 disabled:text-gray-500'
-                  : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400'
-              } focus:outline-none focus:ring-2 focus:ring-blue-500/20`}
-            >
-              <option value="">
-                {formData.media !== 'Generate' ? 'Select "Generate Images" first...' : 'Select an image style...'}
-              </option>
-              {imageTypeOptions.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-            {errors.Image_type && <p className="mt-1 text-sm text-red-500">{errors.Image_type}</p>}
+            {formData.media === 'Upload' && (
+              <>
+                <label className={`block text-sm font-medium mb-3 ${
+                  isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                }`}>
+                  Upload Files *
+                </label>
+
+                {/* Upload Area */}
+                <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                  isDarkMode
+                    ? 'border-gray-600 hover:border-gray-500'
+                    : 'border-gray-300 hover:border-gray-400'
+                }`}>
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,video/*"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="file-upload"
+                  />
+                  <label htmlFor="file-upload" className="cursor-pointer">
+                    <Upload className={`w-12 h-12 mx-auto mb-4 ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`} />
+                    <p className={`text-lg font-medium mb-2 ${
+                      isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                    }`}>
+                      Click to upload files
+                    </p>
+                    <p className={`text-sm ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}>
+                      Images and videos up to 300MB each
+                    </p>
+                    <p className={`text-xs mt-1 ${
+                      isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                    }`}>
+                      Required: Upload your media files
+                    </p>
+                    <p className={`text-xs mt-1 ${
+                      isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                    }`}>
+                      Supported: JPEG, PNG, GIF, WebP, SVG, MP4, AVI, MOV, WMV, FLV, WebM, MKV
+                    </p>
+                  </label>
+                </div>
+
+                {/* Uploaded Files List */}
+                {uploadedFiles.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <h4 className={`text-sm font-medium ${
+                      isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                    }`}>
+                      Uploaded Files ({uploadedFiles.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {uploadedFiles.map((fileObj) => (
+                        <div
+                          key={fileObj.id}
+                          className={`flex items-center justify-between p-3 rounded-lg border ${
+                            fileObj.error
+                              ? 'border-red-300 bg-red-50'
+                              : isDarkMode
+                                ? 'bg-gray-700 border-gray-600'
+                                : 'bg-gray-50 border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-3">
+                            {getFileIcon(fileObj.type)}
+                            <div className="flex-1">
+                              <p className={`text-sm font-medium ${
+                                fileObj.error
+                                  ? 'text-red-700'
+                                  : isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                              }`}>
+                                {fileObj.name}
+                              </p>
+                              <div className="flex items-center space-x-2">
+                                <p className={`text-xs ${
+                                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                                }`}>
+                                  {formatFileSize(fileObj.size)}
+                                </p>
+                                {fileObj.uploading && (
+                                  <span className="text-xs text-blue-600 flex items-center">
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1"></div>
+                                    Uploading...
+                                  </span>
+                                )}
+                                {fileObj.error && (
+                                  <span className="text-xs text-red-600">
+                                    Upload failed
+                                  </span>
+                                )}
+                                {!fileObj.uploading && !fileObj.error && fileObj.url && (
+                                  <span className="text-xs text-green-600">
+                                    ✓ Uploaded
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeFile(fileObj.id)}
+                            disabled={fileObj.uploading}
+                            className={`p-1 rounded-md transition-colors ${
+                              fileObj.uploading
+                                ? 'opacity-50 cursor-not-allowed'
+                                : isDarkMode
+                                  ? 'hover:bg-gray-600 text-gray-400'
+                                  : 'hover:bg-gray-200 text-gray-500'
+                            }`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {errors.files && (
+                  <div className="mt-2">
+                    {Array.isArray(errors.files) ? (
+                      errors.files.map((error, index) => (
+                        <p key={index} className="text-sm text-red-500">{error}</p>
+                      ))
+                    ) : (
+                      <p className="text-sm text-red-500">{errors.files}</p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {/* Submit Error */}
@@ -454,7 +800,7 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
               {isSubmitting ? 'Creating...' : 'Create Post'}
             </button>
           </div>
-          </div>
+        </div>
         </form>
       </div>
     </div>

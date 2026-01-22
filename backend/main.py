@@ -40,6 +40,7 @@ from routers.content_from_drive import router as content_from_drive_router
 from routers.admin import router as admin_router
 from routers.analytics_insights import router as analytics_insights_router
 from routers.atsn_chatbot import router as atsn_chatbot_router
+from routers.new_content_modal_router import router as new_content_modal_router
 from routers.calendar import router as calendar_router
 from routers.profile import router as profile_router
 from routers import document_parser
@@ -136,6 +137,7 @@ app.include_router(content_from_drive_router)
 app.include_router(admin_router)
 app.include_router(analytics_insights_router)
 app.include_router(atsn_chatbot_router)
+app.include_router(new_content_modal_router)
 app.include_router(calendar_router)
 app.include_router(profile_router)
 app.include_router(document_parser.router)

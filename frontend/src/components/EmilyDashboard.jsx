@@ -50,6 +50,7 @@ import RecentTasks from './RecentTasks'
 import ContentCard from './ContentCard'
 import AgentCards from './AgentCards'
 import NewPostModal from './NewPostModal'
+import AddLeadModal from './AddLeadModal'
 import { Sparkles, TrendingUp, Target, BarChart3, FileText, PanelRight, PanelLeft, X, ChevronRight, RefreshCw, Send } from 'lucide-react'
 
 // Voice Orb Component with animated border (spring-like animation)
@@ -199,6 +200,8 @@ function EmilyDashboard() {
   const [todaysNewLeadsLoading, setTodaysNewLeadsLoading] = useState(true)
   const [showChatbot, setShowChatbot] = useState(false)
   const [showNewPostModal, setShowNewPostModal] = useState(false)
+  const [showAddLeadModal, setShowAddLeadModal] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
   // Today's conversations only (no historical data)
 
@@ -259,42 +262,51 @@ function EmilyDashboard() {
     }
   }
 
-  const handleCreateNewPost = async (payload) => {
+  const handleCreateNewPost = async (formData) => {
     try {
       const token = localStorage.getItem('authToken')
       if (!token) {
         showError('Authentication Error', 'Please log in to create content.')
+        setIsLoading(false)
         return
       }
 
-      // Open the chatbot to show content generation
-      setShowChatbot(true)
+      setIsLoading(true)
 
-      // Send the payload to create content via chatbot
-      const response = await fetch(`${API_BASE_URL}/atsn/chat`, {
+      // Send the form data to the new content creation endpoint
+      const response = await fetch(`${API_BASE_URL}/create-content`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          message: `Create content with these specifications: ${JSON.stringify(payload, null, 2)}`,
-          user_id: user?.id
-        })
+        body: JSON.stringify(formData)
       })
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.detail || 'Failed to create post')
+        throw new Error(errorData.detail || errorData.error || 'Failed to create post')
       }
 
-      // The chatbot will handle displaying the content generation process
-      // No need to show additional success message since chatbot will show the result
+      const result = await response.json()
+
+      if (result.success) {
+        // Success - show success message and refresh content if needed
+        showSuccess('Content Created!', 'Your new content has been created successfully.')
+        setShowNewPostModal(false)
+
+        // Optionally refresh any content lists or navigate to content view
+        // You could add logic here to refresh the content dashboard or navigate to the created content
+
+      } else {
+        throw new Error(result.error || 'Failed to create content')
+      }
 
     } catch (error) {
       console.error('Error creating post:', error)
       showError('Creation Failed', error.message || 'There was an error creating your post. Please try again.')
-      setShowChatbot(false) // Close chatbot on error
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -920,7 +932,7 @@ function EmilyDashboard() {
       isDarkMode ? 'bg-gray-900 dark-mode' : 'bg-white light-mode'
     }`}>
       {/* Mobile Navigation */}
-      <MobileNavigation
+      <MobileNavigation 
         setShowCustomContentChatbot={() => {}} // Dashboard doesn't have these functions
         handleGenerateContent={() => {}}
         generating={false}
@@ -933,10 +945,10 @@ function EmilyDashboard() {
         }}
         showChatHistory={showMobileChatHistory}
       />
-
+      
       {/* Side Navbar */}
       <SideNavbar />
-
+      
       {/* Main Content */}
       <div className={`md:ml-48 xl:ml-64 flex flex-col overflow-hidden pt-16 md:pt-0 bg-transparent ${
         isDarkMode ? 'md:bg-gray-900' : 'md:bg-white'
@@ -1068,8 +1080,8 @@ function EmilyDashboard() {
                 }`}>
                   {showChatbot ? (
                     <div className="h-full pt-0.5 px-8">
-                      <ATSNChatbot
-                        key="atsn-chatbot-fresh"
+                  <ATSNChatbot
+                    key="atsn-chatbot-fresh"
                         onMinimize={() => setShowChatbot(false)}
                       />
                     </div>
@@ -1137,11 +1149,11 @@ function EmilyDashboard() {
               <div
                 onClick={() => setShowNewPostModal(true)}
                 className={`p-4 rounded-xl border transition-all cursor-pointer hover:shadow-lg ${
-                  isDarkMode
+                            isDarkMode
                     ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
                     : 'bg-white border-gray-200 hover:bg-gray-50'
-                }`}
-              >
+                          }`}
+                        >
                 <div className="flex flex-col items-center text-center space-y-2">
                   <div className={`p-3 rounded-lg ${
                     isDarkMode ? 'bg-blue-900/50' : 'bg-blue-100'
@@ -1152,22 +1164,22 @@ function EmilyDashboard() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
                   </div>
-                  <span className={`text-sm font-medium ${
-                    isDarkMode ? 'text-gray-200' : 'text-gray-700'
-                  }`}>
+                            <span className={`text-sm font-medium ${
+                              isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                            }`}>
                     Design a new post
-                  </span>
-                </div>
-              </div>
+                            </span>
+                          </div>
+                        </div>
 
-              <div
+                          <div
                 onClick={() => navigate('/content')}
                 className={`p-4 rounded-xl border transition-all cursor-pointer hover:shadow-lg ${
-                  isDarkMode
+                              isDarkMode
                     ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
                     : 'bg-white border-gray-200 hover:bg-gray-50'
-                }`}
-              >
+                            }`}
+                          >
                 <div className="flex flex-col items-center text-center space-y-2">
                   <div className={`p-3 rounded-lg ${
                     isDarkMode ? 'bg-green-900/50' : 'bg-green-100'
@@ -1178,16 +1190,16 @@ function EmilyDashboard() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </div>
-                  <span className={`text-sm font-medium ${
-                    isDarkMode ? 'text-gray-200' : 'text-gray-700'
-                  }`}>
+                              <span className={`text-sm font-medium ${
+                                isDarkMode ? 'text-gray-200' : 'text-gray-700'
+                              }`}>
                     Upload a new post
-                  </span>
-                </div>
+                              </span>
+                    </div>
               </div>
 
               <div
-                onClick={() => navigate('/leads')}
+                onClick={() => setShowAddLeadModal(true)}
                 className={`p-4 rounded-xl border transition-all cursor-pointer hover:shadow-lg ${
                   isDarkMode
                     ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
@@ -1203,14 +1215,14 @@ function EmilyDashboard() {
                     }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
                     </svg>
-                  </div>
+                                    </div>
                   <span className={`text-sm font-medium ${
                     isDarkMode ? 'text-gray-200' : 'text-gray-700'
-                  }`}>
+                                    }`}>
                     Upload a new lead
                   </span>
-                </div>
-              </div>
+                                    </div>
+                                  </div>
 
               <div
                 onClick={() => navigate('/analytics')}
@@ -1235,12 +1247,12 @@ function EmilyDashboard() {
                   }`}>
                     Quick Analytics
                   </span>
-                </div>
-              </div>
-            </div>
           </div>
-        </div>
-      )}
+                          </div>
+                        </div>
+                    </div>
+                  </div>
+                )}
 
       {/* Input Bar at bottom of dashboard - only show when not showing chatbot */}
       {!showChatbot && (
@@ -1260,21 +1272,21 @@ function EmilyDashboard() {
                 }`}>
                   Talk to your AI teammates
                 </span>
-              </div>
+          </div>
               <div className={`absolute right-3 top-1/2 transform -translate-y-1/2 w-7 h-7 transition-all flex items-center justify-center cursor-pointer ${
                 isDarkMode
                   ? 'text-green-400 hover:text-green-300'
                   : 'text-blue-600 hover:text-blue-700'
               }`}>
                 <Send className="w-5 h-5 transform rotate-45" />
-              </div>
-            </div>
+        </div>
+      </div>
 
             <div className={`mt-2 text-xs text-center ${
               isDarkMode ? 'text-gray-400' : 'text-gray-500'
             }`}>
               Click to start a conversation
-            </div>
+      </div>
           </div>
         </div>
       )}
@@ -1412,6 +1424,18 @@ function EmilyDashboard() {
         isOpen={showNewPostModal}
         onClose={() => setShowNewPostModal(false)}
         onSubmit={handleCreateNewPost}
+        isDarkMode={isDarkMode}
+      />
+
+      {/* Add Lead Modal */}
+      <AddLeadModal
+        isOpen={showAddLeadModal}
+        onClose={() => setShowAddLeadModal(false)}
+        onSuccess={() => {
+          // Refresh data if needed
+          handleRefreshAllData()
+        }}
+        isImporting={false}
         isDarkMode={isDarkMode}
       />
     </div>
