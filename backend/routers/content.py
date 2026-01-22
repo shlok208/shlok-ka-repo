@@ -580,6 +580,58 @@ async def update_content_status(
             detail=f"Failed to update content status: {str(e)}"
         )
 
+@router.get("/created-content/{content_id}")
+async def get_created_content_by_id(
+    content_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get individual created content by ID"""
+    try:
+        # Fetch the content item
+        response = supabase_admin.table("created_content").select("*").eq("id", content_id).eq("user_id", current_user.id).execute()
+
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Content not found or access denied"
+            )
+
+        content_item = response.data[0]
+
+        # Transform to match frontend expectations (same format as /content/created endpoint)
+        transformed_content = {
+            "id": content_item["id"],
+            "title": content_item.get("title", f"Created Content {content_item['id'][:8]}"),
+            "content": content_item.get("content", ""),
+            "content_text": content_item.get("content", ""),
+            "hashtags": content_item.get("hashtags", []),
+            "images": content_item.get("images", []),
+            "platform": content_item.get("platform", "General"),
+            "content_type": content_item.get("content_type", "post"),
+            "created_at": content_item.get("created_at"),
+            "status": content_item.get("status", "draft"),
+            "metadata": content_item.get("metadata", {}),
+            "archetype": content_item.get("archetype"),
+            "visual_metaphor": content_item.get("visual_metaphor"),
+            "hook_type": content_item.get("hook_type"),
+            "call_to_action": content_item.get("call_to_action"),
+            "engagement_question": content_item.get("engagement_question"),
+            "media_url": content_item.get("images", [])[0] if content_item.get("images") and len(content_item.get("images", [])) > 0 else None,
+            # Mock campaign data for compatibility
+            "content_campaigns": {
+                "platform": content_item.get("platform", "General"),
+                "channel": "Social Media"
+            }
+        }
+
+        return transformed_content
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting created content by ID: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.put("/created-content/update/{content_id}")
 async def update_created_content(
     content_id: str,
