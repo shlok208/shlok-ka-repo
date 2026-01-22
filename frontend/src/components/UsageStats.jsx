@@ -24,6 +24,11 @@ const UsageStats = ({ userPlan }) => {
       }
     }
 
+    // Force refresh cache on component mount to ensure we have latest data
+    // This fixes the deployment cache issue where old cached data persists
+    localStorage.removeItem('usageStatsData');
+    console.log('Cleared usage stats cache on mount');
+
     // Initial fetch (force refresh to ensure we have latest data)
     fetchUsageStats(true);
 
@@ -60,12 +65,20 @@ const UsageStats = ({ userPlan }) => {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('Fetched usage stats from API:', data);
+        console.log('Current cached usage:', cachedUsage);
+        console.log('Current user plan:', userPlan, 'Cached plan:', cachedPlan);
 
         // Check if usage has increased compared to cached data
+        // Also update if plan changed or if cached data shows 0/0 (indicating stale cache)
         const shouldUpdate = forceRefresh ||
           !cachedUsage ||
           data.tasks_used > cachedUsage.tasks_used ||
-          data.images_used > cachedUsage.images_used;
+          data.images_used > cachedUsage.images_used ||
+          (cachedUsage.tasks_used === 0 && cachedUsage.images_used === 0 && (data.tasks_used > 0 || data.images_used > 0)) ||
+          (userPlan && cachedPlan && userPlan !== cachedPlan);
+
+        console.log('Should update usage stats:', shouldUpdate);
 
         if (shouldUpdate) {
           setPreviousUsage(usage); // Store previous data
