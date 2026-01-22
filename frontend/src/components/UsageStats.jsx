@@ -1,98 +1,82 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const UsageStats = ({ userPlan }) => {
   const { user } = useAuth();
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [previousUsage, setPreviousUsage] = useState(null);
-  const [cachedUsage, setCachedUsage] = useState(null);
-  const [cachedPlan, setCachedPlan] = useState(null);
+  const [userSubscriptionPlan, setUserSubscriptionPlan] = useState(null);
 
   useEffect(() => {
-    // Load from cache first if available
-    const cached = localStorage.getItem('usageStatsData');
-    if (cached) {
-      try {
-        const cachedData = JSON.parse(cached);
-        setCachedUsage(cachedData.usage);
-        setCachedPlan(cachedData.plan);
-        setUsage(cachedData.usage);
-        console.log('Loaded usage stats and plan from cache:', cachedData);
-      } catch (error) {
-        console.error('Error parsing cached usage stats:', error);
-      }
+    if (user?.id) {
+      fetchUsageStats();
     }
+  }, [user?.id]);
 
-    // Force refresh cache on component mount to ensure we have latest data
-    // This fixes the deployment cache issue where old cached data persists
-    localStorage.removeItem('usageStatsData');
-    console.log('Cleared usage stats cache on mount');
+  const getUserLimits = (plan) => {
+    const limits = {
+      'freemium': { tasks: 100, images: 20 },
+      'starter': { tasks: 1000, images: 200 },
+      'advanced': { tasks: 5000, images: 800 },
+      'pro': { tasks: -1, images: 1500 }, // -1 = unlimited tasks
+      'admin': { tasks: -1, images: -1 } // Admin = unlimited everything
+    };
+    return limits[plan] || limits['freemium'];
+  };
 
-    // Initial fetch (force refresh to ensure we have latest data)
-    fetchUsageStats(true);
-
-    // Check for updates more frequently (every 30 seconds)
-    const interval = setInterval(() => {
-      fetchUsageStats(false); // Don't force refresh, only update if counts increased
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Save to cache whenever usage or plan updates
-  useEffect(() => {
-    if (usage || cachedPlan) {
-      const cacheData = {
-        usage: usage || cachedUsage,
-        plan: userPlan || cachedPlan,
-        timestamp: Date.now()
-      };
-      localStorage.setItem('usageStatsData', JSON.stringify(cacheData));
-      console.log('Saved usage stats and plan to cache:', cacheData);
-    }
-  }, [usage, userPlan]);
-
-  const fetchUsageStats = async (forceRefresh = false) => {
+  const fetchUsageStats = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/profile/usage-stats', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-          'Content-Type': 'application/json',
-        },
-      });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Fetched usage stats from API:', data);
-        console.log('Current cached usage:', cachedUsage);
-        console.log('Current user plan:', userPlan, 'Cached plan:', cachedPlan);
+      // Fetch profile data directly from Supabase
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('subscription_plan, tasks_completed_this_month, images_generated_this_month, current_month_start')
+        .eq('id', user.id)
+        .single();
 
-        // Check if usage has increased compared to cached data
-        // Also update if plan changed or if cached data shows 0/0 (indicating stale cache)
-        const shouldUpdate = forceRefresh ||
-          !cachedUsage ||
-          data.tasks_used > cachedUsage.tasks_used ||
-          data.images_used > cachedUsage.images_used ||
-          (cachedUsage.tasks_used === 0 && cachedUsage.images_used === 0 && (data.tasks_used > 0 || data.images_used > 0)) ||
-          (userPlan && cachedPlan && userPlan !== cachedPlan);
-
-        console.log('Should update usage stats:', shouldUpdate);
-
-        if (shouldUpdate) {
-          setPreviousUsage(usage); // Store previous data
-          setUsage(data);
-          setCachedUsage(data); // Update cache
-          console.log('Usage stats updated:', data);
-        } else {
-          console.log('Usage stats unchanged, keeping cached data');
-          setPreviousUsage(usage);
-          setUsage(cachedUsage); // Use cached data
-        }
-      } else {
-        console.error('Failed to fetch usage stats');
+      if (error) {
+        console.error('Error fetching usage stats from Supabase:', error);
+        return;
       }
+
+      if (!profile) {
+        console.error('No profile data found');
+        return;
+      }
+
+      console.log('Fetched profile data from Supabase:', profile);
+
+      // Determine the user's plan (use the passed prop or fetched data)
+      const plan = userPlan || profile.subscription_plan || 'freemium';
+      setUserSubscriptionPlan(plan);
+
+      // Map database plan names to our credit service plan names (case-insensitive)
+      const planMapping = {
+        'starter': 'starter',
+        'free_trial': 'freemium',  // Map free_trial to freemium for credit limits
+        'pro': 'pro',
+        'admin': 'admin',
+        'advanced': 'advanced'
+      };
+      const creditPlan = planMapping[plan.toLowerCase()] || 'freemium';
+
+      // Get limits for the plan
+      const limits = getUserLimits(creditPlan);
+
+      // Format the usage data
+      const usageData = {
+        tasks_used: profile.tasks_completed_this_month || 0,
+        tasks_limit: limits.tasks,
+        images_used: profile.images_generated_this_month || 0,
+        images_limit: limits.images,
+        month_start: profile.current_month_start
+      };
+
+      console.log('Processed usage stats:', usageData);
+      setUsage(usageData);
+
     } catch (error) {
       console.error('Error fetching usage stats:', error);
     } finally {
@@ -101,10 +85,7 @@ const UsageStats = ({ userPlan }) => {
   };
 
   // Don't show anything while loading for the first time
-  if (!usage && !previousUsage) return null;
-
-  // Use current usage data, or fall back to previous usage if still loading
-  const displayUsage = usage || previousUsage;
+  if (!usage) return null;
 
   const getProgressColor = (used, limit) => {
     const percentage = limit === -1 ? 0 : (used / limit) * 100;
@@ -121,7 +102,7 @@ const UsageStats = ({ userPlan }) => {
   return (
     <div className={`space-y-3 ${loading ? 'opacity-75' : ''}`}>
       <h3 className="text-xs font-normal text-gray-600 dark:text-gray-400 uppercase tracking-wide">
-        {(userPlan || cachedPlan) ? `${(userPlan || cachedPlan).replace('_', ' ').toUpperCase()} - ` : ''}Monthly Usage
+        {userSubscriptionPlan ? `${userSubscriptionPlan.replace('_', ' ').toUpperCase()} - ` : ''}Monthly Usage
         {loading && <span className="ml-1 text-xs">⟳</span>}
       </h3>
 
