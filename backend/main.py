@@ -241,6 +241,22 @@ async def startup_event():
         logger.error(f"Failed to start daily cache cleanup scheduler: {e}")
         logger.info("Continuing without daily cache cleanup")
     
+    # Start monthly cleanup of deleted content
+    try:
+        from routers.content import cleanup_deleted_content_monthly
+        scheduler.add_job(
+            cleanup_deleted_content_monthly,
+            'cron',
+            day=1,  # First day of the month
+            hour=2,  # 2 AM UTC
+            minute=0,
+            id='monthly_deleted_content_cleanup'
+        )
+        logger.info("Monthly deleted content cleanup scheduler started successfully")
+    except Exception as e:
+        logger.error(f"Failed to start monthly deleted content cleanup scheduler: {e}")
+        logger.info("Continuing without monthly cleanup")
+    
     # Analytics scheduler removed - using pg_cron instead
     # Analytics collection now handled by pg_cron scheduled job
     

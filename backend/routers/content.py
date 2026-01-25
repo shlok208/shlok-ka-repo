@@ -276,24 +276,46 @@ async def get_created_content(
         user_id = current_user.id
         print(f"🔍 Fetching created content for user_id: {user_id}, email: {current_user.email}")
 
-        # Fetch from created_content table
-        response = supabase_admin.table("created_content").select("*").eq("user_id", user_id).order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        # Fetch from created_content table - exclude soft-deleted posts from listing
+        # Note: If limit is very large (like 10000), fetch all records without range limit
+        if limit >= 10000:
+            response = supabase_admin.table("created_content").select("*").eq("user_id", user_id).neq("status", "deleted").order("created_at", desc=True).execute()
+        else:
+            response = supabase_admin.table("created_content").select("*").eq("user_id", user_id).neq("status", "deleted").order("created_at", desc=True).range(offset, offset + limit - 1).execute()
 
         content_items = response.data if response.data else []
         print(f"🔍 Found {len(content_items)} created content items")
 
-        # Debug: Print status values (raw from database, no fallbacks)
+        # Debug: Print platform and status values (raw from database, no fallbacks)
         status_counts = {}
+        platform_counts = {}
         for item in content_items:
             raw_status = item.get("status")  # No fallback - show exactly what's in DB
+            raw_platform = item.get("platform", "N/A")
             status_counts[raw_status] = status_counts.get(raw_status, 0) + 1
-            print(f"📊 Content {item['id'][:8]}: raw_status='{raw_status}'")
+            platform_counts[raw_platform] = platform_counts.get(raw_platform, 0) + 1
+            print(f"📊 Content {item['id'][:8]}: platform='{raw_platform}', status='{raw_status}', title='{item.get('title', 'N/A')[:30]}'")
 
         print(f"📈 Raw status distribution: {status_counts}")
+        print(f"📈 Raw platform distribution: {platform_counts}")
 
         # Transform the data to match what the frontend expects
         transformed_items = []
         for item in content_items:
+            # Normalize platform name to ensure consistent casing
+            raw_platform = item.get("platform", "General")
+            # Normalize common platform names (case-insensitive matching)
+            platform_lower = raw_platform.lower() if raw_platform else ""
+            normalized_platform = raw_platform  # Keep original by default
+            if platform_lower == "facebook":
+                normalized_platform = "Facebook"
+            elif platform_lower == "instagram":
+                normalized_platform = "Instagram"
+            elif platform_lower == "linkedin":
+                normalized_platform = "LinkedIn"
+            elif platform_lower == "youtube":
+                normalized_platform = "YouTube"
+            
             transformed_item = {
                 "id": item["id"],
                 "title": item.get("title", f"Created Content {item['id'][:8]}"),
@@ -301,7 +323,7 @@ async def get_created_content(
                 "content_text": item.get("content", ""),
                 "hashtags": item.get("hashtags", []),
                 "images": item.get("images", []),
-                "platform": item.get("platform", "General"),
+                "platform": normalized_platform,
                 "content_type": item.get("content_type", "post"),
                 "created_at": item.get("created_at"),
                 "status": item.get("status", "draft"),
@@ -314,7 +336,7 @@ async def get_created_content(
                 "media_url": item.get("images", [])[0] if item.get("images") and len(item.get("images", [])) > 0 else None,
                 # Mock campaign data for compatibility
                 "content_campaigns": {
-                    "platform": item.get("platform", "General"),
+                    "platform": normalized_platform,
                     "channel": "Social Media"
                 }
             }
@@ -324,6 +346,179 @@ async def get_created_content(
 
     except Exception as e:
         logger.error(f"Error getting created content: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def cleanup_deleted_content_monthly():
+    """
+    Monthly cleanup job to permanently delete rows with status='deleted'
+    where created_at or updated_at is from previous months (not current month).
+    This runs monthly to clean up old soft-deleted posts.
+    """
+    try:
+        logger.info("🧹 Starting monthly cleanup of deleted content...")
+        
+        # Get current month start date
+        now = datetime.now()
+        current_month_start = datetime(now.year, now.month, 1)
+        
+        # Format for Supabase query (ISO format)
+        current_month_start_str = current_month_start.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        
+        logger.info(f"📅 Cleaning up deleted content before: {current_month_start_str}")
+        
+        # Fetch rows where status='deleted' and created_at < current_month_start
+        # OR status='deleted' and updated_at < current_month_start (but created_at >= current_month_start)
+        # This ensures we only delete posts from previous months
+        
+        # First, fetch rows created before current month
+        fetch_response_created = supabase_admin.table("created_content").select("id, created_at, updated_at").eq("status", "deleted").lt("created_at", current_month_start_str).execute()
+        
+        # Also fetch rows that were created this month but updated/deleted in previous months
+        # (This shouldn't happen often, but covers edge cases)
+        fetch_response_updated = supabase_admin.table("created_content").select("id, created_at, updated_at").eq("status", "deleted").lt("updated_at", current_month_start_str).gte("created_at", current_month_start_str).execute()
+        
+        # Combine and deduplicate IDs
+        ids_to_delete = set()
+        if fetch_response_created.data:
+            for row in fetch_response_created.data:
+                ids_to_delete.add(row["id"])
+        if fetch_response_updated.data:
+            for row in fetch_response_updated.data:
+                ids_to_delete.add(row["id"])
+        
+        rows_to_delete = len(ids_to_delete)
+        
+        if rows_to_delete == 0:
+            logger.info("✅ No deleted content found from previous months to clean up")
+            return {
+                "success": True,
+                "deleted_count": 0,
+                "cleanup_date": now.isoformat(),
+                "month_start": current_month_start_str
+            }
+        
+        logger.info(f"🗑️ Found {rows_to_delete} deleted content rows from previous months to delete")
+        
+        # Delete rows in batches (Supabase has limits)
+        deleted_count = 0
+        ids_list = list(ids_to_delete)
+        batch_size = 100
+        
+        for i in range(0, len(ids_list), batch_size):
+            batch = ids_list[i:i + batch_size]
+            # Delete by IDs - Supabase supports deleting multiple rows
+            try:
+                # Delete each ID individually for reliability
+                for content_id in batch:
+                    try:
+                        delete_response = supabase_admin.table("created_content").delete().eq("id", content_id).execute()
+                        if delete_response.data:
+                            deleted_count += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to delete content {content_id}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to delete batch starting at index {i}: {e}")
+        
+        logger.info(f"✅ Successfully deleted {deleted_count} rows from created_content table")
+        
+        return {
+            "success": True,
+            "deleted_count": deleted_count,
+            "cleanup_date": now.isoformat(),
+            "month_start": current_month_start_str
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error during monthly cleanup of deleted content: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@router.get("/monthly-count")
+async def get_monthly_posts_count(
+    current_user: User = Depends(get_current_user)
+):
+    """Get monthly posts count for the current user from created_content table"""
+    try:
+        user_id = current_user.id
+        print(f"🔍 Fetching monthly posts count for user_id: {user_id}, email: {current_user.email}")
+        
+        # Get current month start and end dates
+        now = datetime.now()
+        month_start = datetime(now.year, now.month, 1)
+        # Get first day of next month, then subtract 1 second
+        if now.month == 12:
+            month_end = datetime(now.year + 1, 1, 1) - timedelta(seconds=1)
+        else:
+            month_end = datetime(now.year, now.month + 1, 1) - timedelta(seconds=1)
+        
+        # Format dates for Supabase query (ISO format with timezone)
+        month_start_str = month_start.strftime("%Y-%m-%dT00:00:00.000Z")
+        # Use next month start as exclusive end date
+        if now.month == 12:
+            next_month_start = datetime(now.year + 1, 1, 1)
+        else:
+            next_month_start = datetime(now.year, now.month + 1, 1)
+        month_end_str = next_month_start.strftime("%Y-%m-%dT00:00:00.000Z")
+        
+        print(f"📅 Monthly range: {month_start_str} to {month_end_str} (exclusive)")
+        
+        # Query without date filter first to verify user_id works
+        test_response = supabase_admin.table("created_content").select("id, created_at").eq("user_id", user_id).limit(5).execute()
+        print(f"🔍 Test query - Found {len(test_response.data) if test_response.data else 0} total posts for user")
+        if test_response.data and len(test_response.data) > 0:
+            print(f"📅 Sample created_at from DB: {test_response.data[0].get('created_at')}")
+        
+        # Query with date filter - use gte for start and lt for end (exclusive)
+        # Include all posts (even deleted ones) to maintain accurate monthly usage count
+        # Deleted posts are soft-deleted (status='deleted') but still count towards monthly usage
+        response = supabase_admin.table("created_content").select("id, created_at").eq("user_id", user_id).gte("created_at", month_start_str).lt("created_at", month_end_str).execute()
+        
+        # Count from response
+        count = len(response.data) if response.data else 0
+        
+        # Fallback: If count is 0 but we know user has posts, try fetching all and filtering in Python
+        if count == 0 and test_response.data and len(test_response.data) > 0:
+            print("⚠️ Date filter returned 0, trying fallback: fetching all posts and filtering in Python")
+            all_response = supabase_admin.table("created_content").select("id, created_at").eq("user_id", user_id).execute()
+            if all_response.data:
+                # Filter by month in Python - parse ISO format dates
+                filtered = []
+                for item in all_response.data:
+                    if item.get('created_at'):
+                        try:
+                            # Parse the ISO format date string
+                            item_date_str = item['created_at']
+                            # Remove timezone info if present and parse
+                            if 'T' in item_date_str:
+                                item_date_part = item_date_str.split('T')[0]
+                                item_datetime = datetime.strptime(item_date_part, "%Y-%m-%d")
+                                # Check if it's in the current month
+                                if item_datetime.year == now.year and item_datetime.month == now.month:
+                                    filtered.append(item)
+                        except Exception as e:
+                            print(f"⚠️ Error parsing date {item.get('created_at')}: {e}")
+                            continue
+                count = len(filtered)
+                print(f"📊 Fallback count: {count} posts for current month")
+        
+        print(f"📊 Final count: {count} posts for current month")
+        
+        return {
+            "count": count,
+            "month": now.strftime("%B %Y"),
+            "month_start": month_start_str,
+            "month_end": month_end_str
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting monthly posts count: {e}")
+        import traceback
+        print(f"❌ Error traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/debug/status")
@@ -708,7 +903,7 @@ async def delete_created_content(
     content_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Delete created content and associated images, plus automatically delete from social media platforms"""
+    """Soft delete created content (sets status to 'deleted') and associated images, plus automatically delete from social media platforms"""
     try:
         # First verify the content belongs to the user
         content_response = supabase_admin.table("created_content").select("*").eq("id", content_id).eq("user_id", current_user.id).execute()
@@ -757,10 +952,15 @@ async def delete_created_content(
             print(f"⚠️ Error deleting images: {image_error}")
             pass
 
-        # Delete the created content
-        delete_response = supabase_admin.table("created_content").delete().eq("id", content_id).execute()
+        # Soft delete: Update status to 'deleted' instead of removing the row
+        # This maintains monthly usage tracking even if posts are deleted
+        # Deleted posts will be cleaned up at the end of the month
+        update_response = supabase_admin.table("created_content").update({
+            "status": "deleted",
+            "updated_at": datetime.now().isoformat()
+        }).eq("id", content_id).execute()
 
-        if not delete_response.data:
+        if not update_response.data:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to delete content"

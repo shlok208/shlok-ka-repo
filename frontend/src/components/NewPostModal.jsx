@@ -44,8 +44,30 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
       if (field === 'channel') {
         newData.platform = ''
         newData.content_type = ''
+        newData.media = ''
       } else if (field === 'platform') {
         newData.content_type = ''
+        // If switching to Instagram and current media is "Text Only", reset it
+        if (value === 'Instagram' && prev.media === 'Without media') {
+          newData.media = ''
+        } else {
+          newData.media = ''
+        }
+      } else if (field === 'content_type') {
+        // Reset media when content type changes, especially if switching to/from video types
+        const isVideoType = value === 'short_video or reel' || value === 'long_video'
+        const wasVideoType = prev.content_type === 'short_video or reel' || prev.content_type === 'long_video'
+        
+        // If switching to/from video type, or if current media is "Generate" and switching to video, reset media
+        if (isVideoType !== wasVideoType || (isVideoType && prev.media === 'Generate')) {
+          newData.media = ''
+          newData.Image_type = ''
+          setUploadedFiles([])
+          setUploadProgress({})
+        } else if (prev.media === 'Generate') {
+          // Keep media selection if it's still valid
+          newData.Image_type = ''
+        }
       } else if (field === 'media') {
         newData.Image_type = ''
         // Clear uploaded files when changing media option
@@ -338,7 +360,7 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
   ]
 
   const mediaOptions = [
-    { label: 'Generate Images', value: 'Generate' },
+    { label: 'Generate Media', value: 'Generate' },
     { label: 'Upload My Own', value: 'Upload' },
     { label: 'Text Only', value: 'Without media' }
   ]
@@ -405,6 +427,25 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
 
     // Social media content types
     return contentTypeOptions.filter(option => option.value !== 'blog')
+  }
+
+  // Get filtered media options based on content type and platform
+  const getFilteredMediaOptions = () => {
+    let filtered = [...mediaOptions]
+    
+    // For video content types, only show "Upload My Own" and "Text Only"
+    if (formData.content_type === 'short_video or reel' || formData.content_type === 'long_video') {
+      filtered = filtered.filter(option => 
+        option.value === 'Upload' || option.value === 'Without media'
+      )
+    }
+    
+    // For Instagram platform, remove "Text Only" option (Instagram requires media)
+    if (formData.platform === 'Instagram') {
+      filtered = filtered.filter(option => option.value !== 'Without media')
+    }
+    
+    return filtered
   }
 
   if (!isOpen) return null
@@ -537,14 +578,17 @@ const NewPostModal = ({ isOpen, onClose, onSubmit, isDarkMode }) => {
             <select
               value={formData.media}
               onChange={(e) => handleInputChange('media', e.target.value)}
+              disabled={!formData.content_type}
               className={`w-full px-4 py-3 rounded-lg border transition-colors ${
                 isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500'
-                  : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+                  ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500 disabled:bg-gray-800 disabled:text-gray-500'
+                  : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400'
               } focus:outline-none focus:ring-2 focus:ring-blue-500/20`}
             >
-              <option value="">Select media option...</option>
-              {mediaOptions.map((option) => (
+              <option value="">
+                {!formData.content_type ? 'Select content type first...' : 'Select media option...'}
+              </option>
+              {getFilteredMediaOptions().map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

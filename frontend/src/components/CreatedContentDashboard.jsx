@@ -200,6 +200,19 @@ function CreatedContentDashboard() {
       // Filter out any invalid or deleted items
       const validContent = fetchedContentArray.filter(item => item && item.id)
 
+      // Debug: Log platform distribution
+      const platformCounts = {}
+      validContent.forEach(item => {
+        const platform = item.platform || item.content_campaigns?.platform || 'Unknown'
+        platformCounts[platform] = (platformCounts[platform] || 0) + 1
+      })
+      console.log('📊 Platform distribution:', platformCounts)
+      console.log('📊 All fetched content:', validContent.map(item => ({
+        id: item.id?.substring(0, 8),
+        platform: item.platform || item.content_campaigns?.platform,
+        title: item.title?.substring(0, 30)
+      })))
+
       setContent(validContent)
       contentRef.current = validContent
 
@@ -216,9 +229,15 @@ function CreatedContentDashboard() {
     }
   }, [showError])
 
+  // Debug: Log filter changes
+  useEffect(() => {
+    console.log(`🔍 Filter state changed - Channel: ${filterChannel}, Platform: ${filterPlatform}, Search: ${searchQuery}`)
+  }, [filterChannel, filterPlatform, searchQuery])
+
   // Filter content based on search and filters
   useEffect(() => {
     let filtered = Array.isArray(content) ? [...content] : []
+    console.log(`🔍 Starting filter with ${filtered.length} posts, filterPlatform: "${filterPlatform}"`)
 
     // Apply channel filter
     if (filterChannel !== 'all') {
@@ -227,15 +246,23 @@ function CreatedContentDashboard() {
         const channel = (item.content_campaigns?.channel || item.channel || '').toLowerCase()
         return channel === channelQuery
       })
+      console.log(`📊 After channel filter (${filterChannel}): ${filtered.length} posts`)
     }
 
     // Apply platform filter
     if (filterPlatform !== 'all') {
-      const platformQuery = filterPlatform.toLowerCase()
+      const platformQuery = filterPlatform.toLowerCase().trim()
       filtered = filtered.filter(item => {
-        const platform = (item.content_campaigns?.platform || item.platform || '').toLowerCase()
-        return platform === platformQuery
+        const platform = (item.content_campaigns?.platform || item.platform || '').toLowerCase().trim()
+        const matches = platform === platformQuery
+        if (!matches) {
+          console.log(`🔍 Platform filter: "${platform}" !== "${platformQuery}" for post ${item.id?.substring(0, 8)}`)
+        }
+        return matches
       })
+      console.log(`📊 After platform filter (${filterPlatform}): ${filtered.length} posts`)
+    } else {
+      console.log(`✅ No platform filter applied - showing all ${filtered.length} posts`)
     }
 
     // Apply search filter
@@ -252,11 +279,23 @@ function CreatedContentDashboard() {
       })
     }
 
+    console.log(`✅ Final filtered content: ${filtered.length} posts`, filtered.map(item => ({
+      id: item.id?.substring(0, 8),
+      platform: item.platform || item.content_campaigns?.platform,
+      title: item.title?.substring(0, 30),
+      hasMedia: !!(item.media_url || item.images?.length || item.image_url)
+    })))
     setFilteredContent(filtered)
   }, [content, filterChannel, filterPlatform, searchQuery])
 
   useEffect(() => {
     if (user) {
+      // Reset filters to 'all' when component mounts or user changes
+      // This ensures all posts are shown by default
+      setFilterChannel('all')
+      setFilterPlatform('all')
+      setSearchQuery('')
+      console.log('🔄 Reset filters to default (all)')
       fetchContent()
     }
   }, [user, fetchContent])
@@ -1339,39 +1378,55 @@ function CreatedContentDashboard() {
                 const hasMedia = mediaUrl && mediaUrl.trim()
                 const thumbnailUrl = getThumbnailUrl(mediaUrl)
 
-                if (!hasMedia) return null; // Skip items without media
-
+                // Show all posts, even without media (text-only posts are valid)
                 return (
                   <div
                     key={contentItem.id}
                     className="relative aspect-square group cursor-pointer overflow-hidden bg-gray-200"
                     onClick={() => handlePreview(contentItem)}
                   >
-                    {isVideo ? (
-                      <video
-                        src={mediaUrl}
-                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-                        muted
-                        poster={mediaUrl} // Use video as poster to show first frame
-                        preload="none" // Don't preload to save bandwidth
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                        }}
-                      />
+                    {hasMedia ? (
+                      <>
+                        {isVideo ? (
+                          <video
+                            src={mediaUrl}
+                            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                            muted
+                            poster={mediaUrl} // Use video as poster to show first frame
+                            preload="none" // Don't preload to save bandwidth
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <img
+                            src={thumbnailUrl || mediaUrl}
+                            alt={contentItem.title || 'Content'}
+                            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                            onError={(e) => {
+                              // Fallback to original URL if thumbnail fails
+                              if (e.target.src !== mediaUrl) {
+                                e.target.src = mediaUrl;
+                              } else {
+                                e.target.style.display = 'none';
+                              }
+                            }}
+                          />
+                        )}
+                      </>
                     ) : (
-                      <img
-                        src={thumbnailUrl || mediaUrl}
-                        alt={contentItem.title || 'Content'}
-                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-                        onError={(e) => {
-                          // Fallback to original URL if thumbnail fails
-                          if (e.target.src !== mediaUrl) {
-                            e.target.src = mediaUrl;
-                          } else {
-                            e.target.style.display = 'none';
-                          }
-                        }}
-                      />
+                      // Show text-only post with content preview
+                      <div className={`w-full h-full flex flex-col items-center justify-center p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                        <FileText className={`w-12 h-12 mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                        <p className={`text-xs text-center font-medium line-clamp-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          {contentItem.title || contentItem.content?.substring(0, 50) || 'Text-only post'}
+                        </p>
+                        {contentItem.platform && (
+                          <span className={`mt-2 text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>
+                            {contentItem.platform}
+                          </span>
+                        )}
+                      </div>
                     )}
 
                     {/* Video Play Button Overlay */}
