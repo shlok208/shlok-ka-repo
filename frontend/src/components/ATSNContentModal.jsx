@@ -75,6 +75,7 @@ const ATSNContentModal = ({
   const [showAIResult, setShowAIResult] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(getDarkModePreference)
+  const [copied, setCopied] = useState(false)
   const fileInputRef = useRef(null)
 
   // Listen for dark mode changes from other components
@@ -924,15 +925,24 @@ const ATSNContentModal = ({
                     <div className="relative overflow-hidden aspect-square bg-gray-100 rounded-lg shadow-lg">
                       <div
                         className="flex transition-transform duration-300 ease-in-out h-full"
-                        style={{ transform: `translateX(-${currentSlideIndex * 100}%)` }}
+                        style={{ 
+                          transform: `translateX(-${currentSlideIndex * (100 / carouselImages.length)}%)`,
+                          width: `${carouselImages.length * 100}%`
+                        }}
                       >
                         {carouselImages.map((image, index) => (
-                          <div key={index} className="min-w-full h-full flex-shrink-0">
+                          <div 
+                            key={index} 
+                            className="h-full flex-shrink-0 relative"
+                            style={{ width: `${100 / carouselImages.length}%` }}
+                          >
                             <img
                               src={image}
                               alt={`Carousel image ${index + 1}`}
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-contain"
+                              loading="lazy"
                               onError={(e) => {
+                                console.error(`Failed to load carousel image ${index + 1}:`, image)
                                 e.target.style.display = 'none'
                               }}
                             />
@@ -1114,18 +1124,37 @@ const ATSNContentModal = ({
                         </div>
                         <div className="flex gap-2">
                           <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(content.short_video_script);
-                              // Could add a toast notification here
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(content.short_video_script);
+                                setCopied(true);
+                                setTimeout(() => setCopied(false), 3000);
+                              } catch (err) {
+                                console.error('Failed to copy script:', err);
+                              }
                             }}
-                            className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                              isDarkMode
-                                ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 ${
+                              copied
+                                ? isDarkMode
+                                  ? 'bg-green-600 hover:bg-green-500 text-white scale-105'
+                                  : 'bg-green-500 hover:bg-green-600 text-white scale-105'
+                                : isDarkMode
+                                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+                                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
                             }`}
-                            title="Copy script to clipboard"
+                            title={copied ? "Copied!" : "Copy script to clipboard"}
                           >
-                            📋 Copy
+                            {copied ? (
+                              <>
+                                <Check className="w-4 h-4 animate-pulse" />
+                                <span>Copied!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-4 h-4" />
+                                <span>Copy</span>
+                              </>
+                            )}
                           </button>
                           {content.status !== 'published' && (
                             <>

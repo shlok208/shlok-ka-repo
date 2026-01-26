@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Edit, Eye, Heart, MessageCircle, Share, Calendar, Hash, Image as ImageIcon, Video, FileText, Layers, ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { Copy, Edit, Eye, Heart, MessageCircle, Share, Calendar, Hash, Image as ImageIcon, Video, FileText, Layers, ChevronLeft, ChevronRight, Play, Check } from 'lucide-react';
 
 const ContentCard = ({ content, platform, contentType, onEdit, onCopy, onPreview, minimal = false, isDarkMode = false }) => {
   const [copied, setCopied] = useState(false);
@@ -23,7 +23,7 @@ const ContentCard = ({ content, platform, contentType, onEdit, onCopy, onPreview
 
       await navigator.clipboard.writeText(textToCopy);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 3000);
     } catch (err) {
       console.error('Failed to copy content:', err);
     }
@@ -209,17 +209,26 @@ const ContentCard = ({ content, platform, contentType, onEdit, onCopy, onPreview
           <div className="relative overflow-hidden aspect-square bg-gray-100 rounded-t-xl">
             <div
               className="flex transition-transform duration-300 ease-in-out h-full"
-              style={{ transform: `translateX(-${currentCarouselIndex * 100}%)` }}
+              style={{ 
+                transform: `translateX(-${currentCarouselIndex * (100 / carouselImageCount)}%)`,
+                width: `${carouselImageCount * 100}%`
+              }}
             >
               {carouselImages.map((img, index) => {
                 const imageUrl = typeof img === 'string' ? img : (img.url || img);
                 return (
-                  <div key={index} className="min-w-full h-full flex-shrink-0">
+                  <div 
+                    key={index} 
+                    className="h-full flex-shrink-0 relative"
+                    style={{ width: `${100 / carouselImageCount}%` }}
+                  >
                     <img
                       src={imageUrl}
                       alt={`Carousel image ${index + 1}`}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
+                      loading="lazy"
                       onError={(e) => {
+                        console.error(`Failed to load carousel image ${index + 1}:`, imageUrl);
                         e.target.style.display = 'none';
                       }}
                     />
@@ -281,13 +290,21 @@ const ContentCard = ({ content, platform, contentType, onEdit, onCopy, onPreview
             <div className="flex items-center space-x-2">
               <button
                 onClick={handleCopy}
-                className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
-                title="Copy content"
+                className={`px-3 py-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-all duration-300 flex items-center gap-1.5 ${
+                  copied ? 'bg-green-500/80 hover:bg-green-500/90 scale-105' : ''
+                }`}
+                title={copied ? "Copied!" : "Copy content"}
               >
                 {copied ? (
-                  <span className="text-xs">✓</span>
+                  <>
+                    <Check className="w-4 h-4 animate-pulse" />
+                    <span className="text-xs font-medium">Copied!</span>
+                  </>
                 ) : (
-                  <Copy className="w-4 h-4" />
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span className="text-xs hidden sm:inline">Copy</span>
+                  </>
                 )}
               </button>
               {onEdit && (
@@ -320,17 +337,26 @@ const ContentCard = ({ content, platform, contentType, onEdit, onCopy, onPreview
           <div className="relative overflow-hidden aspect-square bg-gray-100">
             <div
               className="flex transition-transform duration-300 ease-in-out h-full"
-              style={{ transform: `translateX(-${currentCarouselIndex * 100}%)` }}
+              style={{ 
+                transform: `translateX(-${currentCarouselIndex * (100 / carouselImageCount)}%)`,
+                width: `${carouselImageCount * 100}%`
+              }}
             >
               {carouselImages.map((img, index) => {
                 const imageUrl = typeof img === 'string' ? img : (img.url || img);
                 return (
-                  <div key={index} className="min-w-full h-full flex-shrink-0">
+                  <div 
+                    key={index} 
+                    className="h-full flex-shrink-0 relative"
+                    style={{ width: `${100 / carouselImageCount}%` }}
+                  >
                     <img
                       src={imageUrl}
                       alt={`Carousel image ${index + 1}`}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
+                      loading="lazy"
                       onError={(e) => {
+                        console.error(`Failed to load carousel image ${index + 1}:`, imageUrl);
                         e.target.style.display = 'none';
                       }}
                     />

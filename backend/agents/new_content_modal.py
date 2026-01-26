@@ -75,6 +75,10 @@ class NewContentModalAgent:
             post_type = form_data.get('Post_type')
             image_type = form_data.get('Image_type')
             uploaded_files = form_data.get('uploaded_files', [])
+            
+            # Debug logging for carousel with uploads
+            if content_type == 'carousel':
+                logger.info(f"🔍 Carousel creation - media_option: '{media_option}', uploaded_files count: {len(uploaded_files) if uploaded_files else 0}, uploaded_files: {uploaded_files}")
 
             # Generate content based on content type
             content_result = await self._generate_content_by_type(
@@ -190,7 +194,7 @@ class NewContentModalAgent:
                 return await self._generate_static_post(platform, content_idea, post_type, media_option,
                                                        image_type, business_context, profile_assets, user_id, uploaded_files)
             elif content_type == 'carousel':
-                return await self._generate_carousel(platform, content_idea, post_type, business_context, profile_assets, user_id, uploaded_files)
+                return await self._generate_carousel(platform, content_idea, post_type, media_option, business_context, profile_assets, user_id, uploaded_files)
             elif content_type == 'short_video or reel':
                 return await self._generate_short_video(platform, content_idea, post_type, media_option,
                                                        business_context, profile_assets, user_id)
@@ -353,9 +357,91 @@ Return a JSON object with this exact structure:
         }
 
     async def _generate_carousel(self, platform: str, content_idea: str, post_type: str,
-                               business_context: Dict, profile_assets: Dict, user_id: str, uploaded_files: List[Dict] = None) -> Dict[str, Any]:
+                               media_option: str, business_context: Dict, profile_assets: Dict, user_id: str, uploaded_files: List[Dict] = None) -> Dict[str, Any]:
         """Generate carousel content"""
 
+        # Debug logging
+        logger.info(f"🔍 _generate_carousel called - media_option: {media_option}, uploaded_files: {uploaded_files}, type: {type(uploaded_files)}, length: {len(uploaded_files) if uploaded_files else 0}")
+
+        # Handle uploaded media if provided
+        if media_option == 'Upload' and uploaded_files and len(uploaded_files) > 0:
+            logger.info(f"📸 Using uploaded files for carousel: {len(uploaded_files)} files")
+            
+            # Use uploaded files directly - extract URLs
+            carousel_images = []
+            for uploaded_file in uploaded_files:
+                file_url = uploaded_file.get('url')
+                if file_url:
+                    carousel_images.append(file_url)
+            
+            if not carousel_images:
+                return {'success': False, 'error': 'No valid uploaded file URLs found'}
+            
+            # Generate caption based on uploaded images
+            prompt = f"""Analyze the uploaded carousel images and create an engaging social media caption for {platform}.
+
+Business Context:
+- Business: {business_context.get('business_name', 'Business')}
+- Industry: {business_context.get('industry', 'General')}
+- Target Audience: {business_context.get('target_audience', 'General audience')}
+- Brand Voice: {business_context.get('brand_voice', 'Professional and friendly')}
+- Content Idea: {content_idea}
+- Post Type: {post_type}
+
+Look at the uploaded images and create a caption that:
+1. Complements and references the visual elements in the carousel
+2. Aligns with the content idea: "{content_idea}"
+3. Uses the specified post type: {post_type}
+4. Includes relevant hashtags for {platform}
+5. Is engaging and matches the brand voice
+
+Return a JSON object with this exact structure:
+{{
+    "caption": "The full post caption with hashtags",
+    "hashtags": ["hashtag1", "hashtag2"],
+    "title": "Brief title for the carousel"
+}}
+
+{JSON_ONLY_INSTRUCTION}"""
+
+            if not openai_client:
+                return {'success': False, 'error': 'OpenAI client not available'}
+
+            # Use GPT-4o for vision analysis
+            messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+            
+            # Add image URLs to the message
+            for img_url in carousel_images[:4]:  # Limit to first 4 images for API efficiency
+                messages[0]["content"].append({
+                    "type": "image_url",
+                    "image_url": {"url": img_url}
+                })
+
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                max_tokens=800,
+                temperature=0.7
+            )
+
+            content_json = self._parse_json_response(response.choices[0].message.content)
+            if not content_json:
+                return {'success': False, 'error': 'Failed to parse LLM response'}
+
+            content_data = {
+                'title': content_json.get('title', f"Carousel about {content_idea[:50]}"),
+                'content': content_json.get('caption', ''),
+                'hashtags': content_json.get('hashtags', []),
+                'carousel_images': carousel_images,  # Use uploaded images
+                'slides': []  # No slides needed when using uploaded images
+            }
+
+            return {
+                'success': True,
+                'content_data': content_data
+            }
+
+        # Generate carousel content and images (when media_option is 'Generate' or 'Without media')
         prompt = f"""Create a carousel post for {platform} about: {content_idea}
 
 BUSINESS CONTEXT:
@@ -400,14 +486,16 @@ Return a JSON object with this exact structure:
         if not content_json:
             return {'success': False, 'error': 'Failed to parse LLM response'}
 
-        # Generate carousel images
+        # Generate carousel images only if media_option is 'Generate'
         carousel_images = []
-        for slide in content_json.get('slides', []):
-            image_url = await self._generate_carousel_slide_image(
-                slide['image_prompt'], business_context, profile_assets
-            )
-            if image_url:
-                carousel_images.append(image_url)
+        if media_option == 'Generate':
+            for slide in content_json.get('slides', []):
+                image_url = await self._generate_carousel_slide_image(
+                    slide['image_prompt'], business_context, profile_assets
+                )
+                if image_url:
+                    carousel_images.append(image_url)
+        # If media_option is 'Without media', carousel_images will remain empty
 
         content_data = {
             'title': content_json.get('title', f"Carousel about {content_idea[:50]}"),

@@ -146,9 +146,9 @@ const UsageStats = ({ userPlan }) => {
       // This maintains accurate monthly usage tracking
       const [profileResult, postsCount] = await Promise.all([
         supabase
-          .from('profiles')
-          .select('subscription_plan, tasks_completed_this_month, images_generated_this_month, current_month_start')
-          .eq('id', user.id)
+        .from('profiles')
+        .select('subscription_plan, tasks_completed_this_month, images_generated_this_month, current_month_start')
+        .eq('id', user.id)
           .single(),
         fetchMonthlyPostsCount()
       ]);

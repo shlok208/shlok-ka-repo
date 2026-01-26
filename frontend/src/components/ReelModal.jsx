@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Hash, Edit, Check, X as XIcon, Sparkles, Upload } from 'lucide-react'
+import { X, Hash, Edit, Check, X as XIcon, Sparkles, Upload, Copy } from 'lucide-react'
 import { Instagram, Facebook, MessageCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import ReactMarkdown from 'react-markdown'
@@ -40,6 +40,7 @@ const ReelModal = ({ content, onClose }) => {
   const [dbContent, setDbContent] = useState(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [copied, setCopied] = useState(false)
   useStorageListener('darkMode', () => {})
 
   // Fetch content directly from Supabase
@@ -272,18 +273,37 @@ const ReelModal = ({ content, onClose }) => {
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(displayContent.short_video_script || '');
-                        // Could add a toast notification here
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(displayContent.short_video_script || '');
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 3000);
+                        } catch (err) {
+                          console.error('Failed to copy script:', err);
+                        }
                       }}
-                      className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                        isDarkMode
-                          ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                          : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 ${
+                        copied
+                          ? isDarkMode
+                            ? 'bg-green-600 hover:bg-green-500 text-white scale-105'
+                            : 'bg-green-500 hover:bg-green-600 text-white scale-105'
+                          : isDarkMode
+                            ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+                            : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
                       }`}
-                      title="Copy script to clipboard"
+                      title={copied ? "Copied!" : "Copy script to clipboard"}
                     >
-                      📋 Copy
+                      {copied ? (
+                        <>
+                          <Check className="w-4 h-4 animate-pulse" />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          <span>Copy</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
