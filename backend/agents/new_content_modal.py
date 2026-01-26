@@ -882,6 +882,13 @@ Format: Landscape, visually appealing, brand-consistent"""
 
             if content_data.get('carousel_images'):
                 db_data['carousel_images'] = content_data['carousel_images']
+                # Also store in metadata for consistency with frontend expectations
+                if 'metadata' not in db_data:
+                    db_data['metadata'] = {}
+                if not isinstance(db_data['metadata'], dict):
+                    db_data['metadata'] = {}
+                db_data['metadata']['carousel_images'] = content_data['carousel_images']
+                db_data['metadata']['total_images'] = len(content_data['carousel_images'])
 
             if content_data.get('short_video_script'):
                 db_data['short_video_script'] = content_data['short_video_script']

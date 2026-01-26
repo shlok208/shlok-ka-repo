@@ -57,7 +57,8 @@ import {
   MessageCircle,
   Trash2,
   Clock,
-  Send
+  Send,
+  Layers
 } from 'lucide-react'
 
 import { supabase } from '../lib/supabase'
@@ -306,8 +307,38 @@ function CreatedContentDashboard() {
     let mediaUrl = null
     let isVideo = false
     const contentType = contentItem.content_type?.toLowerCase() || ''
+    
+    // Check if it's carousel content first
+    const isCarousel = contentItem.post_type === 'carousel' ||
+                      contentType === 'carousel' ||
+                      contentItem.selected_content_type?.toLowerCase() === 'carousel' ||
+                      (contentItem.metadata && contentItem.metadata.carousel_images && contentItem.metadata.carousel_images.length > 0) ||
+                      (contentItem.carousel_images && Array.isArray(contentItem.carousel_images) && contentItem.carousel_images.length > 0) ||
+                      (contentItem.metadata && contentItem.metadata.total_images && contentItem.metadata.total_images > 1)
 
-    if (contentItem.media_url) {
+    // For carousel, prioritize carousel images
+    if (isCarousel) {
+      if (contentItem.metadata?.carousel_images && Array.isArray(contentItem.metadata.carousel_images) && contentItem.metadata.carousel_images.length > 0) {
+        mediaUrl = typeof contentItem.metadata.carousel_images[0] === 'string' 
+          ? contentItem.metadata.carousel_images[0] 
+          : (contentItem.metadata.carousel_images[0].url || contentItem.metadata.carousel_images[0])
+      } else if (contentItem.carousel_images && Array.isArray(contentItem.carousel_images) && contentItem.carousel_images.length > 0) {
+        mediaUrl = typeof contentItem.carousel_images[0] === 'string' 
+          ? contentItem.carousel_images[0] 
+          : (contentItem.carousel_images[0].url || contentItem.carousel_images[0])
+      } else if (contentItem.metadata?.images && Array.isArray(contentItem.metadata.images) && contentItem.metadata.images.length > 0) {
+        mediaUrl = typeof contentItem.metadata.images[0] === 'string' 
+          ? contentItem.metadata.images[0] 
+          : (contentItem.metadata.images[0].url || contentItem.metadata.images[0])
+      } else if (contentItem.images && Array.isArray(contentItem.images) && contentItem.images.length > 0) {
+        mediaUrl = typeof contentItem.images[0] === 'object' && contentItem.images[0].image_url 
+          ? contentItem.images[0].image_url 
+          : (typeof contentItem.images[0] === 'string' ? contentItem.images[0] : contentItem.images[0])
+      }
+    }
+
+    // For non-carousel content, check media_url first
+    if (!mediaUrl && contentItem.media_url) {
       mediaUrl = contentItem.media_url
       const urlWithoutQuery = contentItem.media_url.split('?')[0].toLowerCase()
       const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.m4v']
@@ -317,50 +348,69 @@ function CreatedContentDashboard() {
                 contentType.includes('video') ||
                 contentType.includes('reel') ||
                 contentType.includes('short_video')
-    } else if (contentItem.images && Array.isArray(contentItem.images) && contentItem.images.length > 0) {
-      mediaUrl = contentItem.images[0]
-    } else if (contentItem.image_url) {
+    } else if (!mediaUrl && contentItem.images && Array.isArray(contentItem.images) && contentItem.images.length > 0) {
+      mediaUrl = typeof contentItem.images[0] === 'object' && contentItem.images[0].image_url 
+        ? contentItem.images[0].image_url 
+        : (typeof contentItem.images[0] === 'string' ? contentItem.images[0] : contentItem.images[0])
+    } else if (!mediaUrl && contentItem.image_url) {
       mediaUrl = contentItem.image_url
-    } else if (contentItem.metadata && contentItem.metadata.image_url) {
+    } else if (!mediaUrl && contentItem.metadata && contentItem.metadata.image_url) {
       mediaUrl = contentItem.metadata.image_url
-    } else if (contentItem.carousel_images && Array.isArray(contentItem.carousel_images) && contentItem.carousel_images.length > 0) {
-      // Check for carousel images
-      mediaUrl = typeof contentItem.carousel_images[0] === 'string' ? contentItem.carousel_images[0] : (contentItem.carousel_images[0].url || contentItem.carousel_images[0])
-    } else if (contentItem.metadata && contentItem.metadata.carousel_images && Array.isArray(contentItem.metadata.carousel_images) && contentItem.metadata.carousel_images.length > 0) {
-      // Check for carousel images in metadata
-      mediaUrl = typeof contentItem.metadata.carousel_images[0] === 'string' ? contentItem.metadata.carousel_images[0] : (contentItem.metadata.carousel_images[0].url || contentItem.metadata.carousel_images[0])
     }
 
     return { mediaUrl, isVideo }
   }
 
-  const handleEdit = (contentItem) => {
-    // Check if this is carousel content - carousel should always open ATSNContentModal
+  // Helper function to determine which modal to open based on content type
+  const openModalForContentType = (contentItem) => {
+    if (!contentItem) {
+      return 'content' // Default to content modal
+    }
+
+    // Check if it's carousel content - carousel should always open ATSNContentModal
     const isCarousel = contentItem.post_type === 'carousel' ||
                       contentItem.content_type?.toLowerCase() === 'carousel' ||
                       contentItem.selected_content_type?.toLowerCase() === 'carousel' ||
                       (contentItem.metadata && contentItem.metadata.carousel_images && contentItem.metadata.carousel_images.length > 0) ||
-                      (contentItem.carousel_images && contentItem.carousel_images.length > 0)
+                      (contentItem.carousel_images && Array.isArray(contentItem.carousel_images) && contentItem.carousel_images.length > 0) ||
+                      (contentItem.metadata && contentItem.metadata.total_images && contentItem.metadata.total_images > 1)
 
-    // Check if it's video content and open appropriate modal (but not carousel)
-    const isVideoContent = !isCarousel && (
-      contentItem.content_type === 'short_video or reel' ||
-      contentItem.content_type === 'reel' ||
-      contentItem.content_type?.toLowerCase().includes('reel') ||
-      contentItem.content_type?.toLowerCase().includes('video') ||
-      contentItem.raw_data?.content_type === 'short_video or reel' ||
-      contentItem.raw_data?.content_type === 'reel' ||
-      contentItem.raw_data?.content_type?.toLowerCase().includes('reel') ||
-      contentItem.raw_data?.content_type?.toLowerCase().includes('video')
-    )
+    if (isCarousel) {
+      return 'content' // Carousel opens ATSNContentModal
+    }
 
-    if (isVideoContent) {
-      // Open ReelModal for video content
-      setSelectedContent(contentItem)
+    // Determine content type from various possible sources
+    const contentType = contentItem.content_type || 
+                       contentItem.raw_data?.content_type || 
+                       contentItem.selected_content_type
+
+    if (!contentType) {
+      return 'content' // Default to content modal
+    }
+
+    const contentTypeLower = contentType.toLowerCase().trim()
+    
+    // Check for short video/reel types - these should open ReelModal
+    if (contentTypeLower === 'short_video or reel' ||
+        contentTypeLower === 'reel' ||
+        contentTypeLower === 'short_video' ||
+        contentTypeLower === 'short video' ||
+        (contentTypeLower.includes('reel') && !contentTypeLower.includes('long'))) {
+      return 'reel'
+    }
+    
+    // All other types (long_video, static_post, blog, etc.) should open ContentModal
+    return 'content'
+  }
+
+  const handleEdit = (contentItem) => {
+    // Open the appropriate modal based on content type
+    const modalType = openModalForContentType(contentItem)
+    setSelectedContent(contentItem)
+    
+    if (modalType === 'reel') {
       setIsReelModalOpen(true)
     } else {
-      // Open ATSNContentModal for content viewing (including carousel)
-      setSelectedContent(contentItem)
       setIsContentModalOpen(true)
     }
   }
@@ -380,14 +430,11 @@ function CreatedContentDashboard() {
   }
 
   const handlePreview = (contentItem) => {
-    // Open content modal for preview
+    // Open the appropriate modal based on content type
+    const modalType = openModalForContentType(contentItem)
     setSelectedContent(contentItem)
-
-    // Check if it's a reel and open appropriate modal
-    if (contentItem.content_type === 'short_video or reel' ||
-        contentItem.content_type === 'reel' ||
-        contentItem.content_type?.toLowerCase().includes('reel') ||
-        contentItem.content_type?.toLowerCase().includes('video')) {
+    
+    if (modalType === 'reel') {
       setIsReelModalOpen(true)
     } else {
       setIsContentModalOpen(true)
@@ -1415,12 +1462,43 @@ function CreatedContentDashboard() {
                         )}
                       </>
                     ) : (
-                      // Show text-only post with content preview
+                      // Show text-only post or carousel with content preview
                       <div className={`w-full h-full flex flex-col items-center justify-center p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                        <FileText className={`w-12 h-12 mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-                        <p className={`text-xs text-center font-medium line-clamp-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                          {contentItem.title || contentItem.content?.substring(0, 50) || 'Text-only post'}
-                        </p>
+                        {/* Check if it's carousel content */}
+                        {(() => {
+                          const isCarousel = contentItem.post_type === 'carousel' ||
+                                            contentItem.content_type?.toLowerCase() === 'carousel' ||
+                                            contentItem.selected_content_type?.toLowerCase() === 'carousel' ||
+                                            (contentItem.metadata && contentItem.metadata.carousel_images && contentItem.metadata.carousel_images.length > 0) ||
+                                            (contentItem.carousel_images && Array.isArray(contentItem.carousel_images) && contentItem.carousel_images.length > 0) ||
+                                            (contentItem.metadata && contentItem.metadata.total_images && contentItem.metadata.total_images > 1)
+                          
+                          const carouselCount = contentItem.metadata?.carousel_images?.length || 
+                                                contentItem.carousel_images?.length || 
+                                                contentItem.metadata?.total_images || 
+                                                0
+
+                          return isCarousel ? (
+                            <>
+                              <Layers className={`w-12 h-12 mb-2 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                              <p className={`text-xs text-center font-medium line-clamp-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                {contentItem.title || 'Carousel Post'}
+                              </p>
+                              {carouselCount > 0 && (
+                                <span className={`mt-2 text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-blue-600 text-gray-100' : 'bg-blue-100 text-blue-700'}`}>
+                                  {carouselCount} images
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <FileText className={`w-12 h-12 mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                              <p className={`text-xs text-center font-medium line-clamp-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                {contentItem.title || contentItem.content?.substring(0, 50) || 'Text-only post'}
+                              </p>
+                            </>
+                          )
+                        })()}
                         {contentItem.platform && (
                           <span className={`mt-2 text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>
                             {contentItem.platform}

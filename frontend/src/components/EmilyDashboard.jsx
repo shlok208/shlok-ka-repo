@@ -53,6 +53,7 @@ import NewPostModal from './NewPostModal'
 import AddLeadModal from './AddLeadModal'
 import ContentCreateIndicator from './ContentCreateIndicator'
 import ATSNContentModal from './ATSNContentModal'
+import ReelModal from './ReelModal'
 import { Sparkles, TrendingUp, Target, BarChart3, FileText, PanelRight, PanelLeft, X, ChevronRight, RefreshCw, Send } from 'lucide-react'
 
 // Voice Orb Component with animated border (spring-like animation)
@@ -206,6 +207,7 @@ function EmilyDashboard() {
   const [showContentCreateIndicator, setShowContentCreateIndicator] = useState(false)
   const [contentCreationStep, setContentCreationStep] = useState(0)
   const [showGeneratedContentModal, setShowGeneratedContentModal] = useState(false)
+  const [showGeneratedReelModal, setShowGeneratedReelModal] = useState(false)
   const [generatedContent, setGeneratedContent] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -283,6 +285,48 @@ function EmilyDashboard() {
     }
   }
 
+  // Helper function to determine which modal to open based on content type
+  const openModalForContentType = (contentItem) => {
+    if (!contentItem) {
+      return 'content' // Default to content modal
+    }
+
+    // Check if it's carousel content - carousel should always open ATSNContentModal
+    const isCarousel = contentItem.post_type === 'carousel' ||
+                      contentItem.content_type?.toLowerCase() === 'carousel' ||
+                      contentItem.selected_content_type?.toLowerCase() === 'carousel' ||
+                      (contentItem.metadata && contentItem.metadata.carousel_images && contentItem.metadata.carousel_images.length > 0) ||
+                      (contentItem.carousel_images && Array.isArray(contentItem.carousel_images) && contentItem.carousel_images.length > 0) ||
+                      (contentItem.metadata && contentItem.metadata.total_images && contentItem.metadata.total_images > 1)
+
+    if (isCarousel) {
+      return 'content' // Carousel opens ATSNContentModal
+    }
+
+    // Determine content type from various possible sources
+    const contentType = contentItem.content_type || 
+                       contentItem.raw_data?.content_type || 
+                       contentItem.selected_content_type
+
+    if (!contentType) {
+      return 'content' // Default to content modal
+    }
+
+    const contentTypeLower = contentType.toLowerCase().trim()
+    
+    // Check for short video/reel types - these should open ReelModal
+    if (contentTypeLower === 'short_video or reel' ||
+        contentTypeLower === 'reel' ||
+        contentTypeLower === 'short_video' ||
+        contentTypeLower === 'short video' ||
+        (contentTypeLower.includes('reel') && !contentTypeLower.includes('long'))) {
+      return 'reel'
+    }
+    
+    // All other types (long_video, static_post, blog, etc.) should open ContentModal
+    return 'content'
+  }
+
   const handleCreateNewPost = async (formData) => {
     try {
       const token = localStorage.getItem('authToken')
@@ -346,17 +390,40 @@ function EmilyDashboard() {
           if (contentResponse.ok) {
             const contentData = await contentResponse.json()
             setGeneratedContent(contentData)
-            setShowGeneratedContentModal(true)
+            
+            // Open the appropriate modal based on content type
+            const modalType = openModalForContentType(contentData)
+            if (modalType === 'reel') {
+              setShowGeneratedReelModal(true)
+            } else {
+              setShowGeneratedContentModal(true)
+            }
           } else {
             // Fallback to response data if fetch fails
-            setGeneratedContent(result.content_data || {})
-            setShowGeneratedContentModal(true)
+            const fallbackContent = result.content_data || {}
+            setGeneratedContent(fallbackContent)
+            
+            // Open the appropriate modal based on content type
+            const modalType = openModalForContentType(fallbackContent)
+            if (modalType === 'reel') {
+              setShowGeneratedReelModal(true)
+            } else {
+              setShowGeneratedContentModal(true)
+            }
           }
         } catch (error) {
           console.error('Error fetching content from Supabase:', error)
           // Fallback to response data
-          setGeneratedContent(result.content_data || {})
-          setShowGeneratedContentModal(true)
+          const fallbackContent = result.content_data || {}
+          setGeneratedContent(fallbackContent)
+          
+          // Open the appropriate modal based on content type
+          const modalType = openModalForContentType(fallbackContent)
+          if (modalType === 'reel') {
+            setShowGeneratedReelModal(true)
+          } else {
+            setShowGeneratedContentModal(true)
+          }
         }
 
         // Success - show success message
@@ -1520,6 +1587,17 @@ function EmilyDashboard() {
           content={generatedContent}
           onClose={() => {
             setShowGeneratedContentModal(false)
+            setGeneratedContent(null)
+          }}
+        />
+      )}
+
+      {/* Generated Reel Modal */}
+      {showGeneratedReelModal && generatedContent && (
+        <ReelModal
+          content={generatedContent}
+          onClose={() => {
+            setShowGeneratedReelModal(false)
             setGeneratedContent(null)
           }}
         />

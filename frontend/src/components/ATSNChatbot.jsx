@@ -1347,6 +1347,48 @@ const ATSNChatbot = ({ externalConversations = null, onMinimize = null }) => {
     setSelectedContent([])
   }
 
+  // Helper function to determine which modal to open based on content type
+  const openModalForContentType = (contentItem) => {
+    if (!contentItem) {
+      return 'content' // Default to content modal
+    }
+
+    // Check if it's carousel content - carousel should always open ATSNContentModal
+    const isCarousel = contentItem.post_type === 'carousel' ||
+                      contentItem.content_type?.toLowerCase() === 'carousel' ||
+                      contentItem.selected_content_type?.toLowerCase() === 'carousel' ||
+                      (contentItem.metadata && contentItem.metadata.carousel_images && contentItem.metadata.carousel_images.length > 0) ||
+                      (contentItem.carousel_images && Array.isArray(contentItem.carousel_images) && contentItem.carousel_images.length > 0) ||
+                      (contentItem.metadata && contentItem.metadata.total_images && contentItem.metadata.total_images > 1)
+
+    if (isCarousel) {
+      return 'content' // Carousel opens ATSNContentModal
+    }
+
+    // Determine content type from various possible sources
+    const contentType = contentItem.content_type || 
+                       contentItem.raw_data?.content_type || 
+                       contentItem.selected_content_type
+
+    if (!contentType) {
+      return 'content' // Default to content modal
+    }
+
+    const contentTypeLower = contentType.toLowerCase().trim()
+    
+    // Check for short video/reel types - these should open ReelModal
+    if (contentTypeLower === 'short_video or reel' ||
+        contentTypeLower === 'reel' ||
+        contentTypeLower === 'short_video' ||
+        contentTypeLower === 'short video' ||
+        (contentTypeLower.includes('reel') && !contentTypeLower.includes('long'))) {
+      return 'reel'
+    }
+    
+    // All other types (long_video, static_post, blog, etc.) should open ContentModal
+    return 'content'
+  }
+
   const handleContentClick = (contentItem) => {
     // Process the content item the same way as for ATSNContentCard
     const processedContent = {
@@ -1380,11 +1422,9 @@ const ATSNChatbot = ({ externalConversations = null, onMinimize = null }) => {
 
     setSelectedContentForModal(processedContent)
 
-    // Check if it's a reel and open appropriate modal
-    if (processedContent.content_type === 'short_video or reel' ||
-        processedContent.content_type === 'reel' ||
-        processedContent.content_type?.toLowerCase().includes('reel') ||
-        processedContent.content_type?.toLowerCase().includes('video')) {
+    // Open the appropriate modal based on content type
+    const modalType = openModalForContentType(processedContent)
+    if (modalType === 'reel') {
       setShowReelModal(true)
     } else {
       setShowContentModal(true)
@@ -1540,11 +1580,9 @@ const ATSNChatbot = ({ externalConversations = null, onMinimize = null }) => {
       console.log('Content with platform for edit:', contentWithPlatform.platform);
       setSelectedContentForModal(contentWithPlatform)
 
-      // Check if it's a reel/video and open appropriate modal
-      if (contentItem.content_type === 'short_video or reel' ||
-          contentItem.content_type === 'reel' ||
-          contentItem.content_type?.toLowerCase().includes('reel') ||
-          contentItem.content_type?.toLowerCase().includes('video')) {
+      // Open the appropriate modal based on content type
+      const modalType = openModalForContentType(contentWithPlatform)
+      if (modalType === 'reel') {
         setShowReelModal(true)
       } else {
         setShowContentModal(true)
