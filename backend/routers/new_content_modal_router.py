@@ -217,9 +217,16 @@ async def upload_file(
 
         unique_filename = f"{uuid.uuid4()}{file_extension}"
 
-        # Use ai-generated-images bucket for all uploads (images and videos)
-        bucket_name = "ai-generated-images"
-        file_path = f"user_uploads/{current_user.id}/{unique_filename}"
+        # Use user-uploads bucket for videos (same as ReelModal), ai-generated-images for images
+        is_video = file.content_type and file.content_type.startswith('video/')
+        bucket_name = "user-uploads" if is_video else "ai-generated-images"
+        
+        # For videos, use same path structure as ReelModal: {user_id}/reels/{filename}
+        # For images, use: user_uploads/{user_id}/{filename}
+        if is_video:
+            file_path = f"{current_user.id}/reels/{unique_filename}"
+        else:
+            file_path = f"user_uploads/{current_user.id}/{unique_filename}"
 
         # Upload to Supabase storage
         try:

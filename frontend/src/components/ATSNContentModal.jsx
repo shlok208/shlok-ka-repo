@@ -1195,11 +1195,41 @@ const ATSNContentModal = ({
                       </div>
                     </div>
                     <div className={`p-4 max-h-[28rem] overflow-y-auto ${
-                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                      isDarkMode ? 'dark-scrollbar' : 'scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400'
                     }`}>
-                      <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
-                        {content.short_video_script}
-                      </div>
+                      {content.short_video_script ? (
+                        <div className="space-y-2">
+                          {content.short_video_script.split('\n').map((line, index) => {
+                            const timestampMatch = line.match(/^(\d{1,2}:\d{2})\s*-\s*\[([^\]]+)\]/);
+                            if (timestampMatch) {
+                              const [, timestamp, type] = timestampMatch;
+                              const content = line.replace(timestampMatch[0], '').trim();
+                              return (
+                                <div key={index} className="leading-relaxed">
+                                  <span className={`font-bold ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                                    {timestamp}
+                                  </span>
+                                  <span className={`ml-2 font-medium ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                                    [{type}]
+                                  </span>
+                                  <span className={`ml-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    {content}
+                                  </span>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div key={index} className={`leading-relaxed ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                {line}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          No script available.
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1391,6 +1421,25 @@ const ATSNContentModal = ({
                     <Check className="w-4 h-4" />
                     <span>Save Changes</span>
                   </button>
+                </div>
+              )}
+
+              {/* No Media Available Box */}
+              {!isEditing && !content.media_url && (!content.images || content.images.length === 0) && (content.content_type === 'short_video or reel' || content.content_type === 'reel') && (
+                <div className={`flex flex-col items-center justify-center p-8 rounded-lg border-2 border-dashed text-center ${
+                  isDarkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-gray-50'
+                }`}>
+                  <div className="w-12 h-12 mb-4 text-gray-400">
+                    <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p className={`text-lg font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    No media available
+                  </p>
+                  <p className={`text-sm mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Upload a video to display here
+                  </p>
                 </div>
               )}
 

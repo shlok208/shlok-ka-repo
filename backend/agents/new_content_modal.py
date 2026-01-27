@@ -197,7 +197,7 @@ class NewContentModalAgent:
                 return await self._generate_carousel(platform, content_idea, post_type, media_option, business_context, profile_assets, user_id, uploaded_files)
             elif content_type == 'short_video or reel':
                 return await self._generate_short_video(platform, content_idea, post_type, media_option,
-                                                       business_context, profile_assets, user_id)
+                                                       business_context, profile_assets, user_id, uploaded_files)
             elif content_type == 'long_video':
                 return await self._generate_long_video(platform, content_idea, post_type, media_option,
                                                       business_context, profile_assets, user_id)
@@ -511,9 +511,67 @@ Return a JSON object with this exact structure:
         }
 
     async def _generate_short_video(self, platform: str, content_idea: str, post_type: str,
-                                  media_option: str, business_context: Dict, profile_assets: Dict, user_id: str) -> Dict[str, Any]:
+                                  media_option: str, business_context: Dict, profile_assets: Dict, user_id: str, uploaded_files: List[Dict] = None) -> Dict[str, Any]:
         """Generate short video/reel content"""
 
+        # Handle uploaded video if provided
+        if media_option == 'Upload' and uploaded_files:
+            # Use uploaded video file - extract video URL
+            if uploaded_files and len(uploaded_files) > 0:
+                uploaded_file = uploaded_files[0]  # Use first uploaded file
+                media_url = uploaded_file.get('url') or uploaded_file.get('media_url')
+
+                if media_url:
+                    # Generate caption and hashtags based on uploaded video
+                    prompt = f"""Create a social media caption and hashtags for a video about: {content_idea}
+
+BUSINESS CONTEXT:
+- Business: {business_context.get('business_name', 'Business')}
+- Industry: {business_context.get('industry', 'General')}
+- Target Audience: {business_context.get('target_audience', 'General audience')}
+- Brand Voice: {business_context.get('brand_voice', 'Professional and friendly')}
+- Post Type: {post_type}
+
+Note: The user has already uploaded their own video. Create an engaging caption and relevant hashtags that complement the video content.
+
+Return a JSON object with this exact structure:
+{{
+    "title": "Video title",
+    "caption": "Social media caption for the video",
+    "hashtags": ["hashtag1", "hashtag2"]
+}}
+
+{JSON_ONLY_INSTRUCTION}"""
+
+                    if not openai_client:
+                        return {'success': False, 'error': 'OpenAI client not available'}
+
+                    response = openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=1000,
+                        temperature=0.8
+                    )
+
+                    content_json = self._parse_json_response(response.choices[0].message.content)
+                    if not content_json:
+                        return {'success': False, 'error': 'Failed to parse LLM response'}
+
+                    content_data = {
+                        'title': content_json.get('title', f"Video about {content_idea[:50]}"),
+                        'content': content_json.get('caption', ''),
+                        # No script stored for uploaded videos since users provide their own video content
+                        'hashtags': content_json.get('hashtags', []),
+                        'media_url': media_url,  # Store the uploaded video URL
+                        'images': []
+                    }
+
+                    return {
+                        'success': True,
+                        'content_data': content_data
+                    }
+
+        # Generate caption using LLM (for Generate or Without media options)
         prompt = f"""Create a short video script for {platform} about: {content_idea}
 
 BUSINESS CONTEXT:
@@ -523,21 +581,15 @@ BUSINESS CONTEXT:
 - Brand Voice: {business_context.get('brand_voice', 'Professional and friendly')}
 - Post Type: {post_type}
 
-Create a 15-30 second video script with:
-1. Strong hook (0-3 seconds)
-2. Value delivery (3-20 seconds)
-3. Emotional connection (20-25 seconds)
-4. Clear CTA (25-30 seconds)
+Create a social media caption and hashtags for the video content.
+
+Note: Do NOT generate a script since the user has already uploaded their own video.
 
 Return a JSON object with this exact structure:
 {{
     "title": "Video title",
-    "script": "Complete video script with timing",
     "caption": "Instagram caption for the video",
-    "hashtags": ["hashtag1", "hashtag2"],
-    "hook": "Strong opening hook text",
-    "key_points": ["Point 1", "Point 2", "Point 3"],
-    "cta": "Call to action text"
+    "hashtags": ["hashtag1", "hashtag2"]
 }}
 
 {JSON_ONLY_INSTRUCTION}"""
@@ -559,7 +611,7 @@ Return a JSON object with this exact structure:
         content_data = {
             'title': content_json.get('title', f"Video about {content_idea[:50]}"),
             'content': content_json.get('caption', ''),
-            'short_video_script': content_json.get('script', ''),
+            # No script stored for uploaded videos since users provide their own video content
             'hashtags': content_json.get('hashtags', []),
             'images': []
         }
@@ -967,6 +1019,9 @@ Format: Landscape, visually appealing, brand-consistent"""
 
             if content_data.get('images'):
                 db_data['images'] = content_data['images']
+
+            if content_data.get('media_url'):
+                db_data['media_url'] = content_data['media_url']
 
             if content_data.get('carousel_images'):
                 db_data['carousel_images'] = content_data['carousel_images']

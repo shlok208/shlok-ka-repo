@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react'
-import { X, Hash, Edit, Check, X as XIcon, Sparkles, Upload, Copy } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { X, Hash, Edit, Check, X as XIcon, Sparkles, Upload, Copy, RefreshCw } from 'lucide-react'
 import { Instagram, Facebook, MessageCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import ReactMarkdown from 'react-markdown'
+import { useNotifications } from '../contexts/NotificationContext'
 
 // Get dark mode state from localStorage or default to dark mode
 const getDarkModePreference = () => {
@@ -41,6 +42,8 @@ const ReelModal = ({ content, onClose }) => {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const fileInputRef = useRef(null)
+  const { showSuccess, showError } = useNotifications()
   useStorageListener('darkMode', () => {})
 
   // Fetch content directly from Supabase
@@ -86,20 +89,21 @@ const ReelModal = ({ content, onClose }) => {
   // Use database content if available, otherwise fallback to props
   const displayContent = dbContent || content
 
-  // Handle reel upload
-  const handleReelUpload = async (event) => {
-    const file = event.target.files[0]
+  // Handle file upload (used by hidden file input)
+  const handleFileUpload = async (file) => {
     if (!file) return
 
     // Validate file type (video files)
     if (!file.type.startsWith('video/')) {
-      alert('Please select a video file')
+      showError('Invalid File Type', 'Please select a video file')
+      if (fileInputRef.current) { fileInputRef.current.value = '' }
       return
     }
 
     // Validate file size (max 100MB)
     if (file.size > 100 * 1024 * 1024) {
-      alert('File size must be less than 100MB')
+      showError('File Too Large', 'File size must be less than 100MB')
+      if (fileInputRef.current) { fileInputRef.current.value = '' }
       return
     }
 
@@ -109,7 +113,9 @@ const ReelModal = ({ content, onClose }) => {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        alert('Please log in to upload files')
+        showError('Authentication Required', 'Please log in to upload files')
+        setUploading(false)
+        if (fileInputRef.current) { fileInputRef.current.value = '' }
         return
       }
 
@@ -127,7 +133,9 @@ const ReelModal = ({ content, onClose }) => {
 
       if (error) {
         console.error('Upload error:', error)
-        alert('Failed to upload video: ' + error.message)
+        showError('Upload Failed', 'Failed to upload video: ' + error.message)
+        setUploading(false)
+        if (fileInputRef.current) { fileInputRef.current.value = '' }
         return
       }
 
@@ -137,7 +145,9 @@ const ReelModal = ({ content, onClose }) => {
         .getPublicUrl(fileName)
 
       if (!urlData?.publicUrl) {
-        alert('Failed to get video URL')
+        showError('Upload Error', 'Failed to get video URL')
+        setUploading(false)
+        if (fileInputRef.current) { fileInputRef.current.value = '' }
         return
       }
 
@@ -154,7 +164,9 @@ const ReelModal = ({ content, onClose }) => {
       if (updateError) {
         console.error('Update error:', updateError)
         console.log('Update error details:', JSON.stringify(updateError, null, 2))
-        alert('Video uploaded but failed to update content: ' + updateError.message)
+        showError('Update Failed', 'Video uploaded but failed to update content: ' + updateError.message)
+        setUploading(false)
+        if (fileInputRef.current) { fileInputRef.current.value = '' }
         return
       }
 
@@ -174,11 +186,14 @@ const ReelModal = ({ content, onClose }) => {
         setDbContent(refreshedData)
       }
 
-      alert(`Reel uploaded successfully! URL: ${urlData.publicUrl}`)
+      showSuccess('Upload Successful', 'Reel uploaded successfully!')
+      setUploading(false)
+      if (fileInputRef.current) { fileInputRef.current.value = '' }
 
     } catch (error) {
       console.error('Upload failed:', error)
-      alert('Upload failed: ' + error.message)
+      showError('Upload Failed', 'Upload failed: ' + error.message)
+      if (fileInputRef.current) { fileInputRef.current.value = '' }
     } finally {
       setUploading(false)
     }
@@ -247,200 +262,319 @@ const ReelModal = ({ content, onClose }) => {
           </button>
         </div>
 
-        {/* Content - Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 min-h-[400px]">
+        {/* Hidden file input for video uploads */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={(e) => handleFileUpload(e.target.files[0])}
+        />
 
-          {/* Left Column - Reel Script */}
-          <div className="space-y-4">
-            <div className={`w-full max-h-[32rem] rounded-lg shadow-lg overflow-hidden ${
-              isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
-            }`}>
-              <div className={`p-4 border-b ${
-                isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-100'
+        {/* Content - Two Column Layout with Conditional Rendering */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 min-h-[400px]">
+          {displayContent.media_url ? (
+            <>
+              {/* Video EXISTS: Left Column - Video Player */}
+              <div className="space-y-4">
+                <div className="relative">
+                  <video
+                    src={displayContent.media_url}
+                    controls
+                    className="w-full max-h-[32rem] object-contain rounded-lg shadow-lg"
+                    onError={(e) => {
+                      e.target.style.display = 'none'
+                    }}
+                  />
+                  {/* Replace Video Button Overlay */}
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`absolute top-4 right-4 px-4 py-2 rounded-lg text-sm font-medium shadow-lg transform transition-all duration-200 hover:scale-105 flex items-center gap-2 ${
+                      isDarkMode
+                        ? 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-600'
+                        : 'bg-white hover:bg-gray-50 text-gray-900 border border-gray-300'
+                    } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    disabled={uploading}
+                    title="Replace video"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${uploading ? 'animate-spin' : ''}`} />
+                    {uploading ? 'Uploading...' : 'Replace Video'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Video EXISTS: Right Column - Title, Caption (with copy), Hashtags */}
+              <div className={`space-y-6 pr-4 max-h-[32rem] overflow-y-auto ${
+                isDarkMode ? 'dark-scrollbar' : 'scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400'
               }`}>
-                <div className="flex items-center justify-between">
+                {/* Title */}
+                {displayContent.title && (
                   <div>
-                          <h3 className={`text-xl font-normal ${
-                            isDarkMode ? 'text-white' : 'text-gray-900'
-                          }`}>
-                            Video Script
-                          </h3>
-                          <p className={`text-base mt-1 ${
-                            isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                          }`}>
-                      15-30 second video script optimized for virality
-                    </p>
+                    <h2 className={`text-3xl font-normal leading-tight ${
+                      isDarkMode ? 'text-white' : 'text-gray-900'
+                    }`}>
+                      {displayContent.title}
+                    </h2>
                   </div>
-                  <div className="flex gap-2">
+                )}
+
+                {/* Caption with Copy Button */}
+                {displayContent.content && (
+                  <div className="relative">
+                    <div className={`leading-relaxed whitespace-pre-wrap p-4 rounded-lg text-base ${
+                      isDarkMode ? 'text-white bg-gray-800' : 'text-gray-700 bg-gray-50'
+                    }`}>
+                      {displayContent.content}
+                    </div>
                     <button
                       onClick={async () => {
                         try {
-                          await navigator.clipboard.writeText(displayContent.short_video_script || '');
+                          await navigator.clipboard.writeText(displayContent.content || '');
                           setCopied(true);
                           setTimeout(() => setCopied(false), 3000);
                         } catch (err) {
-                          console.error('Failed to copy script:', err);
+                          console.error('Failed to copy caption:', err);
                         }
                       }}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 ${
+                      className={`absolute top-2 right-2 p-2 rounded-lg text-sm font-medium transition-all duration-300 ${
                         copied
-                          ? isDarkMode
-                            ? 'bg-green-600 hover:bg-green-500 text-white scale-105'
-                            : 'bg-green-500 hover:bg-green-600 text-white scale-105'
+                          ? 'bg-green-500 text-white scale-105'
                           : isDarkMode
                             ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
                             : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
                       }`}
-                      title={copied ? "Copied!" : "Copy script to clipboard"}
+                      title={copied ? "Copied!" : "Copy caption to clipboard"}
                     >
-                      {copied ? (
-                        <>
-                          <Check className="w-4 h-4 animate-pulse" />
-                          <span>Copied!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-4 h-4" />
-                          <span>Copy</span>
-                        </>
-                      )}
+                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                     </button>
+                  </div>
+                )}
+
+                {/* Hashtags */}
+                {displayContent.hashtags && Array.isArray(displayContent.hashtags) && displayContent.hashtags.length > 0 && (
+                  <div>
+                    <h3 className={`text-xl font-normal mb-3 ${
+                      isDarkMode ? 'text-white' : 'text-gray-900'
+                    }`}>
+                      🏷️ Hashtags
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {displayContent.hashtags.map((hashtag, index) => (
+                        <span
+                          key={index}
+                          className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            isDarkMode
+                              ? 'bg-blue-900 text-blue-200'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}
+                        >
+                          #{hashtag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              {/* No Video: Left Column - Script */}
+              <div className="space-y-4">
+                <div className={`w-full max-h-[32rem] rounded-lg shadow-lg overflow-hidden ${
+                  isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
+                }`}>
+                  <div className={`p-4 border-b ${
+                    isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-100'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className={`text-xl font-normal ${
+                          isDarkMode ? 'text-white' : 'text-gray-900'
+                        }`}>
+                          Video Script
+                        </h3>
+                        <p className={`text-base mt-1 ${
+                          isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                          15-30 second video script optimized for virality
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(displayContent.short_video_script || '');
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 3000);
+                            } catch (err) {
+                              console.error('Failed to copy script:', err);
+                            }
+                          }}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 ${
+                            copied
+                              ? isDarkMode
+                                ? 'bg-green-600 hover:bg-green-500 text-white scale-105'
+                                : 'bg-green-500 hover:bg-green-600 text-white scale-105'
+                              : isDarkMode
+                                ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+                                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                          }`}
+                          title={copied ? "Copied!" : "Copy script to clipboard"}
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-4 h-4 animate-pulse" />
+                              <span>Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`p-4 max-h-[28rem] overflow-y-auto ${
+                    isDarkMode ? 'dark-scrollbar' : 'scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400'
+                  }`}>
+                    {displayContent.short_video_script ? (
+                      <div className="space-y-2">
+                        {displayContent.short_video_script.split('\n').map((line, index) => {
+                          const timestampMatch = line.match(/^(\d{1,2}:\d{2})\s*-\s*\[([^\]]+)\]/);
+                          if (timestampMatch) {
+                            const [, timestamp, type] = timestampMatch;
+                            const content = line.replace(timestampMatch[0], '').trim();
+                            return (
+                              <div key={index} className="leading-relaxed">
+                                <span className={`font-bold ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                                  {timestamp}
+                                </span>
+                                <span className={`ml-2 font-medium ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                                  [{type}]
+                                </span>
+                                <span className={`ml-1 ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>
+                                  {content}
+                                </span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div key={index} className={`leading-relaxed ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>
+                              {line}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        No script available.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-              <div className={`p-4 max-h-[28rem] overflow-y-auto ${
-                isDarkMode ? 'text-white dark-scrollbar' : 'text-gray-700 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400'
+
+              {/* No Video: Right Column - Title, Caption (with copy), Upload Box, Hashtags */}
+              <div className={`space-y-6 pr-4 max-h-[32rem] overflow-y-auto ${
+                isDarkMode ? 'dark-scrollbar' : 'scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400'
               }`}>
-                <div className="prose prose-base max-w-none">
-                  <ReactMarkdown
-                    components={{
-                      p: ({ children }) => <p className={`mb-3 leading-relaxed text-base ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>{children}</p>,
-                      strong: ({ children }) => <strong className={`font-normal text-base ${isDarkMode ? 'text-blue-300' : 'text-blue-600'}`}>{children}</strong>,
-                      em: ({ children }) => <em className={`italic text-base ${isDarkMode ? 'text-purple-300' : 'text-purple-600'}`}>{children}</em>,
-                      ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-2">{children}</ul>,
-                      ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-2">{children}</ol>,
-                      li: ({ children }) => <li className={`ml-4 text-base ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>{children}</li>,
-                      h1: ({ children }) => <h1 className={`text-xl font-normal mb-3 ${isDarkMode ? 'text-yellow-300' : 'text-yellow-600'}`}>{children}</h1>,
-                      h2: ({ children }) => <h2 className={`text-lg font-normal mb-3 ${isDarkMode ? 'text-yellow-300' : 'text-yellow-600'}`}>{children}</h2>,
-                      h3: ({ children }) => <h3 className={`text-base font-normal mb-2 ${isDarkMode ? 'text-yellow-300' : 'text-yellow-600'}`}>{children}</h3>,
-                      blockquote: ({ children }) => (
-                        <blockquote className={`border-l-4 pl-4 italic my-3 text-base ${isDarkMode ? 'border-blue-400 text-blue-200' : 'border-blue-500 text-blue-700'}`}>
-                          {children}
-                        </blockquote>
-                      ),
-                      code: ({ children }) => (
-                        <code className={`px-2 py-1 rounded text-sm font-mono ${isDarkMode ? 'bg-gray-700 text-gray-100' : 'bg-gray-200 text-gray-800'}`}>
-                          {children}
-                        </code>
-                      ),
-                    }}
-                  >
-                    {displayContent.short_video_script || 'No script available.'}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            </div>
-          </div>
+                {/* Title */}
+                {displayContent.title && (
+                  <div>
+                    <h2 className={`text-3xl font-normal leading-tight ${
+                      isDarkMode ? 'text-white' : 'text-gray-900'
+                    }`}>
+                      {displayContent.title}
+                    </h2>
+                  </div>
+                )}
 
-          {/* Right Column - Title and Content */}
-          <div className={`space-y-6 pr-4 max-h-[32rem] overflow-y-auto ${
-            isDarkMode ? 'dark-scrollbar' : 'scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400'
-          }`}>
-            {/* Title */}
-            {displayContent.title && (
-              <div>
-                <h2 className={`text-3xl font-normal leading-tight ${
-                  isDarkMode ? 'text-white' : 'text-gray-900'
-                }`}>
-                  {displayContent.title}
-                </h2>
-              </div>
-            )}
-
-            {/* Instagram Caption from created_content.content */}
-            {displayContent.content && (
-              <div className={`leading-relaxed whitespace-pre-wrap p-4 rounded-lg text-base ${
-                isDarkMode ? 'text-white bg-gray-800' : 'text-gray-700 bg-gray-50'
-              }`}>
-                {displayContent.content}
-              </div>
-            )}
-
-            {/* Cover Image or Video Player */}
-            {displayContent.media_url ? (
-              <div className="flex justify-center">
-                <video
-                  src={displayContent.media_url}
-                  controls
-                  className="w-full max-h-[20rem] object-contain rounded-lg shadow-lg"
-                  onError={(e) => {
-                    e.target.style.display = 'none'
-                  }}
-                />
-              </div>
-            ) : displayContent.images && displayContent.images.length > 0 ? (
-              <div className="flex justify-center relative">
-                <img
-                  src={displayContent.images[0]}
-                  alt="Reel cover"
-                  className="w-full max-h-[20rem] object-contain rounded-lg shadow-lg"
-                  onError={(e) => {
-                    e.target.style.display = 'none'
-                  }}
-                />
-                {/* Black Overlay */}
-                <div className="absolute inset-0 bg-black bg-opacity-70 rounded-lg"></div>
-                {/* Upload Reel Button Overlay */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <label className={`px-6 py-3 rounded-lg font-normal text-white shadow-lg transform transition-all duration-200 hover:scale-105 cursor-pointer flex items-center gap-2 ${
-                    isDarkMode
-                      ? 'bg-blue-600 hover:bg-blue-500 border border-blue-500'
-                      : 'bg-blue-500 hover:bg-blue-600'
-                  } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                    <Upload className="w-5 h-5" />
-                    {uploading ? 'Uploading...' : 'Upload Your Reel Here'}
-                    <input
-                      type="file"
-                      accept="video/*"
-                      onChange={handleReelUpload}
-                      disabled={uploading}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-              </div>
-            ) : (
-              <div className="flex justify-center items-center h-48 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                <p className="text-gray-500">No media available</p>
-              </div>
-            )}
-
-            {/* Hashtags */}
-            {displayContent.hashtags && Array.isArray(displayContent.hashtags) && displayContent.hashtags.length > 0 && (
-              <div>
-                <h3 className={`text-xl font-normal mb-3 ${
-                  isDarkMode ? 'text-white' : 'text-gray-900'
-                }`}>
-                  🏷️ Hashtags
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {displayContent.hashtags.map((hashtag, index) => (
-                    <span
-                      key={index}
-                      className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        isDarkMode
-                          ? 'bg-blue-900 text-blue-200'
-                          : 'bg-blue-100 text-blue-800'
+                {/* Caption with Copy Button */}
+                {displayContent.content && (
+                  <div className="relative">
+                    <div className={`leading-relaxed whitespace-pre-wrap p-4 rounded-lg text-base ${
+                      isDarkMode ? 'text-white bg-gray-800' : 'text-gray-700 bg-gray-50'
+                    }`}>
+                      {displayContent.content}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(displayContent.content || '');
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 3000);
+                        } catch (err) {
+                          console.error('Failed to copy caption:', err);
+                        }
+                      }}
+                      className={`absolute top-2 right-2 p-2 rounded-lg text-sm font-medium transition-all duration-300 ${
+                        copied
+                          ? 'bg-green-500 text-white scale-105'
+                          : isDarkMode
+                            ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+                            : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
                       }`}
+                      title={copied ? "Copied!" : "Copy caption to clipboard"}
                     >
-                      #{hashtag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                )}
 
-          </div>
+                {/* No Media Available Box */}
+                <div className={`flex flex-col items-center justify-center p-8 rounded-lg border-2 border-dashed text-center ${
+                  isDarkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-gray-50'
+                }`}>
+                  <Upload className={`w-12 h-12 mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                  <p className={`text-lg font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    No media available
+                  </p>
+                  <p className={`text-sm mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Upload a video to display here
+                  </p>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`px-6 py-3 rounded-lg font-medium text-white shadow-lg transform transition-all duration-200 hover:scale-105 flex items-center gap-2 ${
+                      isDarkMode
+                        ? 'bg-blue-600 hover:bg-blue-500'
+                        : 'bg-blue-500 hover:bg-blue-600'
+                    } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    disabled={uploading}
+                  >
+                    <Upload className="w-5 h-5" />
+                    {uploading ? 'Uploading...' : 'Upload Video'}
+                  </button>
+                </div>
+
+                {/* Hashtags */}
+                {displayContent.hashtags && Array.isArray(displayContent.hashtags) && displayContent.hashtags.length > 0 && (
+                  <div>
+                    <h3 className={`text-xl font-normal mb-3 ${
+                      isDarkMode ? 'text-white' : 'text-gray-900'
+                    }`}>
+                      🏷️ Hashtags
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {displayContent.hashtags.map((hashtag, index) => (
+                        <span
+                          key={index}
+                          className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            isDarkMode
+                              ? 'bg-blue-900 text-blue-200'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}
+                        >
+                          #{hashtag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
