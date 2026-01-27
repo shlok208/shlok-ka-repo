@@ -46,10 +46,14 @@ const ContentCreateIndicator = ({
         <div className="p-8 text-center">
           {/* Main Icon */}
           <div className="flex justify-center mb-6">
-            <div className={`p-4 rounded-full ${
+            <div className={`p-3 rounded-full ${
               isDarkMode ? 'bg-blue-900/50' : 'bg-blue-100'
             }`}>
-              <Sparkles className={`w-8 h-8 text-blue-500 animate-spin`} />
+              <img
+                src="/leo_logo.png"
+                alt="Leo logo"
+                className="w-10 h-10 object-cover rounded-full border border-white/60"
+              />
             </div>
           </div>
 
